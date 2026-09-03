@@ -43,16 +43,51 @@ src/
 
 This app is built from the interactive mockup in `design/vineyard-notebook.html`. See `design/BUILD-NOTES.md` for the complete data model and implementation notes.
 
-## Development
+## Setup
 
-```bash
-npm install
-npm run dev
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure Firebase:**
+   - Create a Firebase project at https://console.firebase.google.com
+   - Enable Authentication (Email/Password)
+   - Create a Firestore database
+   - Enable Storage
+   - Copy `.env.example` to `.env` and fill in your Firebase config
+
+3. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+
+## Environment Variables
+
+Create a `.env` file with your Firebase configuration:
+
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
 ```
 
 ## Deployment
 
-Free hosting on Vercel/Netlify - deploy directly from GitHub.
+### Vercel
+```bash
+npm install -g vercel
+vercel
+```
+
+### Netlify
+```bash
+npm install -g netlify-cli
+netlify deploy
+```
 
 ## License
 

@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --parchment: #F2EEE5;
+    --parchment-2: #E9E3D5;
+    --paper-line: #DDD5C3;
+    --ink: #232019;
+    --ink-soft: #6A6153;
+    --ink-faint: #9B9182;
+    --surface: #FBF9F4;
+    --surface-2: #F5F1E8;
+    --border: #D6CBB0;
+    --burgundy: #7C2E3A;
+    --burgundy-deep: #5C2029;
+    --grape: #6B2D5C;
+    --barrel: #93765F;
+    --vine: #4A5D23;
+    --red-wine: #8B1538;
+    --white-wine: #97731C;
+    --cellar: #211A14;
+    --shadow: rgba(30, 24, 17, 0.10);
+    --status-have: #4A5D23;
+    --status-partial: #97731C;
+    --status-need: #8B1538;
+    --st-upcoming: #8C8275;
+    --st-active: #2E6E8E;
+    --st-done: #4A5D23;
+    --page-bg: #E4DFD2;
+    --focus-ring: #2F6FB0;
+  }
+
+  body {
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 0;
+}
+
+/* Ensure proper focus visibility */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
