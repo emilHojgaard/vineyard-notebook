@@ -103,30 +103,46 @@ Two read-only states:
   - Upload compressed (see `lib/utils.ts`: `readAndCompress()`)
   - Store URL in Firestore, not data
 
-## Current Implementation Status (Phase 1)
+## Current Implementation Status
 
-✅ **Completed**:
+✅ **Phase 1 - Foundation** (Completed):
 - Project scaffolding (React + TypeScript + Vite)
 - Firebase setup (Auth, Firestore, Storage)
 - Authentication (login, signup)
 - Project creation/selection
 - Data contexts with real-time sync
 - App shell with bottom nav
-- Basic Timeline view (read-only)
 - Type definitions
 - Security rules
 - Deployment configs
 
-⏳ **TODO** (remaining Phase 1 work):
-- Timeline: Add/edit/delete phases, notes with photo upload
-- Timeline: Branch creation/management
-- Tree view: Full visual layout
-- Calendar view: Month grid + agenda
-- Inventory: Sections, items, shortage alerts
-- Library: Reference items, tagging to phases
-- Member management: Invite/remove members
-- Photo upload to Firebase Storage (replace base64)
-- Offline support (cached reads, queued writes)
+✅ **Phase 2 - Interactive Features** (Completed):
+- **Timeline**: Full editing with add/edit/delete phases, notes with photo upload to Firebase Storage
+- **Timeline**: Branch creation/management (split, delete, color-coded)
+- **Timeline**: Sub-events ("checks") with date tracking
+- **Timeline**: Inventory shortage alerts (14-day window)
+- **Timeline**: Event alerts (7-day window)
+- **Tree View**: Full visual layout with recursive algorithm from BUILD-NOTES
+- **Tree View**: Interactive SVG rendering with node/edge diagram
+- **Tree View**: Branch focus mode (dim other branches)
+- **Calendar View**: Month grid with navigation
+- **Calendar View**: Agenda list (upcoming 30 days)
+- **Calendar View**: Phase and sub-event display
+- **Inventory**: Sections and items with full CRUD
+- **Inventory**: Have/need quantities with status (need/partial/have)
+- **Inventory**: Pricing and units
+- **Library**: Reference items (PDF, video, photo, note)
+- **Library**: File upload to Firebase Storage
+- **Library**: Section management
+- **Modal Components**: Reusable modal and confirm dialog
+- **Photo Upload**: Firebase Storage integration (not base64)
+
+⏳ **TODO** (Future enhancements):
+- Inventory/library item tagging to phases
+- Member management: Email invitations
+- Export calendar to .ics format
+- Offline support (Firestore persistence)
+- Performance optimization (code splitting)
 
 ## Development Commands
 

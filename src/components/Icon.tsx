@@ -24,15 +24,21 @@ const icons = {
   pencil: '<path d="M4 20l.9-4.2L16.2 4.5a1.5 1.5 0 0 1 2.1 0l1.2 1.2a1.5 1.5 0 0 1 0 2.1L8.2 19.1 4 20z"/><path d="M14.5 6.8l2.7 2.7"/>',
   more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
   tree: '<path d="M12 4v6"/><path d="M12 10c0 3-3 3-5 5.4"/><path d="M12 10c0 3 3 3 5 5.4"/><circle cx="12" cy="4" r="1.7" fill="currentColor" stroke="none"/><circle cx="6.6" cy="17" r="1.7" fill="currentColor" stroke="none"/><circle cx="17.4" cy="17" r="1.7" fill="currentColor" stroke="none"/>',
+  edit: '<path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  download: '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="16" x2="12" y2="3"/>',
+  external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  chevronleft: '<polyline points="14.5 5 8 12 14.5 19"/>',
+  chevronright: '<polyline points="9.5 5 16 12 9.5 19"/>',
 };
 
 interface IconProps {
   name: keyof typeof icons;
   size?: number;
   className?: string;
+  color?: string;
 }
 
-export function Icon({ name, size = 17, className = '' }: IconProps) {
+export function Icon({ name, size = 17, className = '', color }: IconProps) {
   const path = icons[name] || icons.dot;
 
   return (
@@ -42,7 +48,7 @@ export function Icon({ name, size = 17, className = '' }: IconProps) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={color || 'currentColor'}
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
