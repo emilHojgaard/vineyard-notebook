@@ -29,6 +29,7 @@ const icons = {
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   chevronleft: '<polyline points="14.5 5 8 12 14.5 19"/>',
   chevronright: '<polyline points="9.5 5 16 12 9.5 19"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
 };
 
 interface IconProps {

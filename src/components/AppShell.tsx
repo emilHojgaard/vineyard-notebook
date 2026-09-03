@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon } from './Icon';
+import { Header } from './Header';
 import { useData } from '../contexts/DataContext';
-import { useAuth } from '../contexts/AuthContext';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -9,7 +9,6 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const { appState, updateAppState, currentProject } = useData();
-  const { logout } = useAuth();
   const [showSettings, setShowSettings] = React.useState(false);
 
   const handleTabChange = (tab: typeof appState.tab) => {
@@ -33,10 +32,8 @@ export function AppShell({ children }: AppShellProps) {
           {/* Phone screen */}
           <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="bg-burgundy text-white px-4 py-3 text-center relative flex-shrink-0">
-              <div className="text-xs font-bold tracking-widest uppercase">
-                Vineyard Notebook
-              </div>
+            <div className="relative">
+              <Header />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 <button
                   onClick={() => setShowSettings(!showSettings)}
@@ -74,14 +71,7 @@ export function AppShell({ children }: AppShellProps) {
                   </div>
 
                   <div className="space-y-4">
-                    <div>
-                      <div className="text-xs uppercase tracking-wider text-ink-faint mb-2">
-                        Current Project
-                      </div>
-                      <div className="text-sm font-semibold text-ink">
-                        {currentProject?.name || 'No project selected'}
-                      </div>
-                    </div>
+
 
                     <div>
                       <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
@@ -113,15 +103,9 @@ export function AppShell({ children }: AppShellProps) {
                       />
                     </div>
 
-                    <button
-                      onClick={() => {
-                        logout();
-                        setShowSettings(false);
-                      }}
-                      className="w-full py-2 text-status-need font-semibold hover:underline"
-                    >
-                      Sign Out
-                    </button>
+                    <div className="text-xs text-ink-faint text-center border-t border-border pt-3">
+                      Use the user menu in the header to sign out
+                    </div>
                   </div>
                 </div>
               </div>

@@ -33,6 +33,7 @@ interface DataContextType {
   loading: boolean;
   createProject: (name: string, initialSeasonTitle: string) => Promise<string>;
   selectProject: (projectId: string) => void;
+  createSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
@@ -257,6 +258,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const createSeason = async (year: number) => {
+    if (!currentProject) throw new Error('No project selected');
+    
+    const initialSeason: Season = {
+      status: 'current',
+      title: `${year} Vintage`,
+      root: createDefaultPhases(),
+    };
+    
+    syncStatuses(initialSeason.root);
+    
+    await setDoc(doc(db, 'seasons', `${currentProject.id}_${year}`), {
+      ...initialSeason,
+      projectId: currentProject.id,
+    });
+    
+    // Create empty inventory for this year
+    await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
+      projectId: currentProject.id,
+      sections: [],
+    });
+  };
+
   const updateSeason = async (year: number, season: Season) => {
     if (!currentProject) return;
     syncStatuses(season.root);
@@ -317,6 +341,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loading,
     createProject,
     selectProject,
+    createSeason,
     updateSeason,
     updateInventory,
     updateLibrary,

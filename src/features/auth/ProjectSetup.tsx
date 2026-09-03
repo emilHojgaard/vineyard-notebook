@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 
-export function ProjectSetup() {
+interface ProjectSetupProps {
+  onComplete?: () => void;
+}
+
+export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
   const { projects, createProject, selectProject } = useData();
   const [showCreateForm, setShowCreateForm] = useState(projects.length === 0);
   const [projectName, setProjectName] = useState('');
@@ -17,6 +21,9 @@ export function ProjectSetup() {
     try {
       const projectId = await createProject(projectName, seasonTitle);
       selectProject(projectId);
+      if (onComplete) {
+        onComplete();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create project');
     } finally {
@@ -26,7 +33,7 @@ export function ProjectSetup() {
 
   if (!showCreateForm && projects.length > 0) {
     return (
-      <div className="min-h-screen bg-page-bg flex items-center justify-center p-4">
+      <div className={onComplete ? '' : 'min-h-screen bg-page-bg flex items-center justify-center p-4'}>
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-burgundy mb-2">
@@ -64,7 +71,7 @@ export function ProjectSetup() {
   }
 
   return (
-    <div className="min-h-screen bg-page-bg flex items-center justify-center p-4">
+    <div className={onComplete ? '' : 'min-h-screen bg-page-bg flex items-center justify-center p-4'}>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-burgundy mb-2">
@@ -75,7 +82,7 @@ export function ProjectSetup() {
           </p>
         </div>
 
-        <div className="bg-surface border border-border rounded-xl p-6 shadow-phone">
+        <div className={onComplete ? '' : 'bg-surface border border-border rounded-xl p-6 shadow-phone'}>
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-status-need rounded-lg text-status-need text-sm">
               {error}
