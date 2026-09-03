@@ -57,7 +57,6 @@ export function LibraryView() {
       title: 'New Item',
       type,
       content: '',
-      image: undefined,
     };
 
     section.items.push(newItem);

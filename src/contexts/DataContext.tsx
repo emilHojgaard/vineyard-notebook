@@ -20,7 +20,7 @@ import type {
   AppState,
   Member,
 } from '../types';
-import { syncStatuses } from '../lib/utils';
+import { syncStatuses, createDefaultPhases } from '../lib/utils';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -211,12 +211,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: Timestamp.now(),
     });
 
-    // Create initial season
+    // Create initial season with default winemaking phases
     const initialSeason: Season = {
       status: 'current',
       title: initialSeasonTitle,
-      root: [],
+      root: createDefaultPhases(),
     };
+    
+    // Sync statuses for the default phases
+    syncStatuses(initialSeason.root);
 
     await setDoc(doc(db, 'seasons', `${projectId}_${year}`), {
       ...initialSeason,

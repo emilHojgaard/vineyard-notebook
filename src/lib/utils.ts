@@ -164,3 +164,39 @@ export function branchColor(parentColor: string, idx: number): string {
     ? PALETTE[idx % PALETTE.length]
     : shadeColor(parentColor, idx);
 }
+
+// Default winemaking phases for new projects
+export function createDefaultPhases(): Node[] {
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+
+  const phases: Array<{
+    name: string;
+    startMonth: number;
+    startDay: number;
+    endMonth: number;
+    endDay: number;
+    year: number;
+  }> = [
+    { name: 'Growing Season', startMonth: 4, startDay: 1, endMonth: 9, endDay: 30, year: currentYear },
+    { name: 'Harvest', startMonth: 10, startDay: 1, endMonth: 10, endDay: 15, year: currentYear },
+    { name: 'Primary Fermentation', startMonth: 10, startDay: 16, endMonth: 11, endDay: 15, year: currentYear },
+    { name: 'Secondary Fermentation', startMonth: 11, startDay: 16, endMonth: 12, endDay: 31, year: currentYear },
+    { name: 'Racking', startMonth: 1, startDay: 1, endMonth: 1, endDay: 31, year: nextYear },
+    { name: 'Aging', startMonth: 2, startDay: 1, endMonth: 8, endDay: 31, year: nextYear },
+    { name: 'Bottling', startMonth: 9, startDay: 1, endMonth: 9, endDay: 30, year: nextYear },
+  ];
+
+  return phases.map((p, idx) => ({
+    id: uid('n'),
+    name: p.name,
+    start: `${p.year}-${String(p.startMonth).padStart(2, '0')}-${String(p.startDay).padStart(2, '0')}`,
+    end: `${p.year}-${String(p.endMonth).padStart(2, '0')}-${String(p.endDay).padStart(2, '0')}`,
+    status: 'upcoming' as PhaseStatus,
+    notes: [],
+    events: [],
+    invIds: [],
+    libIds: [],
+    branches: null,
+  }));
+}
