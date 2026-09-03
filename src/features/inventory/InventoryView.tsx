@@ -33,20 +33,23 @@ export function InventoryView() {
       items: [],
     };
 
-    inv.sections.push(newSection);
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    updatedInv.sections.push(newSection);
     setAddingSectionName('');
     setAddingSection(false);
-    updateInventory(appState.year, inv);
+    updateInventory(appState.year, updatedInv);
   };
 
   const handleDeleteSection = (sectionId: string) => {
-    inv.sections = inv.sections.filter((s) => s.id !== sectionId);
-    updateInventory(appState.year, inv);
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    updatedInv.sections = updatedInv.sections.filter((s) => s.id !== sectionId);
+    updateInventory(appState.year, updatedInv);
     setConfirmDelete(null);
   };
 
   const handleAddItem = (sectionId: string) => {
-    const section = inv.sections.find((s) => s.id === sectionId);
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     const newItem: InventoryItem = {
@@ -60,26 +63,28 @@ export function InventoryView() {
 
     section.items.push(newItem);
     setEditingItem({ sectionId, item: newItem });
-    updateInventory(appState.year, inv);
+    updateInventory(appState.year, updatedInv);
   };
 
   const handleUpdateItem = (sectionId: string, itemId: string, updates: Partial<InventoryItem>) => {
-    const section = inv.sections.find((s) => s.id === sectionId);
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     const item = section.items.find((i) => i.id === itemId);
     if (!item) return;
 
     Object.assign(item, updates);
-    updateInventory(appState.year, inv);
+    updateInventory(appState.year, updatedInv);
   };
 
   const handleDeleteItem = (sectionId: string, itemId: string) => {
-    const section = inv.sections.find((s) => s.id === sectionId);
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     section.items = section.items.filter((i) => i.id !== itemId);
-    updateInventory(appState.year, inv);
+    updateInventory(appState.year, updatedInv);
     setConfirmDelete(null);
   };
 

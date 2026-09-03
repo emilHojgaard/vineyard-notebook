@@ -27,6 +27,17 @@ export function LibraryView() {
     );
   }
 
+  // Get current editing item from library (in case library was updated)
+  const getCurrentEditingItem = () => {
+    if (!editingItem) return null;
+    const section = library.sections.find((s) => s.id === editingItem.sectionId);
+    if (!section) return null;
+    const item = section.items.find((i) => i.id === editingItem.item.id);
+    return item || null;
+  };
+
+  const currentEditingItem = getCurrentEditingItem();
+
   const handleAddSection = () => {
     if (!addingSectionName.trim()) return;
 
@@ -36,20 +47,23 @@ export function LibraryView() {
       items: [],
     };
 
-    library.sections.push(newSection);
+    const updatedLibrary = JSON.parse(JSON.stringify(library));
+    updatedLibrary.sections.push(newSection);
     setAddingSectionName('');
     setAddingSection(false);
-    updateLibrary(library);
+    updateLibrary(updatedLibrary);
   };
 
   const handleDeleteSection = (sectionId: string) => {
-    library.sections = library.sections.filter((s) => s.id !== sectionId);
-    updateLibrary(library);
+    const updatedLibrary = JSON.parse(JSON.stringify(library));
+    updatedLibrary.sections = updatedLibrary.sections.filter((s) => s.id !== sectionId);
+    updateLibrary(updatedLibrary);
     setConfirmDelete(null);
   };
 
   const handleAddItem = (sectionId: string, type: LibraryItemType) => {
-    const section = library.sections.find((s) => s.id === sectionId);
+    const updatedLibrary = JSON.parse(JSON.stringify(library));
+    const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     const newItem: LibraryItem = {
@@ -61,18 +75,19 @@ export function LibraryView() {
 
     section.items.push(newItem);
     setEditingItem({ sectionId, item: newItem });
-    updateLibrary(library);
+    updateLibrary(updatedLibrary);
   };
 
   const handleUpdateItem = (sectionId: string, itemId: string, updates: Partial<LibraryItem>) => {
-    const section = library.sections.find((s) => s.id === sectionId);
+    const updatedLibrary = JSON.parse(JSON.stringify(library));
+    const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     const item = section.items.find((i) => i.id === itemId);
     if (!item) return;
 
     Object.assign(item, updates);
-    updateLibrary(library);
+    updateLibrary(updatedLibrary);
   };
 
   const handleFileUpload = async (
@@ -99,11 +114,12 @@ export function LibraryView() {
   };
 
   const handleDeleteItem = (sectionId: string, itemId: string) => {
-    const section = library.sections.find((s) => s.id === sectionId);
+    const updatedLibrary = JSON.parse(JSON.stringify(library));
+    const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     section.items = section.items.filter((i) => i.id !== itemId);
-    updateLibrary(library);
+    updateLibrary(updatedLibrary);
     setConfirmDelete(null);
     setEditingItem(null);
     setSelectedItem(null);
@@ -325,11 +341,11 @@ export function LibraryView() {
       )}
 
       {/* Edit Item Modal */}
-      {editingItem && (
+      {editingItem && currentEditingItem && (
         <Modal
           isOpen={true}
           onClose={() => setEditingItem(null)}
-          title={`Edit ${editingItem.item.type.charAt(0).toUpperCase() + editingItem.item.type.slice(1)}`}
+          title={`Edit ${currentEditingItem.type.charAt(0).toUpperCase() + currentEditingItem.type.slice(1)}`}
         >
           <div className="space-y-4">
             <div>
@@ -338,9 +354,9 @@ export function LibraryView() {
               </label>
               <input
                 type="text"
-                value={editingItem.item.title}
+                value={currentEditingItem.title}
                 onChange={(e) =>
-                  handleUpdateItem(editingItem.sectionId, editingItem.item.id, {
+                  handleUpdateItem(editingItem.sectionId, currentEditingItem.id, {
                     title: e.target.value,
                   })
                 }
@@ -348,15 +364,15 @@ export function LibraryView() {
               />
             </div>
 
-            {editingItem.item.type === 'note' && (
+            {currentEditingItem.type === 'note' && (
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-ink-faint block mb-2">
                   Content
                 </label>
                 <textarea
-                  value={editingItem.item.content}
+                  value={currentEditingItem.content}
                   onChange={(e) =>
-                    handleUpdateItem(editingItem.sectionId, editingItem.item.id, {
+                    handleUpdateItem(editingItem.sectionId, currentEditingItem.id, {
                       content: e.target.value,
                     })
                   }
@@ -366,30 +382,30 @@ export function LibraryView() {
               </div>
             )}
 
-            {(editingItem.item.type === 'pdf' || editingItem.item.type === 'video') && (
+            {(currentEditingItem.type === 'pdf' || currentEditingItem.type === 'video') && (
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-ink-faint block mb-2">
-                  {editingItem.item.type === 'pdf' ? 'PDF File' : 'Video URL or File'}
+                  {currentEditingItem.type === 'pdf' ? 'PDF File' : 'Video URL or File'}
                 </label>
                 <input
                   type="text"
-                  value={editingItem.item.content}
+                  value={currentEditingItem.content}
                   onChange={(e) =>
-                    handleUpdateItem(editingItem.sectionId, editingItem.item.id, {
+                    handleUpdateItem(editingItem.sectionId, currentEditingItem.id, {
                       content: e.target.value,
                     })
                   }
-                  placeholder={editingItem.item.type === 'video' ? 'YouTube URL or upload file' : 'URL or upload file'}
+                  placeholder={currentEditingItem.type === 'video' ? 'YouTube URL or upload file' : 'URL or upload file'}
                   className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm mb-2"
                 />
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept={editingItem.item.type === 'pdf' ? '.pdf' : 'video/*'}
+                  accept={currentEditingItem.type === 'pdf' ? '.pdf' : 'video/*'}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      handleFileUpload(editingItem.sectionId, editingItem.item.id, file, 'content');
+                      handleFileUpload(editingItem.sectionId, currentEditingItem.id, file, 'content');
                     }
                   }}
                   className="hidden"
@@ -404,14 +420,14 @@ export function LibraryView() {
               </div>
             )}
 
-            {editingItem.item.type === 'photo' && (
+            {currentEditingItem.type === 'photo' && (
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-ink-faint block mb-2">
                   Photo
                 </label>
-                {editingItem.item.image && (
+                {currentEditingItem.image && (
                   <img
-                    src={editingItem.item.image}
+                    src={currentEditingItem.image}
                     alt="Preview"
                     className="rounded-md max-w-full mb-2"
                   />
@@ -423,7 +439,7 @@ export function LibraryView() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      handleFileUpload(editingItem.sectionId, editingItem.item.id, file, 'image');
+                      handleFileUpload(editingItem.sectionId, currentEditingItem.id, file, 'image');
                     }
                   }}
                   className="hidden"
@@ -449,7 +465,7 @@ export function LibraryView() {
                 onClick={() =>
                   setConfirmDelete({
                     type: 'item',
-                    id: editingItem.item.id,
+                    id: currentEditingItem.id,
                     sectionId: editingItem.sectionId,
                   })
                 }

@@ -46,26 +46,34 @@ export function TimelineView() {
       branches: null,
     };
 
-    season.root.push(newNode);
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    updatedSeason.root.push(newNode);
     setNewPhaseName('');
     setAddingPhase(false);
-    updateSeason(appState.year, season);
+    updateSeason(appState.year, updatedSeason);
   };
 
   const handleDeletePhase = (nodeId: string) => {
-    season.root = season.root.filter((n) => n.id !== nodeId);
-    updateSeason(appState.year, season);
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    updatedSeason.root = updatedSeason.root.filter((n) => n.id !== nodeId);
+    updateSeason(appState.year, updatedSeason);
   };
 
   const handleSplitPhase = (node: Node) => {
     if (!newBranchName.trim()) return;
 
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    
+    // Find the node in the updated season
+    const updatedNode = updatedSeason.root.find((n: Node) => n.id === node.id);
+    if (!updatedNode) return;
+
     // Find the index of this node in its parent array
-    const nodeIndex = season.root.findIndex((n) => n.id === node.id);
+    const nodeIndex = updatedSeason.root.findIndex((n: Node) => n.id === node.id);
     if (nodeIndex === -1) return;
 
     // Move any phases after this node into "Original" branch
-    const afterNodes = season.root.splice(nodeIndex + 1);
+    const afterNodes = updatedSeason.root.splice(nodeIndex + 1);
     const originalBranch: Branch = {
       id: uid('b'),
       name: 'Original',
@@ -80,34 +88,38 @@ export function TimelineView() {
     };
 
     // Set branches on the node (always 2+ branches)
-    node.branches = [originalBranch, newBranch];
+    updatedNode.branches = [originalBranch, newBranch];
 
     setNewBranchName('');
     setBranchingNode(null);
-    updateSeason(appState.year, season);
+    updateSeason(appState.year, updatedSeason);
   };
 
   const handleDeleteBranch = (node: Node, branchId: string) => {
     if (!node.branches) return;
 
-    const branchIndex = node.branches.findIndex((b) => b.id === branchId);
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    const updatedNode = updatedSeason.root.find((n: Node) => n.id === node.id);
+    if (!updatedNode || !updatedNode.branches) return;
+
+    const branchIndex = updatedNode.branches.findIndex((b: Branch) => b.id === branchId);
     if (branchIndex === -1) return;
 
     // Remove the branch
-    node.branches.splice(branchIndex, 1);
+    updatedNode.branches.splice(branchIndex, 1);
 
     // If only one branch remains, collapse back to trunk
-    if (node.branches.length === 1) {
-      const remaining = node.branches[0];
-      const nodeIndex = season.root.findIndex((n) => n.id === node.id);
+    if (updatedNode.branches.length === 1) {
+      const remaining = updatedNode.branches[0];
+      const nodeIndex = updatedSeason.root.findIndex((n: Node) => n.id === node.id);
       if (nodeIndex !== -1) {
         // Splice the remaining branch's nodes back into trunk after this node
-        season.root.splice(nodeIndex + 1, 0, ...remaining.nodes);
-        node.branches = null;
+        updatedSeason.root.splice(nodeIndex + 1, 0, ...remaining.nodes);
+        updatedNode.branches = null;
       }
     }
 
-    updateSeason(appState.year, season);
+    updateSeason(appState.year, updatedSeason);
     setConfirmDeleteBranch(null);
   };
 
