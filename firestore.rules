@@ -23,20 +23,32 @@ service cloud.firestore {
 
     // Seasons - project members only
     match /seasons/{seasonId} {
-      allow read, write: if request.auth != null && 
-                           isProjectMember(resource.data.projectId);
+      allow read: if request.auth != null && 
+                     request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members;
+      allow create: if request.auth != null &&
+                       request.auth.uid in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.members;
+      allow update, delete: if request.auth != null &&
+                               request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members;
     }
 
     // Inventory - project members only
     match /inventory/{inventoryId} {
-      allow read, write: if request.auth != null && 
-                           isProjectMember(resource.data.projectId);
+      allow read: if request.auth != null && 
+                     request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members;
+      allow create: if request.auth != null &&
+                       request.auth.uid in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.members;
+      allow update, delete: if request.auth != null &&
+                               request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members;
     }
 
     // Library - project members only
     match /library/{projectId} {
-      allow read, write: if request.auth != null && 
-                           isProjectMember(projectId);
+      allow read: if request.auth != null && 
+                     request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.members;
+      allow create: if request.auth != null &&
+                       request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.members;
+      allow update, delete: if request.auth != null &&
+                               request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.members;
     }
   }
 }
