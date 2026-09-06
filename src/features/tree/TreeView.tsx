@@ -51,13 +51,9 @@ export function TreeView() {
 
   if (!season) {
     return (
-      <>
-        <SeasonSelector />
-        <div className="p-4 text-center text-ink-soft">
-          <p>No season exists for {appState.year}</p>
-          <p className="text-sm mt-2">Use "New Season" above to create one</p>
-        </div>
-      </>
+      <div className="p-4 text-center text-ink-soft">
+        <p>No season data for {appState.year}</p>
+      </div>
     );
   }
 
@@ -84,25 +80,26 @@ export function TreeView() {
   return (
     <div className="pb-20">
       {/* Season selector */}
-      <SeasonSelector />
-      
-      {/* Header */}
-      <div className="bg-surface px-4 py-3 border-b border-border">
-        <div className="text-center">
-          <div className="text-lg font-bold text-ink mb-1">{season.title}</div>
-          <div className="text-xs text-ink-soft">
-            {layout.nodes.length} phase{layout.nodes.length !== 1 ? 's' : ''}
+      <SeasonSelector showAddButton={!isLocked && !isArchived} />
+
+      {/* Tree info */}
+      {season && (
+        <div className="bg-surface-2 px-4 py-2 border-b border-border">
+          <div className="text-center">
+            <div className="text-xs text-ink-soft">
+              {layout?.nodes.length || 0} phase{layout?.nodes.length !== 1 ? 's' : ''}
+            </div>
+            {focusedBranchId && (
+              <button
+                onClick={() => handleFocusBranch(null)}
+                className="mt-1 text-xs font-semibold text-barrel hover:underline"
+              >
+                Clear focus
+              </button>
+            )}
           </div>
-          {focusedBranchId && (
-            <button
-              onClick={() => handleFocusBranch(null)}
-              className="mt-2 text-xs font-semibold text-barrel hover:underline"
-            >
-              Clear focus
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Hint */}
       <div className="text-xs text-center text-ink-faint py-3 px-4">

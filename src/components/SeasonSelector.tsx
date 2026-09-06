@@ -1,35 +1,55 @@
 import { useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
+import { ConfirmDialog } from './ConfirmDialog';
 
-export function SeasonSelector() {
+interface SeasonSelectorProps {
+  showAddButton?: boolean; // Whether to show the "+" button (based on edit mode)
+}
+
+export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const { seasons, appState, updateAppState, createSeason } = useData();
-  const [addingYear, setAddingYear] = useState(false);
-  const [newYear, setNewYear] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const isEditMode = !appState.locked;
-  const availableYears = Object.keys(seasons)
+  // Get sorted year list (newest first)
+  const sortedYears = Object.keys(seasons)
     .map(Number)
-    .sort((a, b) => b - a); // Sort descending (newest first)
+    .sort((a, b) => b - a);
+
+  // Generate year options for the picker (current year ± 5 years)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i).reverse();
+
+  const handleYearChange = (year: number) => {
+    updateAppState({ year });
+    setIsExpanded(false);
+  };
+
+  const handleAddSeasonClick = () => {
+    setIsCreating(true);
+  };
 
   const handleCreateSeason = async () => {
-    const year = parseInt(newYear);
-    if (!year || year < 2000 || year > 2100) {
-      alert('Please enter a valid year between 2000 and 2100');
-      return;
-    }
-    if (seasons[year]) {
-      alert(`Season ${year} already exists`);
+    // Check if season already exists
+    if (seasons[selectedYear]) {
+      setShowDuplicateConfirm(true);
       return;
     }
 
+    await doCreateSeason();
+  };
+
+  const doCreateSeason = async () => {
     setCreating(true);
     try {
-      await createSeason(year);
-      updateAppState({ year });
-      setNewYear('');
-      setAddingYear(false);
+      await createSeason(selectedYear);
+      updateAppState({ year: selectedYear });
+      setIsCreating(false);
+      setShowDuplicateConfirm(false);
     } catch (error) {
       console.error('Failed to create season:', error);
       alert('Failed to create season. Please try again.');
@@ -38,75 +58,144 @@ export function SeasonSelector() {
     }
   };
 
+  const currentSeasonTitle = seasons[appState.year]?.title || `${appState.year}`;
+
   return (
-    <div className="bg-surface px-4 py-3 border-b border-border">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs uppercase tracking-wider text-ink-faint font-semibold">
-          Season
+    <>
+      <div className="bg-surface px-4 py-3 border-b border-border">
+        {/* Season selector button */}
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
+          >
+            <span>{appState.year}</span>
+            <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
+          </button>
         </div>
-        {isEditMode && (
-          <button
-            onClick={() => setAddingYear(!addingYear)}
-            className="text-xs font-semibold text-burgundy hover:underline flex items-center gap-1"
-          >
-            <Icon name="plus" size={10} />
-            New Season
-          </button>
+
+        {/* Expanded season list */}
+        {isExpanded && (
+          <div className="mt-3 bg-surface-2 border border-border rounded-md overflow-hidden">
+            {/* Season list */}
+            <div className="max-h-48 overflow-y-auto">
+              {sortedYears.map((year) => (
+                <button
+                  key={year}
+                  onClick={() => handleYearChange(year)}
+                  className={`w-full px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
+                    year === appState.year
+                      ? 'bg-burgundy/10 text-burgundy'
+                      : 'text-ink hover:bg-surface'
+                  }`}
+                >
+                  {year}
+                  {seasons[year]?.status !== 'current' && (
+                    <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Add Season button (only shown when edit mode is ON) */}
+            {showAddButton && (
+              <button
+                onClick={handleAddSeasonClick}
+                className="w-full px-4 py-2.5 border-t border-border text-left text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center gap-2"
+              >
+                <Icon name="plus" size={14} />
+                <span>Add Season</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Archived indicator */}
+        {seasons[appState.year]?.status !== 'current' && (
+          <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2 mt-2">
+            <Icon name="lock" size={11} />
+            <span>Archived season (read-only)</span>
+          </div>
         )}
       </div>
 
-      {/* Season list */}
-      <div className="flex flex-wrap gap-2">
-        {availableYears.map((year) => (
-          <button
-            key={year}
-            onClick={() => updateAppState({ year })}
-            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              appState.year === year
-                ? 'bg-burgundy text-white'
-                : 'bg-parchment border border-border text-ink hover:bg-surface'
-            }`}
-          >
-            {year}
-          </button>
-        ))}
-        {availableYears.length === 0 && !addingYear && (
-          <div className="text-sm text-ink-soft">No seasons yet</div>
-        )}
-      </div>
+      {/* Create season modal */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-ink">Add New Season</h3>
+              <button
+                onClick={() => {
+                  setIsCreating(false);
+                  setSelectedYear(new Date().getFullYear());
+                }}
+                className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
 
-      {/* Add new season */}
-      {addingYear && (
-        <div className="mt-3 flex gap-2">
-          <input
-            type="number"
-            value={newYear}
-            onChange={(e) => setNewYear(e.target.value)}
-            placeholder="Year (e.g., 2024)"
-            className="flex-1 px-3 py-1.5 border border-border rounded-lg bg-parchment text-ink text-sm"
-            min="2000"
-            max="2100"
-            disabled={creating}
-          />
-          <button
-            onClick={handleCreateSeason}
-            disabled={creating || !newYear}
-            className="px-3 py-1.5 bg-burgundy text-white text-sm font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? '...' : 'Create'}
-          </button>
-          <button
-            onClick={() => {
-              setAddingYear(false);
-              setNewYear('');
-            }}
-            disabled={creating}
-            className="px-3 py-1.5 bg-surface border border-border text-ink text-sm font-semibold rounded-lg hover:bg-surface-2 transition-colors"
-          >
-            Cancel
-          </button>
+            <div className="mb-4">
+              <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+                Select Year
+              </label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
+                autoFocus
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                    {seasons[year] ? ' (Already exists)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateSeason}
+                disabled={creating}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creating ? 'Creating...' : 'Create Season'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsCreating(false);
+                  setSelectedYear(new Date().getFullYear());
+                }}
+                disabled={creating}
+                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <p className="text-xs text-ink-faint mt-3 text-center">
+              New seasons include 7 default winemaking phases
+            </p>
+          </div>
         </div>
       )}
-    </div>
+
+      {/* Duplicate season confirmation */}
+      <ConfirmDialog
+        isOpen={showDuplicateConfirm}
+        title="Season Already Exists"
+        message={`A season for ${selectedYear} already exists. Are you sure you want to create another?`}
+        confirmText="Create Anyway"
+        onConfirm={doCreateSeason}
+        onCancel={() => {
+          setShowDuplicateConfirm(false);
+          setSelectedYear(new Date().getFullYear());
+        }}
+        isDanger={false}
+      />
+    </>
   );
 }
