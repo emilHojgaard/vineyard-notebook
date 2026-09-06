@@ -7,7 +7,7 @@ import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -17,11 +17,9 @@ export function TimelineView() {
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
-  const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
-  const [addingSeason, setAddingSeason] = useState(false);
-  const [newSeasonYear, setNewSeasonYear] = useState('');
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [showAddSeason, setShowAddSeason] = useState(false);
+  const [newSeasonYear, setNewSeasonYear] = useState(new Date().getFullYear());
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -39,22 +37,11 @@ export function TimelineView() {
   };
 
   const handleAddNewSeason = async () => {
-    const year = parseInt(newSeasonYear);
-    if (!year || year < 1900 || year > 2100) {
-      alert('Please enter a valid year');
-      return;
-    }
-    if (seasons[year]) {
-      alert(`Season for ${year} already exists`);
-      return;
-    }
-    
     setCreating(true);
     try {
-      await createSeason(year);
-      updateAppState({ year });
-      setAddingSeason(false);
-      setNewSeasonYear('');
+      await createSeason(newSeasonYear);
+      updateAppState({ year: newSeasonYear });
+      setShowAddSeason(false);
     } catch (error) {
       console.error('Failed to create season:', error);
       alert('Failed to create season. Please try again.');
@@ -63,79 +50,7 @@ export function TimelineView() {
     }
   };
 
-  const handleDeleteSeason = async (year: number) => {
-    setDeleting(true);
-    try {
-      await deleteSeason(year);
-      
-      // Select another season if available
-      const remainingYears = Object.keys(seasons)
-        .map(Number)
-        .filter(y => y !== year)
-        .sort((a, b) => b - a);
-      
-      if (remainingYears.length > 0) {
-        updateAppState({ year: remainingYears[0] });
-      } else {
-        // If no seasons left, create one for current year
-        const currentYear = new Date().getFullYear();
-        await createSeason(currentYear);
-        updateAppState({ year: currentYear });
-      }
-    } catch (error) {
-      console.error('Failed to delete season:', error);
-      alert('Failed to delete season. Please try again.');
-    } finally {
-      setDeleting(false);
-      setConfirmDeleteSeason(null);
-    }
-  };
-
-  const hasSeasons = Object.keys(seasons).length > 0;
-
-  if (!hasSeasons) {
-    // No seasons at all - this shouldn't happen with new projects but handle gracefully
-    const currentYear = new Date().getFullYear();
-    return (
-      <div className="p-8 text-center">
-        <div className="max-w-sm mx-auto">
-          <div className="mb-6">
-            <div className="text-lg font-semibold text-ink mb-2">
-              No Seasons Yet
-            </div>
-            <p className="text-sm text-ink-soft">
-              Create your first season with 7 default winemaking phases
-            </p>
-          </div>
-          <button
-            onClick={async () => {
-              setCreating(true);
-              try {
-                await createSeason(currentYear);
-                updateAppState({ year: currentYear });
-              } catch (error) {
-                console.error('Failed to create season:', error);
-                alert('Failed to create season. Please try again.');
-              } finally {
-                setCreating(false);
-              }
-            }}
-            disabled={creating}
-            className="w-full px-6 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? 'Creating...' : `Create ${currentYear} Season`}
-          </button>
-          <p className="text-xs text-ink-faint mt-4">
-            Default phases: Growing Season, Harvest, Primary Fermentation,
-            Secondary Fermentation, Racking, Aging, and Bottling
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   if (!season) {
-    // Season exists but not for the selected year
     return (
       <div className="p-8 text-center">
         <div className="max-w-sm mx-auto">
@@ -144,30 +59,19 @@ export function TimelineView() {
               No season exists for {appState.year}
             </div>
             <p className="text-sm text-ink-soft">
-              Create a new season with 7 default winemaking phases or select a different year
+              Create a new season with 7 default winemaking phases to get started
             </p>
           </div>
           <button
             onClick={handleCreateSeason}
             disabled={creating}
-            className="w-full px-6 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+            className="w-full px-6 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {creating ? 'Creating...' : `Create ${appState.year} Season`}
           </button>
-          <button
-            onClick={() => {
-              const years = Object.keys(seasons).map(Number).sort((a, b) => b - a);
-              if (years.length > 0) {
-                updateAppState({ year: years[0] });
-              }
-            }}
-            className="w-full px-6 py-3 bg-surface border border-border text-ink font-semibold rounded-lg hover:bg-surface-2 transition-colors"
-          >
-            Go to Latest Season
-          </button>
           <p className="text-xs text-ink-faint mt-4">
-            Default phases: Growing Season, Harvest, Primary Fermentation,
-            Secondary Fermentation, Racking, Aging, and Bottling
+            Default phases: Growing Season, Pre-Harvest Monitoring, Harvest & Crush,
+            Primary Fermentation, Racking, Aging, and Bottling
           </p>
         </div>
       </div>
@@ -423,7 +327,7 @@ export function TimelineView() {
     <div className="pb-20">
       {/* Vintage bar */}
       <div className="bg-surface px-4 py-3 border-b border-border">
-        <div className="flex items-center justify-center gap-2 mb-2">
+        <div className="flex items-center justify-center gap-3 mb-2">
           <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
           <select
             value={appState.year}
@@ -439,24 +343,13 @@ export function TimelineView() {
                 </option>
               ))}
           </select>
-          {!isLocked && !isArchived && (
-            <>
-              <button
-                onClick={() => setAddingSeason(true)}
-                className="w-6 h-6 rounded-full bg-burgundy/10 border border-burgundy/30 flex items-center justify-center hover:bg-burgundy/20 transition-colors"
-                title="Add Season"
-              >
-                <Icon name="plus" size={12} />
-              </button>
-              <button
-                onClick={() => setConfirmDeleteSeason(appState.year)}
-                className="w-6 h-6 rounded-full bg-status-need/10 border border-status-need/30 flex items-center justify-center hover:bg-status-need/20 transition-colors"
-                title="Delete Season"
-              >
-                <Icon name="trash" size={11} />
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => setShowAddSeason(true)}
+            className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
+            title="Add new season"
+          >
+            <Icon name="plus" size={14} />
+          </button>
         </div>
         {isArchived && (
           <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
@@ -602,37 +495,42 @@ export function TimelineView() {
         isDanger
       />
 
-      {/* Add season modal */}
-      {addingSeason && (
+      {/* Add new season modal */}
+      {showAddSeason && (
         <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">Add New Season</h3>
             <p className="text-sm text-ink-soft mb-4">
-              Create a new season with default winemaking phases
+              Create a new season with 7 default winemaking phases
             </p>
-            <input
-              type="number"
-              value={newSeasonYear}
-              onChange={(e) => setNewSeasonYear(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddNewSeason()}
-              placeholder="Year (e.g., 2025)"
-              autoFocus
-              className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
-              min="1900"
-              max="2100"
-            />
+            <div className="mb-4">
+              <label className="text-xs uppercase tracking-wider text-ink-soft mb-2 block">
+                Year
+              </label>
+              <select
+                value={newSeasonYear}
+                onChange={(e) => setNewSeasonYear(parseInt(e.target.value))}
+                className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold cursor-pointer"
+              >
+                {Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={handleAddNewSeason}
-                disabled={creating || !newSeasonYear}
-                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+                disabled={creating || !!seasons[newSeasonYear]}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {creating ? 'Creating...' : 'Create Season'}
               </button>
               <button
                 onClick={() => {
-                  setAddingSeason(false);
-                  setNewSeasonYear('');
+                  setShowAddSeason(false);
+                  setNewSeasonYear(new Date().getFullYear());
                 }}
                 disabled={creating}
                 className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-40"
@@ -640,24 +538,12 @@ export function TimelineView() {
                 Cancel
               </button>
             </div>
+            {seasons[newSeasonYear] && (
+              <p className="text-xs text-status-need mt-2">Season {newSeasonYear} already exists</p>
+            )}
           </div>
         </div>
       )}
-
-      {/* Delete season confirmation */}
-      <ConfirmDialog
-        isOpen={confirmDeleteSeason !== null}
-        title="Delete Season"
-        message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory data for this season will be permanently removed.`}
-        confirmText={deleting ? 'Deleting...' : 'Delete'}
-        onConfirm={() => {
-          if (confirmDeleteSeason !== null) {
-            handleDeleteSeason(confirmDeleteSeason);
-          }
-        }}
-        onCancel={() => setConfirmDeleteSeason(null)}
-        isDanger
-      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node, Event } from '../../types';
 import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
@@ -18,13 +18,25 @@ export function CalendarView() {
   const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
 
+  // Get the season year for calendar display
+  const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
+
   const [currentMonth, setCurrentMonth] = useState(() => {
     if (appState.calMonth) {
       return appState.calMonth;
     }
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // Default to January of the season's year
+    return `${seasonYear}-01`;
   });
+
+  // Update calendar month when season changes
+  useEffect(() => {
+    if (season) {
+      const year = parseInt(season.title);
+      setCurrentMonth(`${year}-01`);
+      updateAppState({ calMonth: null });
+    }
+  }, [appState.year, season?.title]);
 
   // Extract all calendar events from the season
   const allEvents = useMemo(() => {

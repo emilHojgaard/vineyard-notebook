@@ -38,6 +38,9 @@ export function TreeView() {
   const { seasons, appState, updateAppState, updateSeason, createSeason } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [showAddSeason, setShowAddSeason] = useState(false);
+  const [newSeasonYear, setNewSeasonYear] = useState(new Date().getFullYear());
+  const [creating, setCreating] = useState(false);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -48,45 +51,10 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  const hasSeasons = Object.keys(seasons).length > 0;
-
-  if (!hasSeasons) {
-    return (
-      <div className="p-8 text-center">
-        <div className="max-w-sm mx-auto">
-          <div className="text-lg font-semibold text-ink mb-2">
-            No Seasons Yet
-          </div>
-          <p className="text-sm text-ink-soft mb-4">
-            Create your first season in the Timeline tab
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   if (!season) {
     return (
-      <div className="p-8 text-center">
-        <div className="max-w-sm mx-auto">
-          <div className="text-lg font-semibold text-ink mb-2">
-            No season for {appState.year}
-          </div>
-          <p className="text-sm text-ink-soft mb-4">
-            Go to Timeline to create this season or select a different year
-          </p>
-          <button
-            onClick={() => {
-              const years = Object.keys(seasons).map(Number).sort((a, b) => b - a);
-              if (years.length > 0) {
-                updateAppState({ year: years[0] });
-              }
-            }}
-            className="px-6 py-2 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-deep transition-colors"
-          >
-            Go to Latest Season
-          </button>
-        </div>
+      <div className="p-4 text-center text-ink-soft">
+        <p>No season data for {appState.year}</p>
       </div>
     );
   }
@@ -104,6 +72,20 @@ export function TreeView() {
     updateAppState({ treeFocus: branchId });
   };
 
+  const handleAddNewSeason = async () => {
+    setCreating(true);
+    try {
+      await createSeason(newSeasonYear);
+      updateAppState({ year: newSeasonYear });
+      setShowAddSeason(false);
+    } catch (error) {
+      console.error('Failed to create season:', error);
+      alert('Failed to create season. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // Determine which nodes/edges should be dimmed
   const getDimmed = (node: Node): boolean => {
     if (!focusedBranchId) return false;
@@ -115,8 +97,31 @@ export function TreeView() {
     <div className="pb-20">
       {/* Header */}
       <div className="bg-surface px-4 py-3 border-b border-border">
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
+          <select
+            value={appState.year}
+            onChange={(e) => updateAppState({ year: parseInt(e.target.value) })}
+            className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer"
+          >
+            {Object.keys(seasons)
+              .map(Number)
+              .sort((a, b) => b - a)
+              .map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+          </select>
+          <button
+            onClick={() => setShowAddSeason(true)}
+            className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
+            title="Add new season"
+          >
+            <Icon name="plus" size={14} />
+          </button>
+        </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-ink mb-1">Season {season.title}</div>
           <div className="text-xs text-ink-soft">
             {layout.nodes.length} phase{layout.nodes.length !== 1 ? 's' : ''}
           </div>
@@ -129,6 +134,12 @@ export function TreeView() {
             </button>
           )}
         </div>
+        {isArchived && (
+          <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2 mt-2">
+            <Icon name="lock" size={11} />
+            <span>Archived season (read-only)</span>
+          </div>
+        )}
       </div>
 
       {/* Hint */}
@@ -239,6 +250,56 @@ export function TreeView() {
           isLocked={isLocked}
           isArchived={isArchived}
         />
+      )}
+
+      {/* Add new season modal */}
+      {showAddSeason && (
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
+            <h3 className="text-base font-bold text-ink mb-3">Add New Season</h3>
+            <p className="text-sm text-ink-soft mb-4">
+              Create a new season with 7 default winemaking phases
+            </p>
+            <div className="mb-4">
+              <label className="text-xs uppercase tracking-wider text-ink-soft mb-2 block">
+                Year
+              </label>
+              <select
+                value={newSeasonYear}
+                onChange={(e) => setNewSeasonYear(parseInt(e.target.value))}
+                className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold cursor-pointer"
+              >
+                {Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddNewSeason}
+                disabled={creating || !!seasons[newSeasonYear]}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {creating ? 'Creating...' : 'Create Season'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAddSeason(false);
+                  setNewSeasonYear(new Date().getFullYear());
+                }}
+                disabled={creating}
+                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+            {seasons[newSeasonYear] && (
+              <p className="text-xs text-status-need mt-2">Season {newSeasonYear} already exists</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
