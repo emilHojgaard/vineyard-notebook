@@ -6,7 +6,7 @@ import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function InventoryView() {
-  const { inventory, appState, updateInventory } = useData();
+  const { inventory, appState, updateInventory, seasons, updateAppState } = useData();
   const inv = inventory[appState.year];
 
   const [addingSectionName, setAddingSectionName] = useState('');
@@ -15,11 +15,45 @@ export function InventoryView() {
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'section' | 'item'; id: string; sectionId?: string } | null>(null);
 
   const isArchived = false; // Inventory not year-locked in mockup
+  const hasSeasons = Object.keys(seasons).length > 0;
+
+  if (!hasSeasons) {
+    return (
+      <div className="p-8 text-center">
+        <div className="max-w-sm mx-auto">
+          <div className="text-lg font-semibold text-ink mb-2">
+            No Seasons Yet
+          </div>
+          <p className="text-sm text-ink-soft mb-4">
+            Create your first season in the Timeline tab to start tracking inventory
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!inv) {
     return (
-      <div className="p-4 text-center text-ink-soft">
-        <p>No inventory data for {appState.year}</p>
+      <div className="p-8 text-center">
+        <div className="max-w-sm mx-auto">
+          <div className="text-lg font-semibold text-ink mb-2">
+            No inventory for {appState.year}
+          </div>
+          <p className="text-sm text-ink-soft mb-4">
+            Go to Timeline to create this season or select a different year
+          </p>
+          <button
+            onClick={() => {
+              const years = Object.keys(seasons).map(Number).sort((a, b) => b - a);
+              if (years.length > 0) {
+                updateAppState({ year: years[0] });
+              }
+            }}
+            className="px-6 py-2 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-deep transition-colors"
+          >
+            Go to Latest Season
+          </button>
+        </div>
       </div>
     );
   }

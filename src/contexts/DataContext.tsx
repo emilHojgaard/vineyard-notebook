@@ -5,6 +5,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   where,
@@ -31,9 +32,10 @@ interface DataContextType {
   appState: AppState;
   members: Member[];
   loading: boolean;
-  createProject: (name: string, initialSeasonTitle: string) => Promise<string>;
+  createProject: (name: string) => Promise<string>;
   selectProject: (projectId: string) => void;
   createSeason: (year: number) => Promise<void>;
+  deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
@@ -132,13 +134,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
         });
         setSeasons(loadedSeasons);
-
-        // Default to newest season when project changes
-        const years = Object.keys(loadedSeasons).map(Number);
-        if (years.length > 0) {
-          const newestYear = Math.max(...years);
-          setAppState((prev) => ({ ...prev, year: newestYear }));
-        }
       })
     );
 
@@ -205,7 +200,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setMembers(loadedMembers);
   };
 
-  const createProject = async (name: string, initialSeasonTitle: string): Promise<string> => {
+  const createProject = async (name: string): Promise<string> => {
     if (!currentUser) throw new Error('Must be logged in');
 
     const projectId = `proj_${Date.now()}`;
@@ -222,7 +217,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Create initial season with default winemaking phases
     const initialSeason: Season = {
       status: 'current',
-      title: initialSeasonTitle,
+      title: `${year}`,
       root: createDefaultPhases(),
     };
     
@@ -234,29 +229,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       projectId,
     });
 
-    // Create inventory with default categories
+    // Create inventory with default sections
     await setDoc(doc(db, 'inventory', `${projectId}_${year}`), {
       projectId,
       sections: [
-        {
-          id: 'sec1',
-          name: 'Equipment',
-          items: [],
-        },
-        {
-          id: 'sec2',
-          name: 'Supplies',
-          items: [],
-        },
-        {
-          id: 'sec3',
-          name: 'Chemicals & Additives',
-          items: [],
-        },
+        { id: 'inv1', name: 'Equipment', items: [] },
+        { id: 'inv2', name: 'Supplies', items: [] },
+        { id: 'inv3', name: 'Chemicals/Additives', items: [] },
       ],
     });
 
-    // Create empty library
+    // Create library with empty sections
     await setDoc(doc(db, 'library', projectId), {
       sections: [],
     });
@@ -278,18 +261,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setCurrentProject(project);
-      // Reset app state when switching projects (year will be set when seasons load)
-      setAppState({
-        year: new Date().getFullYear(),
-        tab: 'timeline',
-        branchSelection: {},
-        invFilter: 'all',
-        calMonth: null,
-        locked: false,
-        alertDays: 14,
-        eventAlertDays: 7,
-        treeFocus: null,
-      });
     }
   };
 
@@ -298,7 +269,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     
     const initialSeason: Season = {
       status: 'current',
-      title: `${year} Vintage`,
+      title: `${year}`,
       root: createDefaultPhases(),
     };
     
@@ -309,27 +280,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       projectId: currentProject.id,
     });
     
-    // Create inventory with default categories for this year
+    // Create inventory with default sections for this year
     await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
       projectId: currentProject.id,
       sections: [
-        {
-          id: 'sec1',
-          name: 'Equipment',
-          items: [],
-        },
-        {
-          id: 'sec2',
-          name: 'Supplies',
-          items: [],
-        },
-        {
-          id: 'sec3',
-          name: 'Chemicals & Additives',
-          items: [],
-        },
+        { id: 'inv1', name: 'Equipment', items: [] },
+        { id: 'inv2', name: 'Supplies', items: [] },
+        { id: 'inv3', name: 'Chemicals/Additives', items: [] },
       ],
     });
+  };
+
+  const deleteSeason = async (year: number) => {
+    if (!currentProject) throw new Error('No project selected');
+    
+    // Delete season document
+    const seasonRef = doc(db, 'seasons', `${currentProject.id}_${year}`);
+    await deleteDoc(seasonRef);
+    
+    // Delete associated inventory
+    const invRef = doc(db, 'inventory', `${currentProject.id}_${year}`);
+    await deleteDoc(invRef);
   };
 
   const updateSeason = async (year: number, season: Season) => {
@@ -393,6 +364,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createProject,
     selectProject,
     createSeason,
+    deleteSeason,
     updateSeason,
     updateInventory,
     updateLibrary,
