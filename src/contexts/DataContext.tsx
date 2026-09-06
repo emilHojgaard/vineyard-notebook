@@ -132,6 +132,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
         });
         setSeasons(loadedSeasons);
+
+        // Default to newest season when project changes
+        const years = Object.keys(loadedSeasons).map(Number);
+        if (years.length > 0) {
+          const newestYear = Math.max(...years);
+          setAppState((prev) => ({ ...prev, year: newestYear }));
+        }
       })
     );
 
@@ -271,6 +278,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setCurrentProject(project);
+      // Reset app state when switching projects (year will be set when seasons load)
+      setAppState({
+        year: new Date().getFullYear(),
+        tab: 'timeline',
+        branchSelection: {},
+        invFilter: 'all',
+        calMonth: null,
+        locked: false,
+        alertDays: 14,
+        eventAlertDays: 7,
+        treeFocus: null,
+      });
     }
   };
 

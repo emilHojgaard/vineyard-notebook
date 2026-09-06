@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SeasonSelector } from '../../components/SeasonSelector';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory } = useData();
+  const { seasons, appState, updateSeason, inventory } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -24,21 +24,18 @@ export function TimelineView() {
 
   if (!season) {
     return (
-      <>
-        <SeasonSelector />
-        <div className="p-8 text-center">
-          <div className="max-w-sm mx-auto">
-            <div className="mb-6">
-              <div className="text-lg font-semibold text-ink mb-2">
-                No season exists for {appState.year}
-              </div>
-              <p className="text-sm text-ink-soft">
-                Use "New Season" above to create a season with default winemaking phases
-              </p>
+      <div className="p-8 text-center">
+        <div className="max-w-sm mx-auto">
+          <div className="mb-6">
+            <div className="text-lg font-semibold text-ink mb-2">
+              No season exists for {appState.year}
             </div>
+            <p className="text-sm text-ink-soft">
+              Use the season selector above to create a new season or switch to an existing one.
+            </p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
@@ -290,16 +287,7 @@ export function TimelineView() {
   return (
     <div className="pb-20">
       {/* Season selector */}
-      <SeasonSelector />
-      
-      {isArchived && (
-        <div className="bg-surface px-4 py-2 border-b border-border">
-          <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
-            <Icon name="lock" size={11} />
-            <span>Archived season (read-only)</span>
-          </div>
-        </div>
-      )}
+      <SeasonSelector showAddButton={!isLocked && !isArchived} />
 
       {/* Phase list */}
       <div className="p-4">
