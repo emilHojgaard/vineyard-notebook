@@ -5,9 +5,10 @@ import { fmtRange, derivedStatus, uid, branchColor, TRUNK_COLOR, daysUntil, invS
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SeasonSelector } from '../../components/SeasonSelector';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -17,48 +18,27 @@ export function TimelineView() {
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
-  const [creating, setCreating] = useState(false);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
 
-  const handleCreateSeason = async () => {
-    setCreating(true);
-    try {
-      await createSeason(appState.year);
-    } catch (error) {
-      console.error('Failed to create season:', error);
-      alert('Failed to create season. Please try again.');
-    } finally {
-      setCreating(false);
-    }
-  };
-
   if (!season) {
     return (
-      <div className="p-8 text-center">
-        <div className="max-w-sm mx-auto">
-          <div className="mb-6">
-            <div className="text-lg font-semibold text-ink mb-2">
-              No season exists for {appState.year}
+      <>
+        <SeasonSelector />
+        <div className="p-8 text-center">
+          <div className="max-w-sm mx-auto">
+            <div className="mb-6">
+              <div className="text-lg font-semibold text-ink mb-2">
+                No season exists for {appState.year}
+              </div>
+              <p className="text-sm text-ink-soft">
+                Use "New Season" above to create a season with default winemaking phases
+              </p>
             </div>
-            <p className="text-sm text-ink-soft">
-              Create a new season with 7 default winemaking phases to get started
-            </p>
           </div>
-          <button
-            onClick={handleCreateSeason}
-            disabled={creating}
-            className="w-full px-6 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? 'Creating...' : `Create ${appState.year} Season`}
-          </button>
-          <p className="text-xs text-ink-faint mt-4">
-            Default phases: Growing Season, Pre-Harvest Monitoring, Harvest & Crush,
-            Primary Fermentation, Racking, Aging, and Bottling
-          </p>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -309,32 +289,17 @@ export function TimelineView() {
 
   return (
     <div className="pb-20">
-      {/* Vintage bar */}
-      <div className="bg-surface px-4 py-3 border-b border-border">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
-          <select
-            value={appState.year}
-            onChange={(e) => updateAppState({ year: parseInt(e.target.value) })}
-            className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer"
-          >
-            {Object.keys(seasons)
-              .map(Number)
-              .sort((a, b) => b - a)
-              .map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-          </select>
-        </div>
-        {isArchived && (
+      {/* Season selector */}
+      <SeasonSelector />
+      
+      {isArchived && (
+        <div className="bg-surface px-4 py-2 border-b border-border">
           <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
             <Icon name="lock" size={11} />
             <span>Archived season (read-only)</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Phase list */}
       <div className="p-4">

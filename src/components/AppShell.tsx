@@ -15,10 +15,6 @@ export function AppShell({ children }: AppShellProps) {
     updateAppState({ tab });
   };
 
-  const toggleLock = () => {
-    updateAppState({ locked: !appState.locked });
-  };
-
   return (
     <div className="min-h-screen bg-page-bg flex items-center justify-center p-4 md:p-10">
       <div className="w-full max-w-md">
@@ -32,29 +28,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Phone screen */}
           <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="relative">
-              <Header />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-                  title="Settings"
-                >
-                  <Icon name="settings" size={12} />
-                </button>
-                <button
-                  onClick={toggleLock}
-                  className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
-                    appState.locked
-                      ? 'bg-white/25 border-white/50'
-                      : 'bg-white/10 border-white/30 hover:bg-white/20'
-                  }`}
-                  title={appState.locked ? 'Locked' : 'Unlocked'}
-                >
-                  <Icon name={appState.locked ? 'lock' : 'unlock'} size={12} />
-                </button>
-              </div>
-            </div>
+            <Header onSettingsClick={() => setShowSettings(!showSettings)} />
 
             {/* Settings overlay */}
             {showSettings && (
@@ -122,7 +96,7 @@ export function AppShell({ children }: AppShellProps) {
                 { id: 'timeline', icon: 'timeline', label: 'Timeline' },
                 { id: 'tree', icon: 'tree', label: 'Tree' },
                 { id: 'calendar', icon: 'calendar', label: 'Calendar' },
-                { id: 'crate', icon: 'crate', label: 'Inventory' },
+                { id: 'inventory', icon: 'crate', label: 'Inventory' },
                 { id: 'library', icon: 'book', label: 'Library' },
               ].map((tab) => (
                 <button

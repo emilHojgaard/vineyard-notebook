@@ -227,10 +227,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       projectId,
     });
 
-    // Create empty inventory
+    // Create inventory with default categories
     await setDoc(doc(db, 'inventory', `${projectId}_${year}`), {
       projectId,
-      sections: [],
+      sections: [
+        {
+          id: 'sec1',
+          name: 'Equipment',
+          items: [],
+        },
+        {
+          id: 'sec2',
+          name: 'Supplies',
+          items: [],
+        },
+        {
+          id: 'sec3',
+          name: 'Chemicals & Additives',
+          items: [],
+        },
+      ],
     });
 
     // Create empty library
@@ -274,10 +290,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       projectId: currentProject.id,
     });
     
-    // Create empty inventory for this year
+    // Create inventory with default categories for this year
     await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
       projectId: currentProject.id,
-      sections: [],
+      sections: [
+        {
+          id: 'sec1',
+          name: 'Equipment',
+          items: [],
+        },
+        {
+          id: 'sec2',
+          name: 'Supplies',
+          items: [],
+        },
+        {
+          id: 'sec3',
+          name: 'Chemicals & Additives',
+          items: [],
+        },
+      ],
     });
   };
 

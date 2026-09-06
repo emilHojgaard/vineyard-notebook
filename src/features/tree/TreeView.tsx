@@ -4,6 +4,7 @@ import type { Node, Branch } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus, uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
+import { SeasonSelector } from '../../components/SeasonSelector';
 
 interface LayoutNode {
   node: Node;
@@ -50,9 +51,13 @@ export function TreeView() {
 
   if (!season) {
     return (
-      <div className="p-4 text-center text-ink-soft">
-        <p>No season data for {appState.year}</p>
-      </div>
+      <>
+        <SeasonSelector />
+        <div className="p-4 text-center text-ink-soft">
+          <p>No season exists for {appState.year}</p>
+          <p className="text-sm mt-2">Use "New Season" above to create one</p>
+        </div>
+      </>
     );
   }
 
@@ -78,6 +83,9 @@ export function TreeView() {
 
   return (
     <div className="pb-20">
+      {/* Season selector */}
+      <SeasonSelector />
+      
       {/* Header */}
       <div className="bg-surface px-4 py-3 border-b border-border">
         <div className="text-center">
