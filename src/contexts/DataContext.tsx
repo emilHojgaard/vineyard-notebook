@@ -126,7 +126,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const loadedSeasons: Record<number, Season> = {};
         snapshot.docs.forEach((doc) => {
           const data = doc.data();
-          const year = parseInt(doc.id.split('_')[1] || '0');
+          const year = parseInt(doc.id.split('_')[2] || '0');
           if (year) {
             loadedSeasons[year] = data as Season;
             // Sync statuses on load
@@ -147,7 +147,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const loadedInventory: Record<number, Inventory> = {};
         snapshot.docs.forEach((doc) => {
           const data = doc.data();
-          const year = parseInt(doc.id.split('_')[1] || '0');
+          const year = parseInt(doc.id.split('_')[2] || '0');
           if (year) {
             loadedInventory[year] = { sections: data.sections || [] };
           }
