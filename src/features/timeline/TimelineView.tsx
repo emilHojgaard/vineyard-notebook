@@ -343,13 +343,15 @@ export function TimelineView() {
                 </option>
               ))}
           </select>
-          <button
-            onClick={() => setShowAddSeason(true)}
-            className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
-            title="Add new season"
-          >
-            <Icon name="plus" size={14} />
-          </button>
+          {!isLocked && (
+            <button
+              onClick={() => setShowAddSeason(true)}
+              className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
+              title="Add new season"
+            >
+              <Icon name="plus" size={14} />
+            </button>
+          )}
         </div>
         {isArchived && (
           <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">

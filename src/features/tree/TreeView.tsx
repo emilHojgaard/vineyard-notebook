@@ -113,18 +113,17 @@ export function TreeView() {
                 </option>
               ))}
           </select>
-          <button
-            onClick={() => setShowAddSeason(true)}
-            className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
-            title="Add new season"
-          >
-            <Icon name="plus" size={14} />
-          </button>
+          {!isLocked && (
+            <button
+              onClick={() => setShowAddSeason(true)}
+              className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
+              title="Add new season"
+            >
+              <Icon name="plus" size={14} />
+            </button>
+          )}
         </div>
         <div className="text-center">
-          <div className="text-xs text-ink-soft">
-            {layout.nodes.length} phase{layout.nodes.length !== 1 ? 's' : ''}
-          </div>
           {focusedBranchId && (
             <button
               onClick={() => handleFocusBranch(null)}

@@ -29,15 +29,6 @@ export function CalendarView() {
     return `${seasonYear}-01`;
   });
 
-  // Update calendar month when season changes
-  useEffect(() => {
-    if (season) {
-      const year = parseInt(season.title);
-      setCurrentMonth(`${year}-01`);
-      updateAppState({ calMonth: null });
-    }
-  }, [appState.year, season?.title]);
-
   // Extract all calendar events from the season
   const allEvents = useMemo(() => {
     if (!season) return [];
@@ -95,6 +86,30 @@ export function CalendarView() {
     walkWithColor(season.root, TRUNK_COLOR);
     return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }, [season]);
+
+  // Update calendar month when season changes (smart start date logic)
+  useEffect(() => {
+    if (season && !appState.calMonth) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const year = parseInt(season.title);
+      
+      if (year === currentYear) {
+        // Current year: start on today's month
+        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        setCurrentMonth(monthStr);
+      } else if (allEvents.length > 0) {
+        // Different year: start on first event's month
+        const firstEventDate = allEvents[0].date;
+        const [eventYear, eventMonth] = firstEventDate.split('-');
+        setCurrentMonth(`${eventYear}-${eventMonth}`);
+      } else {
+        // No events: default to January of season year
+        setCurrentMonth(`${year}-01`);
+      }
+      updateAppState({ calMonth: null });
+    }
+  }, [appState.year, season?.title, allEvents]);
 
   const hasSeasons = Object.keys(seasons).length > 0;
 
@@ -190,12 +205,7 @@ export function CalendarView() {
     updateAppState({ calMonth: newMonthStr });
   };
 
-  const handleToday = () => {
-    const now = new Date();
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    setCurrentMonth(monthStr);
-    updateAppState({ calMonth: null });
-  };
+
 
   const monthNames = [
     'January',
@@ -242,12 +252,6 @@ export function CalendarView() {
             <Icon name="chevronright" size={16} />
           </button>
         </div>
-        <button
-          onClick={handleToday}
-          className="w-full px-3 py-2 text-sm font-semibold text-burgundy bg-surface border border-border rounded-md hover:bg-surface-2 transition-colors"
-        >
-          Today
-        </button>
       </div>
 
       <div className="p-4">
