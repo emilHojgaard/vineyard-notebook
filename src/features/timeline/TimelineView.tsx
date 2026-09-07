@@ -7,7 +7,7 @@ import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -17,9 +17,8 @@ export function TimelineView() {
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
+  const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
-  const [showAddSeason, setShowAddSeason] = useState(false);
-  const [newSeasonYear, setNewSeasonYear] = useState(new Date().getFullYear());
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -28,20 +27,6 @@ export function TimelineView() {
     setCreating(true);
     try {
       await createSeason(appState.year);
-    } catch (error) {
-      console.error('Failed to create season:', error);
-      alert('Failed to create season. Please try again.');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleAddNewSeason = async () => {
-    setCreating(true);
-    try {
-      await createSeason(newSeasonYear);
-      updateAppState({ year: newSeasonYear });
-      setShowAddSeason(false);
     } catch (error) {
       console.error('Failed to create season:', error);
       alert('Failed to create season. Please try again.');
@@ -169,6 +154,17 @@ export function TimelineView() {
 
     updateSeason(appState.year, updatedSeason);
     setConfirmDeleteBranch(null);
+  };
+
+  const handleDeleteSeason = async () => {
+    if (confirmDeleteSeason === null) return;
+    try {
+      await deleteSeason(confirmDeleteSeason);
+      setConfirmDeleteSeason(null);
+    } catch (error) {
+      console.error('Failed to delete season:', error);
+      alert('Failed to delete season. Please try again.');
+    }
   };
 
   const handleSelectBranch = (nodeId: string, branchId: string) => {
@@ -343,13 +339,13 @@ export function TimelineView() {
                 </option>
               ))}
           </select>
-          {!isLocked && (
+          {!isLocked && !isArchived && (
             <button
-              onClick={() => setShowAddSeason(true)}
-              className="w-8 h-8 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
-              title="Add new season"
+              onClick={() => setConfirmDeleteSeason(appState.year)}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-status-need hover:bg-status-need/10 transition-colors"
+              title="Delete season"
             >
-              <Icon name="plus" size={14} />
+              <Icon name="trash" size={14} />
             </button>
           )}
         </div>
@@ -497,55 +493,16 @@ export function TimelineView() {
         isDanger
       />
 
-      {/* Add new season modal */}
-      {showAddSeason && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
-            <h3 className="text-base font-bold text-ink mb-3">Add New Season</h3>
-            <p className="text-sm text-ink-soft mb-4">
-              Create a new season with 7 default winemaking phases
-            </p>
-            <div className="mb-4">
-              <label className="text-xs uppercase tracking-wider text-ink-soft mb-2 block">
-                Year
-              </label>
-              <select
-                value={newSeasonYear}
-                onChange={(e) => setNewSeasonYear(parseInt(e.target.value))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold cursor-pointer"
-              >
-                {Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i).map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleAddNewSeason}
-                disabled={creating || !!seasons[newSeasonYear]}
-                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {creating ? 'Creating...' : 'Create Season'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddSeason(false);
-                  setNewSeasonYear(new Date().getFullYear());
-                }}
-                disabled={creating}
-                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-40"
-              >
-                Cancel
-              </button>
-            </div>
-            {seasons[newSeasonYear] && (
-              <p className="text-xs text-status-need mt-2">Season {newSeasonYear} already exists</p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Delete season confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteSeason !== null}
+        title="Delete Season"
+        message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
+        confirmText="Delete Season"
+        onConfirm={handleDeleteSeason}
+        onCancel={() => setConfirmDeleteSeason(null)}
+        isDanger
+      />
     </div>
   );
 }

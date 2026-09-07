@@ -37,6 +37,7 @@ interface DataContextType {
   createSeason: (year: number) => Promise<void>;
   deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
+  deleteSeason: (year: number) => Promise<void>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
   updateAppState: (state: Partial<AppState>) => void;
@@ -312,6 +313,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const deleteSeason = async (year: number) => {
+    if (!currentProject) return;
+    
+    // Delete season document
+    await deleteDoc(doc(db, 'seasons', `${currentProject.id}_${year}`));
+    
+    // Delete associated inventory
+    await deleteDoc(doc(db, 'inventory', `${currentProject.id}_${year}`));
+    
+    // Update local state
+    setSeasons((prev) => {
+      const updated = { ...prev };
+      delete updated[year];
+      return updated;
+    });
+    
+    setInventory((prev) => {
+      const updated = { ...prev };
+      delete updated[year];
+      return updated;
+    });
+    
+    // Switch to another season if available
+    const remainingYears = Object.keys(seasons)
+      .map(Number)
+      .filter((y) => y !== year);
+    
+    if (remainingYears.length > 0) {
+      // Switch to the newest year
+      const newestYear = Math.max(...remainingYears);
+      updateAppState({ year: newestYear });
+    } else {
+      // No seasons left - stay on current year (empty state)
+      // The UI will show "No season exists" message
+    }
+  };
+
   const updateInventory = async (year: number, inv: Inventory) => {
     if (!currentProject) return;
     await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
@@ -366,6 +404,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createSeason,
     deleteSeason,
     updateSeason,
+    deleteSeason,
     updateInventory,
     updateLibrary,
     updateAppState,
