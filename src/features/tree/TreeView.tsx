@@ -262,6 +262,8 @@ export function TreeView() {
 }
 
 // Build tree layout (BUILD-NOTES §4.1)
+// Based on the HTML mockup's algorithm: process entire chains at once,
+// checking only the LAST node for branches.
 function buildTreeLayout(root: Node[]): TreeLayout {
   const nodes: LayoutNode[] = [];
   const edges: LayoutEdge[] = [];
@@ -273,99 +275,133 @@ function buildTreeLayout(root: Node[]): TreeLayout {
     startY: number,
     parentColor: string
   ): { minCol: number; maxCol: number; endY: number } {
+    if (chain.length === 0) {
+      return { minCol: 0, maxCol: 0, endY: startY };
+    }
+
     let y = startY;
-    let chainCols = { minCol: Infinity, maxCol: -Infinity };
+    let minCol: number;
+    let maxCol: number;
 
-    for (let i = 0; i < chain.length; i++) {
-      const node = chain[i];
-      const isLeaf = !node.branches;
+    // Check if the LAST node in the chain has branches
+    const lastNode = chain[chain.length - 1];
+    const hasBranches = lastNode.branches && lastNode.branches.length > 0;
 
-      if (isLeaf) {
-        // Leaf node gets next available column
-        const col = nextLeafCol++;
-        const x = col * (NODE_WIDTH + COL_GAP);
+    if (hasBranches) {
+      // This chain forks - recursively walk all branches
+      const branchResults = lastNode.branches!.map((branch, idx) => {
+        const branchColor = getBranchColor(parentColor, idx);
+        const branchStartY = y + (chain.length * (NODE_HEIGHT + ROW_GAP));
+        return walkChain(branch.nodes, branchStartY, branchColor);
+      });
 
-        nodes.push({
-          node,
-          x,
-          y,
-          col,
-          accent: parentColor,
-          parentColor,
-        });
+      // Column range is the union of all branch results
+      minCol = Math.min(...branchResults.map((r) => r.minCol));
+      maxCol = Math.max(...branchResults.map((r) => r.maxCol));
 
-        chainCols.minCol = Math.min(chainCols.minCol, col);
-        chainCols.maxCol = Math.max(chainCols.maxCol, col);
+      // The branching node's column is the center of its children
+      const centerCol = (minCol + maxCol) / 2;
 
-        y += NODE_HEIGHT + ROW_GAP;
-      } else {
-        // Fork: walk all branches recursively
-        const branchResults = node.branches!.map((branch, idx) => {
-          const branchColor = getBranchColor(parentColor, idx);
-          return walkChain(branch.nodes, y + NODE_HEIGHT + ROW_GAP, branchColor);
-        });
-
-        // Node's column is average of children's columns
-        const childMinCol = Math.min(...branchResults.map((r) => r.minCol));
-        const childMaxCol = Math.max(...branchResults.map((r) => r.maxCol));
-        const col = (childMinCol + childMaxCol) / 2;
-        const x = col * (NODE_WIDTH + COL_GAP);
+      // Place all nodes in this chain, vertically aligned in the center column
+      chain.forEach((node, idx) => {
+        const nodeY = y + (idx * (NODE_HEIGHT + ROW_GAP));
+        const x = centerCol * (NODE_WIDTH + COL_GAP);
 
         nodes.push({
           node,
           x,
-          y,
-          col,
+          y: nodeY,
+          col: centerCol,
           accent: parentColor,
           parentColor,
         });
 
-        // Draw edges to children
-        const childEndY = Math.max(...branchResults.map((r) => r.endY));
-        for (const branch of node.branches!) {
-          const branchFirstNode = nodes.find((n) => n.node.id === branch.nodes[0]?.id);
-          if (branchFirstNode) {
-            edges.push({
-              x1: x + NODE_WIDTH / 2,
-              y1: y + NODE_HEIGHT,
-              x2: branchFirstNode.x + NODE_WIDTH / 2,
-              y2: branchFirstNode.y,
-              color: branchFirstNode.accent,
-            });
-          }
-        }
-
-        chainCols.minCol = Math.min(chainCols.minCol, childMinCol);
-        chainCols.maxCol = Math.max(chainCols.maxCol, childMaxCol);
-        y = childEndY;
-      }
-
-      // Connect to next node in chain
-      if (i < chain.length - 1) {
-        const currentNode = nodes.find((n) => n.node.id === node.id);
-        const nextNode = chain[i + 1];
-        if (currentNode) {
+        // Connect to next node in chain (vertical edge)
+        if (idx < chain.length - 1) {
+          const nextNodeY = y + ((idx + 1) * (NODE_HEIGHT + ROW_GAP));
           edges.push({
-            x1: currentNode.x + NODE_WIDTH / 2,
-            y1: currentNode.y + NODE_HEIGHT,
-            x2: currentNode.x + NODE_WIDTH / 2, // Will be updated after next node is placed
-            y2: y,
+            x1: x + NODE_WIDTH / 2,
+            y1: nodeY + NODE_HEIGHT,
+            x2: x + NODE_WIDTH / 2,
+            y2: nextNodeY,
             color: parentColor,
           });
         }
-      }
-    }
+      });
 
-    maxY = Math.max(maxY, y);
-    return { ...chainCols, endY: y };
+      // Draw edges from the last node to each branch's first node
+      const lastNodeY = y + ((chain.length - 1) * (NODE_HEIGHT + ROW_GAP));
+      const lastNodeX = centerCol * (NODE_WIDTH + COL_GAP);
+
+      lastNode.branches!.forEach((branch, idx) => {
+        if (branch.nodes.length > 0) {
+          const branchFirstNode = nodes.find((n) => n.node.id === branch.nodes[0].id);
+          if (branchFirstNode) {
+            const branchColor = getBranchColor(parentColor, idx);
+            edges.push({
+              x1: lastNodeX + NODE_WIDTH / 2,
+              y1: lastNodeY + NODE_HEIGHT,
+              x2: branchFirstNode.x + NODE_WIDTH / 2,
+              y2: branchFirstNode.y,
+              color: branchColor,
+            });
+          }
+        }
+      });
+
+      // End Y is the maximum of all branch end positions
+      const endY = Math.max(...branchResults.map((r) => r.endY));
+      maxY = Math.max(maxY, endY);
+
+      return { minCol, maxCol, endY };
+    } else {
+      // This is a leaf chain - assign it the next available column
+      const col = nextLeafCol++;
+      const x = col * (NODE_WIDTH + COL_GAP);
+      minCol = col;
+      maxCol = col;
+
+      // Place all nodes in this chain vertically in this column
+      chain.forEach((node, idx) => {
+        const nodeY = y + (idx * (NODE_HEIGHT + ROW_GAP));
+
+        nodes.push({
+          node,
+          x,
+          y: nodeY,
+          col,
+          accent: parentColor,
+          parentColor,
+        });
+
+        // Connect to next node in chain (vertical edge)
+        if (idx < chain.length - 1) {
+          const nextNodeY = y + ((idx + 1) * (NODE_HEIGHT + ROW_GAP));
+          edges.push({
+            x1: x + NODE_WIDTH / 2,
+            y1: nodeY + NODE_HEIGHT,
+            x2: x + NODE_WIDTH / 2,
+            y2: nextNodeY,
+            color: parentColor,
+          });
+        }
+      });
+
+      const endY = y + (chain.length * (NODE_HEIGHT + ROW_GAP));
+      maxY = Math.max(maxY, endY);
+
+      return { minCol, maxCol, endY };
+    }
   }
 
   // Walk the trunk
-  walkChain(root, 20, TRUNK_COLOR);
+  if (root.length > 0) {
+    walkChain(root, 20, TRUNK_COLOR);
+  }
 
   // Calculate total width and height
   const maxCol = nextLeafCol - 1;
-  const width = (maxCol + 1) * (NODE_WIDTH + COL_GAP);
+  const width = Math.max((maxCol + 1) * (NODE_WIDTH + COL_GAP), NODE_WIDTH + COL_GAP);
   const height = maxY + 40;
 
   return { nodes, edges, width, height };

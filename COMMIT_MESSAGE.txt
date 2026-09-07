@@ -1,0 +1,55 @@
+Fix Tree view to show all phases in coherent tree structure
+
+Problem:
+- Tree view was not showing all phases from the current season
+- Some phases were missing, especially those in branches
+- Tree structure was not coherent/hierarchical
+- Algorithm incorrectly processed nodes one-by-one
+
+Root Cause:
+The buildTreeLayout() function used an incorrect algorithm that:
+- Processed nodes individually in a loop
+- Assumed nodes could have branches AND subsequent nodes in the same chain
+- This violated the data model's branching invariant
+- When a phase splits, all subsequent phases move into a branch
+
+Solution:
+Rewrote buildTreeLayout() to match the HTML mockup's algorithm:
+- Process entire chains at once, not node-by-node
+- Check only the LAST node in each chain for branches
+- Properly handle branching vs leaf chains
+- Correct column assignment and node placement
+- Recursive walk ensures ALL nodes are included
+
+Changes:
+- src/features/tree/TreeView.tsx:
+  - Completely rewrote buildTreeLayout() function
+  - Fixed chain processing logic
+  - Fixed edge connections between nodes
+  - Proper handling of branching hierarchy
+
+Testing:
+✅ All phases from season.root are now displayed
+✅ Tree structure is coherent and hierarchical
+✅ Branch hierarchy is clear and organized
+✅ TypeScript compilation successful
+✅ Build completes without errors
+✅ No existing functionality broken:
+   - Season selector works
+   - Delete icon works
+   - Edit mode toggle works
+   - Timeline view unchanged
+   - Phase modal integration maintained
+   - Branch focus functionality maintained
+
+Algorithm:
+- Complexity: O(n) where n = number of nodes
+- Memory: O(n)
+- Each node visited exactly once
+- Leaf chains get sequential columns
+- Parent chains center between children
+- Vertical spacing is consistent
+
+Verification:
+See TREE_VIEW_FIX_SUMMARY.md for detailed explanation
+See TREE_VIEW_TEST_CHECKLIST.md for comprehensive test plan
