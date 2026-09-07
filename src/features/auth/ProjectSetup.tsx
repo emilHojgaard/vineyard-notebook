@@ -9,7 +9,6 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
   const { projects, createProject, selectProject } = useData();
   const [showCreateForm, setShowCreateForm] = useState(projects.length === 0);
   const [projectName, setProjectName] = useState('');
-  const [seasonTitle, setSeasonTitle] = useState(`${new Date().getFullYear()}`);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,7 +18,7 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
     setLoading(true);
 
     try {
-      const projectId = await createProject(projectName, seasonTitle);
+      const projectId = await createProject(projectName);
       selectProject(projectId);
       if (onComplete) {
         onComplete();
@@ -104,18 +103,8 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
               />
             </div>
 
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-ink-faint mb-2">
-                Initial Season Title
-              </label>
-              <input
-                type="text"
-                value={seasonTitle}
-                onChange={(e) => setSeasonTitle(e.target.value)}
-                className="w-full px-4 py-2 border border-border rounded-lg bg-parchment text-ink focus:outline-none focus:ring-2 focus:ring-focus-ring"
-                placeholder="e.g., 2026"
-                required
-              />
+            <div className="text-xs text-ink-soft bg-surface-2 p-3 rounded-lg">
+              A season for {new Date().getFullYear()} will be created with default winemaking phases and inventory categories.
             </div>
 
             <button
