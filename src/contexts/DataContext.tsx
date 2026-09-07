@@ -19,8 +19,9 @@ import type {
   Library,
   AppState,
   Member,
+  Node,
 } from '../types';
-import { syncStatuses, createDefaultPhases } from '../lib/utils';
+import { syncStatuses, createDefaultPhases, uid } from '../lib/utils';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -34,6 +35,7 @@ interface DataContextType {
   createProject: (name: string, initialSeasonTitle: string) => Promise<string>;
   selectProject: (projectId: string) => void;
   createSeason: (year: number) => Promise<void>;
+  createPhase: (year: number, name: string, start?: string, end?: string) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
@@ -281,6 +283,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const createPhase = async (year: number, name: string, start?: string, end?: string) => {
+    if (!currentProject) throw new Error('No project selected');
+    const season = seasons[year];
+    if (!season) throw new Error('Season not found');
+
+    // Create new phase node
+    const newNode: Node = {
+      id: uid('n'),
+      name,
+      start: start || '',
+      end: end || '',
+      status: 'upcoming',
+      notes: [],
+      events: [],
+      invIds: [],
+      libIds: [],
+      branches: null,
+    };
+
+    // Add to season root
+    const updatedSeason = {
+      ...season,
+      root: [...season.root, newNode],
+    };
+
+    // Sync statuses and save
+    syncStatuses(updatedSeason.root);
+    await setDoc(doc(db, 'seasons', `${currentProject.id}_${year}`), {
+      ...updatedSeason,
+      projectId: currentProject.id,
+    });
+  };
+
   const updateSeason = async (year: number, season: Season) => {
     if (!currentProject) return;
     syncStatuses(season.root);
@@ -342,6 +377,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createProject,
     selectProject,
     createSeason,
+    createPhase,
     updateSeason,
     updateInventory,
     updateLibrary,

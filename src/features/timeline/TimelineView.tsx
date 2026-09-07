@@ -4,16 +4,16 @@ import type { Node, Branch } from '../../types';
 import { fmtRange, derivedStatus, uid, branchColor, TRUNK_COLOR, daysUntil, invStatus } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
+import { CreatePhaseModal } from './CreatePhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, createPhase } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [addingPhase, setAddingPhase] = useState(false);
-  const [newPhaseName, setNewPhaseName] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
@@ -62,27 +62,14 @@ export function TimelineView() {
     );
   }
 
-  const handleAddPhase = () => {
-    if (!newPhaseName.trim()) return;
-
-    const newNode: Node = {
-      id: uid('n'),
-      name: newPhaseName.trim(),
-      start: '',
-      end: '',
-      status: 'upcoming',
-      notes: [],
-      events: [],
-      invIds: [],
-      libIds: [],
-      branches: null,
-    };
-
-    const updatedSeason = JSON.parse(JSON.stringify(season));
-    updatedSeason.root.push(newNode);
-    setNewPhaseName('');
-    setAddingPhase(false);
-    updateSeason(appState.year, updatedSeason);
+  const handleCreatePhase = async (name: string, start?: string, end?: string) => {
+    try {
+      await createPhase(appState.year, name, start, end);
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Failed to create phase:', error);
+      alert('Failed to create phase. Please try again.');
+    }
   };
 
   const handleDeletePhase = (nodeId: string) => {
@@ -327,6 +314,15 @@ export function TimelineView() {
                 </option>
               ))}
           </select>
+          {!isLocked && !isArchived && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="w-7 h-7 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-burgundy hover:border-burgundy transition-colors"
+              title="Add phase"
+            >
+              <Icon name="plus" size={14} />
+            </button>
+          )}
         </div>
         {isArchived && (
           <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
@@ -338,12 +334,12 @@ export function TimelineView() {
 
       {/* Phase list */}
       <div className="p-4">
-        {season.root.length === 0 && !addingPhase ? (
+        {season.root.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No phases yet</p>
             {!isLocked && !isArchived && (
               <button
-                onClick={() => setAddingPhase(true)}
+                onClick={() => setShowCreateModal(true)}
                 className="text-burgundy font-semibold hover:underline"
               >
                 + Add first phase
@@ -353,54 +349,16 @@ export function TimelineView() {
         ) : (
           <div className="space-y-2">
             {renderNodeList(season.root)}
-
-            {/* Add phase button/form */}
-            {!isLocked && !isArchived && (
-              <>
-                {addingPhase ? (
-                  <div className="bg-surface-2 border border-border rounded-lg p-3 mt-4">
-                    <input
-                      type="text"
-                      value={newPhaseName}
-                      onChange={(e) => setNewPhaseName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
-                      placeholder="Phase name"
-                      autoFocus
-                      className="w-full px-3 py-2 mb-2 border border-border rounded-md bg-surface text-ink text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAddPhase}
-                        disabled={!newPhaseName.trim()}
-                        className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
-                      >
-                        Add Phase
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAddingPhase(false);
-                          setNewPhaseName('');
-                        }}
-                        className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setAddingPhase(true)}
-                    className="w-full mt-4 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Icon name="plus" size={14} />
-                    Add Phase
-                  </button>
-                )}
-              </>
-            )}
           </div>
         )}
       </div>
+
+      {/* Create phase modal */}
+      <CreatePhaseModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreatePhase}
+      />
 
       {/* Phase detail modal */}
       {selectedNode && (

@@ -4,6 +4,7 @@ import type { Node, Branch } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus, uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
+import { CreatePhaseModal } from '../timeline/CreatePhaseModal';
 
 interface LayoutNode {
   node: Node;
@@ -35,9 +36,10 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, createPhase } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -69,6 +71,16 @@ export function TreeView() {
     updateAppState({ treeFocus: branchId });
   };
 
+  const handleCreatePhase = async (name: string, start?: string, end?: string) => {
+    try {
+      await createPhase(appState.year, name, start, end);
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Failed to create phase:', error);
+      alert('Failed to create phase. Please try again.');
+    }
+  };
+
   // Determine which nodes/edges should be dimmed
   const getDimmed = (node: Node): boolean => {
     if (!focusedBranchId) return false;
@@ -81,7 +93,18 @@ export function TreeView() {
       {/* Header */}
       <div className="bg-surface px-4 py-3 border-b border-border">
         <div className="text-center">
-          <div className="text-lg font-bold text-ink mb-1">{season.title}</div>
+          <div className="flex items-center justify-center gap-3 mb-1">
+            <div className="text-lg font-bold text-ink">{season.title}</div>
+            {!isLocked && !isArchived && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="w-7 h-7 flex items-center justify-center border-2 border-dashed border-border rounded-md text-ink-faint hover:text-burgundy hover:border-burgundy transition-colors"
+                title="Add phase"
+              >
+                <Icon name="plus" size={14} />
+              </button>
+            )}
+          </div>
           <div className="text-xs text-ink-soft">
             {layout.nodes.length} phase{layout.nodes.length !== 1 ? 's' : ''}
           </div>
@@ -193,6 +216,13 @@ export function TreeView() {
           })}
         </div>
       </div>
+
+      {/* Create phase modal */}
+      <CreatePhaseModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreatePhase}
+      />
 
       {/* Phase modal */}
       {selectedNode && (
