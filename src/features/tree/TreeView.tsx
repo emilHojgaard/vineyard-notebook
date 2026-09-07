@@ -4,7 +4,6 @@ import type { Node, Branch } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus, uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
-import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface LayoutNode {
   node: Node;
@@ -36,10 +35,9 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason, deleteSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -78,46 +76,43 @@ export function TreeView() {
     return !isInBranch(season.root, node, focusedBranchId);
   };
 
-  const handleDeleteSeason = async () => {
-    if (confirmDeleteSeason === null) return;
-    try {
-      await deleteSeason(confirmDeleteSeason);
-      setConfirmDeleteSeason(null);
-    } catch (error) {
-      console.error('Failed to delete season:', error);
-      alert('Failed to delete season. Please try again.');
-    }
-  };
-
   return (
     <div className="pb-20">
-      {/* Header */}
+      {/* Season selector */}
       <div className="bg-surface px-4 py-3 border-b border-border">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <div className="text-lg font-bold text-ink">{season.title}</div>
-            {!isLocked && !isArchived && (
-              <button
-                onClick={() => setConfirmDeleteSeason(appState.year)}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-status-need hover:bg-status-need/10 transition-colors"
-                title="Delete season"
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            )}
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
+          <select
+            value={appState.year}
+            onChange={(e) => updateAppState({ year: parseInt(e.target.value) })}
+            className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer"
+          >
+            {Object.keys(seasons)
+              .map(Number)
+              .sort((a, b) => b - a)
+              .map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+          </select>
+        </div>
+        {isArchived && (
+          <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
+            <Icon name="lock" size={11} />
+            <span>Archived season (read-only)</span>
           </div>
-          <div className="text-xs text-ink-soft">
-            {layout.nodes.length} phase{layout.nodes.length !== 1 ? 's' : ''}
-          </div>
-          {focusedBranchId && (
+        )}
+        {focusedBranchId && (
+          <div className="text-center mt-2">
             <button
               onClick={() => handleFocusBranch(null)}
-              className="mt-2 text-xs font-semibold text-barrel hover:underline"
+              className="text-xs font-semibold text-barrel hover:underline"
             >
               Clear focus
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Hint */}
@@ -229,17 +224,6 @@ export function TreeView() {
           isArchived={isArchived}
         />
       )}
-
-      {/* Delete season confirmation */}
-      <ConfirmDialog
-        isOpen={confirmDeleteSeason !== null}
-        title="Delete Season"
-        message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
-        confirmText="Delete Season"
-        onConfirm={handleDeleteSeason}
-        onCancel={() => setConfirmDeleteSeason(null)}
-        isDanger
-      />
     </div>
   );
 }
