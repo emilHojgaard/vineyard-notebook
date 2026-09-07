@@ -4,6 +4,7 @@ import type { Node, Branch } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus, uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface LayoutNode {
   node: Node;
@@ -35,9 +36,10 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, deleteSeason } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -76,6 +78,17 @@ export function TreeView() {
     return !isInBranch(season.root, node, focusedBranchId);
   };
 
+  const handleDeleteSeason = async () => {
+    if (confirmDeleteSeason === null) return;
+    try {
+      await deleteSeason(confirmDeleteSeason);
+      setConfirmDeleteSeason(null);
+    } catch (error) {
+      console.error('Failed to delete season:', error);
+      alert('Failed to delete season. Please try again.');
+    }
+  };
+
   return (
     <div className="pb-20">
       {/* Season selector */}
@@ -96,6 +109,15 @@ export function TreeView() {
                 </option>
               ))}
           </select>
+          {!isLocked && !isArchived && (
+            <button
+              onClick={() => setConfirmDeleteSeason(appState.year)}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-status-need hover:bg-status-need/10 transition-colors"
+              title="Delete season"
+            >
+              <Icon name="trash" size={14} />
+            </button>
+          )}
         </div>
         {isArchived && (
           <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2">
@@ -224,6 +246,17 @@ export function TreeView() {
           isArchived={isArchived}
         />
       )}
+
+      {/* Delete season confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteSeason !== null}
+        title="Delete Season"
+        message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
+        confirmText="Delete Season"
+        onConfirm={handleDeleteSeason}
+        onCancel={() => setConfirmDeleteSeason(null)}
+        isDanger
+      />
     </div>
   );
 }
