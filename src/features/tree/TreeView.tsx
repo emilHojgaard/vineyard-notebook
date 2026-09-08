@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
-import type { Node, Branch } from '../../types';
-import { branchColor, TRUNK_COLOR, derivedStatus, uid, createDefaultPhases } from '../../lib/utils';
+import type { Node } from '../../types';
+import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -36,7 +36,7 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason, deleteSeason, deletePhase } = useData();
+  const { seasons, appState, updateAppState, updateSeason, deleteSeason, deletePhase, addPhase, addBranch, deleteBranch } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
@@ -106,190 +106,31 @@ export function TreeView() {
     }
   };
 
-  const handleAddPhase = () => {
+  const handleAddPhase = async () => {
     if (!newPhaseName.trim() || !addingPhase) return;
 
-    const newNode: Node = {
-      id: uid('n'),
-      name: newPhaseName.trim(),
-      start: '',
-      end: '',
-      status: 'upcoming',
-      notes: [],
-      events: [],
-      invIds: [],
-      libIds: [],
-      branches: null,
-    };
-
-    const updatedSeason = JSON.parse(JSON.stringify(season));
-    
-    // Find the node to add after
-    if (!addingPhase.afterNodeId) {
-      // Add to end of trunk
-      updatedSeason.root.push(newNode);
-    } else {
-      // Find the node and add after it
-      const findAndAddAfter = (nodes: Node[]): boolean => {
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].id === addingPhase.afterNodeId) {
-            nodes.splice(i + 1, 0, newNode);
-            return true;
-          }
-          if (nodes[i].branches) {
-            for (const branch of nodes[i].branches) {
-              if (findAndAddAfter(branch.nodes)) return true;
-            }
-          }
-        }
-        return false;
-      };
-      findAndAddAfter(updatedSeason.root);
-    }
+    await addPhase(appState.year, newPhaseName.trim(), {
+      afterNodeId: addingPhase.afterNodeId || undefined,
+    });
     
     setNewPhaseName('');
     setAddingPhase(null);
-    updateSeason(appState.year, updatedSeason);
   };
 
-  // Helper to find and update a node anywhere in the tree
-  const findAndUpdateNode = (
-    nodes: Node[],
-    nodeId: string,
-    updateFn: (node: Node, parentNodes: Node[]) => boolean
-  ): boolean => {
-    // Check if node is in this array
-    const node = nodes.find((n) => n.id === nodeId);
-    if (node) {
-      return updateFn(node, nodes);
-    }
-
-    // Recursively search in branches
-    for (const node of nodes) {
-      if (node.branches) {
-        for (const branch of node.branches) {
-          if (findAndUpdateNode(branch.nodes, nodeId, updateFn)) {
-            return true;
-          }
-        }
-      }
-    }
-
-    return false;
-  };
-
-  const handleSplitPhase = (node: Node) => {
+  const handleSplitPhase = async (node: Node) => {
     if (!newBranchName.trim()) return;
 
-    const updatedSeason = JSON.parse(JSON.stringify(season));
+    await addBranch(appState.year, node.id, newBranchName.trim());
     
-    // Find the node anywhere in the tree and update it
-    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
-      if (!parentNodes) return false;
-      
-      const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
-      if (nodeIndex === -1) return false;
-
-      // If node doesn't have branches yet, create initial split
-      if (!foundNode.branches) {
-        // Move any phases after this node into "Original" branch
-        const afterNodes = parentNodes.splice(nodeIndex + 1);
-        const originalBranch: Branch = {
-          id: uid('b'),
-          name: 'Original',
-          nodes: afterNodes,
-        };
-
-        // Create new branch with phase inheritance
-        const defaultPhases = createDefaultPhases();
-        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
-        
-        let newBranchNodes: Node[] = [];
-        if (parentPhaseIndex !== -1) {
-          // Copy the parent phase and all phases after it from defaults
-          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
-            ...JSON.parse(JSON.stringify(phase)),
-            id: uid('n'),
-            notes: [],
-            events: [],
-          }));
-        }
-        
-        const newBranch: Branch = {
-          id: uid('b'),
-          name: newBranchName.trim(),
-          nodes: newBranchNodes,
-        };
-
-        // Set branches on the node (always 2+ branches)
-        foundNode.branches = [originalBranch, newBranch];
-      } else {
-        // Node already has branches, just add a new one with phase inheritance
-        const defaultPhases = createDefaultPhases();
-        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
-        
-        let newBranchNodes: Node[] = [];
-        if (parentPhaseIndex !== -1) {
-          // Copy the parent phase and all phases after it from defaults
-          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
-            ...JSON.parse(JSON.stringify(phase)),
-            id: uid('n'),
-            notes: [],
-            events: [],
-          }));
-        }
-        
-        const newBranch: Branch = {
-          id: uid('b'),
-          name: newBranchName.trim(),
-          nodes: newBranchNodes,
-        };
-        foundNode.branches.push(newBranch);
-      }
-
-      return true;
-    });
-
-    if (found) {
-      setNewBranchName('');
-      setBranchingNode(null);
-      updateSeason(appState.year, updatedSeason);
-    }
+    setNewBranchName('');
+    setBranchingNode(null);
   };
 
-  const handleDeleteBranch = (node: Node, branchId: string) => {
+  const handleDeleteBranch = async (node: Node, branchId: string) => {
     if (!node.branches) return;
 
-    const updatedSeason = JSON.parse(JSON.stringify(season));
-    
-    // Find the node anywhere in the tree and update it
-    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
-      if (!foundNode.branches) return false;
-
-      const branchIndex = foundNode.branches.findIndex((b: Branch) => b.id === branchId);
-      if (branchIndex === -1) return false;
-
-      // Remove the branch
-      foundNode.branches.splice(branchIndex, 1);
-
-      // If only one branch remains, collapse back to parent
-      if (foundNode.branches.length === 1) {
-        const remaining = foundNode.branches[0];
-        const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
-        if (nodeIndex !== -1) {
-          // Splice the remaining branch's nodes back after this node
-          parentNodes.splice(nodeIndex + 1, 0, ...remaining.nodes);
-          foundNode.branches = null;
-        }
-      }
-
-      return true;
-    });
-
-    if (found) {
-      updateSeason(appState.year, updatedSeason);
-      setConfirmDeleteBranch(null);
-    }
+    await deleteBranch(appState.year, node.id, branchId);
+    setConfirmDeleteBranch(null);
   };
 
   return (
