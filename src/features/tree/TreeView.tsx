@@ -475,6 +475,12 @@ function buildTreeLayout(root: Node[]): TreeLayout {
       const branchResults = lastNode.branches!.map((branch, idx) => {
         const branchColor = getBranchColor(parentColor, idx);
         const branchStartY = y + (chain.length * (NODE_HEIGHT + ROW_GAP));
+        // Walk the chain even if it's empty
+        if (branch.nodes.length === 0) {
+          // Empty branch - assign it a column
+          const col = nextLeafCol++;
+          return { minCol: col, maxCol: col, endY: branchStartY };
+        }
         return walkChain(branch.nodes, branchStartY, branchColor);
       });
 
@@ -512,15 +518,15 @@ function buildTreeLayout(root: Node[]): TreeLayout {
         }
       });
 
-      // Draw edges from the last node to each branch's first node
+      // Draw edges from the last node to each branch's first node (or branch start point for empty branches)
       const lastNodeY = y + ((chain.length - 1) * (NODE_HEIGHT + ROW_GAP));
       const lastNodeX = centerCol * (NODE_WIDTH + COL_GAP);
 
       lastNode.branches!.forEach((branch, idx) => {
+        const branchColor = getBranchColor(parentColor, idx);
         if (branch.nodes.length > 0) {
           const branchFirstNode = nodes.find((n) => n.node.id === branch.nodes[0].id);
           if (branchFirstNode) {
-            const branchColor = getBranchColor(parentColor, idx);
             edges.push({
               x1: lastNodeX + NODE_WIDTH / 2,
               y1: lastNodeY + NODE_HEIGHT,
@@ -529,6 +535,18 @@ function buildTreeLayout(root: Node[]): TreeLayout {
               color: branchColor,
             });
           }
+        } else {
+          // Empty branch - draw edge to the branch start point
+          const branchStartY = y + (chain.length * (NODE_HEIGHT + ROW_GAP));
+          const branchResult = branchResults[idx];
+          const branchX = branchResult.minCol * (NODE_WIDTH + COL_GAP);
+          edges.push({
+            x1: lastNodeX + NODE_WIDTH / 2,
+            y1: lastNodeY + NODE_HEIGHT,
+            x2: branchX + NODE_WIDTH / 2,
+            y2: branchStartY,
+            color: branchColor,
+          });
         }
       });
 
@@ -600,22 +618,42 @@ function getBranchLabels(
 ): Array<{ x: number; y: number; name: string; color: string; branchId: string }> {
   const labels: Array<{ x: number; y: number; name: string; color: string; branchId: string }> = [];
 
-  function walk(nodes: Node[], parentColor: string) {
-    for (const node of nodes) {
+  function walk(nodes: Node[], parentColor: string, depth: number = 0) {
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
       if (node.branches) {
         node.branches.forEach((branch, idx) => {
           const branchAccent = getBranchColor(parentColor, idx);
-          const firstNode = layout.nodes.find((ln) => ln.node.id === branch.nodes[0]?.id);
-          if (firstNode) {
-            labels.push({
-              x: firstNode.x + NODE_WIDTH / 2,
-              y: firstNode.y - 25,
-              name: branch.name,
-              color: branchAccent,
-              branchId: branch.id,
-            });
+          
+          if (branch.nodes.length > 0) {
+            // Branch has nodes - place label above first node
+            const firstNode = layout.nodes.find((ln) => ln.node.id === branch.nodes[0].id);
+            if (firstNode) {
+              labels.push({
+                x: firstNode.x + NODE_WIDTH / 2,
+                y: firstNode.y - 25,
+                name: branch.name,
+                color: branchAccent,
+                branchId: branch.id,
+              });
+            }
+            walk(branch.nodes, branchAccent, depth + 1);
+          } else {
+            // Empty branch - place label at branch point
+            const parentNode = layout.nodes.find((ln) => ln.node.id === node.id);
+            if (parentNode) {
+              // Calculate approximate position based on branch index
+              // This is a simple heuristic - empty branches spread out horizontally
+              const offsetX = (idx - (node.branches!.length - 1) / 2) * (NODE_WIDTH + COL_GAP);
+              labels.push({
+                x: parentNode.x + NODE_WIDTH / 2 + offsetX,
+                y: parentNode.y + NODE_HEIGHT + ROW_GAP / 2,
+                name: branch.name,
+                color: branchAccent,
+                branchId: branch.id,
+              });
+            }
           }
-          walk(branch.nodes, branchAccent);
         });
       }
     }

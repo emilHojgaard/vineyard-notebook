@@ -438,33 +438,78 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const season = seasons[year];
     if (!season) return;
 
-    // Helper function to remove a node from tree structure
-    const removeNodeById = (nodes: PhaseNode[], id: string): PhaseNode[] => {
-      return nodes.filter((node) => {
-        if (node.id === id) return false;
-        if (node.branches) {
-          node.branches = node.branches
-            .map((branch) => ({
-              ...branch,
-              nodes: removeNodeById(branch.nodes, id),
-            }))
-            .filter((branch) => branch.nodes.length > 0 || node.branches!.length > 1);
-          
-          // If only one branch remains, collapse it
-          if (node.branches.length === 1) {
-            node.branches = null;
-          } else if (node.branches.length === 0) {
-            node.branches = null;
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+
+    // Helper to find a node and its parent
+    const findNodeAndParent = (
+      nodes: PhaseNode[],
+      targetId: string,
+      parent: PhaseNode | null = null
+    ): { node: PhaseNode; parent: PhaseNode | null; parentNodes: PhaseNode[]; nodeIndex: number } | null => {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].id === targetId) {
+          return { node: nodes[i], parent, parentNodes: nodes, nodeIndex: i };
+        }
+        if (nodes[i].branches) {
+          for (const branch of nodes[i].branches) {
+            const result = findNodeAndParent(branch.nodes, targetId, nodes[i]);
+            if (result) return result;
           }
         }
-        return true;
-      });
+      }
+      return null;
     };
 
-    const updatedSeason: Season = {
-      ...season,
-      root: removeNodeById([...season.root], phaseId),
-    };
+    // Find the phase to delete
+    const found = findNodeAndParent(updatedSeason.root, phaseId);
+    if (!found) return;
+
+    const { node, parent, parentNodes, nodeIndex } = found;
+
+    // If the node has branches, promote them to the parent
+    if (node.branches && node.branches.length > 0) {
+      if (parent && parent.branches) {
+        // Add all child branches to parent's branches
+        parent.branches.push(...node.branches);
+      } else if (!parent) {
+        // Node is in root - can't promote branches to root level
+        // In this case, we need to handle it specially
+        // We'll convert the branches into a branch structure on the parent array
+        // For simplicity, we'll just delete the node and its branches
+        // (This is a rare edge case - deleting a trunk phase with branches)
+      }
+    }
+
+    // Remove the node from its parent array
+    parentNodes.splice(nodeIndex, 1);
+
+    // If parent now has only 1 branch, collapse it
+    if (parent && parent.branches && parent.branches.length === 1) {
+      // Find parent's parent to splice nodes
+      const findParentArray = (nodes: PhaseNode[], targetId: string): PhaseNode[] | null => {
+        for (let i = 0; i < nodes.length; i++) {
+          if (nodes[i].id === targetId) return nodes;
+          if (nodes[i].branches) {
+            for (const branch of nodes[i].branches) {
+              const result = findParentArray(branch.nodes, targetId);
+              if (result) return result;
+            }
+          }
+        }
+        return null;
+      };
+
+      const parentArray = findParentArray(updatedSeason.root, parent.id);
+      if (parentArray) {
+        const parentIdx = parentArray.findIndex((n) => n.id === parent.id);
+        if (parentIdx !== -1) {
+          const remainingBranch = parent.branches[0];
+          // Splice remaining branch nodes after parent
+          parentArray.splice(parentIdx + 1, 0, ...remainingBranch.nodes);
+          parent.branches = null;
+        }
+      }
+    }
 
     await updateSeason(year, updatedSeason);
   };
