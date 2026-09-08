@@ -7,7 +7,7 @@ import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason, deletePhase } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -18,6 +18,7 @@ export function TimelineView() {
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
+  const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
   const isLocked = appState.locked;
@@ -86,10 +87,15 @@ export function TimelineView() {
     updateSeason(appState.year, updatedSeason);
   };
 
-  const handleDeletePhase = (nodeId: string) => {
-    const updatedSeason = JSON.parse(JSON.stringify(season));
-    updatedSeason.root = updatedSeason.root.filter((n) => n.id !== nodeId);
-    updateSeason(appState.year, updatedSeason);
+  const handleDeletePhase = async () => {
+    if (!confirmDeletePhase) return;
+    try {
+      await deletePhase(appState.year, confirmDeletePhase.id);
+      setConfirmDeletePhase(null);
+    } catch (error) {
+      console.error('Failed to delete phase:', error);
+      alert('Failed to delete phase. Please try again.');
+    }
   };
 
   const handleSplitPhase = (node: Node) => {
@@ -234,7 +240,9 @@ export function TimelineView() {
             isLast={index === nodes.length - 1}
             accent={accent}
             onOpenModal={() => setSelectedNode(node)}
-            onDelete={() => handleDeletePhase(node.id)}
+            onDelete={() => setConfirmDeletePhase({ id: node.id, name: node.name })}
+            isLocked={isLocked}
+            isArchived={isArchived}
             alert={getPhaseAlert(node)}
           />
 
@@ -430,7 +438,6 @@ export function TimelineView() {
           isOpen={true}
           onClose={() => setSelectedNode(null)}
           onUpdate={() => updateSeason(appState.year, season)}
-          onDelete={() => handleDeletePhase(selectedNode.id)}
           isLocked={isLocked}
           isArchived={isArchived}
         />
@@ -503,6 +510,17 @@ export function TimelineView() {
         onCancel={() => setConfirmDeleteSeason(null)}
         isDanger
       />
+
+      {/* Delete phase confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeletePhase !== null}
+        title="Delete Phase"
+        message={`Delete phase "${confirmDeletePhase?.name}"? All notes and data for this phase will be permanently removed.`}
+        confirmText="Delete"
+        onConfirm={handleDeletePhase}
+        onCancel={() => setConfirmDeletePhase(null)}
+        isDanger
+      />
     </div>
   );
 }
@@ -514,10 +532,12 @@ interface PhaseCardProps {
   accent: string;
   onOpenModal: () => void;
   onDelete: () => void;
+  isLocked: boolean;
+  isArchived: boolean;
   alert: { text: string; type: 'event' | 'inv' } | null;
 }
 
-function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, alert }: PhaseCardProps) {
+function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, isLocked, isArchived, alert }: PhaseCardProps) {
   const status = node.start && node.end ? derivedStatus(node) : node.status;
 
   const statusConfig = {
@@ -573,12 +593,26 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, alert }: PhaseC
                 </div>
               )}
             </div>
-            <div
-              className="flex items-center gap-1 text-xs font-semibold flex-shrink-0"
-              style={{ color: config.color }}
-            >
-              {config.icon && <Icon name={config.icon as any} size={12} />}
-              <span>{config.label}</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div
+                className="flex items-center gap-1 text-xs font-semibold"
+                style={{ color: config.color }}
+              >
+                {config.icon && <Icon name={config.icon as any} size={12} />}
+                <span>{config.label}</span>
+              </div>
+              {!isLocked && !isArchived && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                  title="Delete phase"
+                >
+                  <Icon name="trash" size={12} />
+                </button>
+              )}
             </div>
           </div>
         </button>

@@ -20,6 +20,7 @@ import type {
   Library,
   AppState,
   Member,
+  Node as PhaseNode,
 } from '../types';
 import { syncStatuses, createDefaultPhases } from '../lib/utils';
 
@@ -37,7 +38,7 @@ interface DataContextType {
   createSeason: (year: number) => Promise<void>;
   deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
-  deleteSeason: (year: number) => Promise<void>;
+  deletePhase: (year: number, phaseId: string) => Promise<void>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
   updateAppState: (state: Partial<AppState>) => void;
@@ -292,18 +293,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const deleteSeason = async (year: number) => {
-    if (!currentProject) throw new Error('No project selected');
-    
-    // Delete season document
-    const seasonRef = doc(db, 'seasons', `${currentProject.id}_${year}`);
-    await deleteDoc(seasonRef);
-    
-    // Delete associated inventory
-    const invRef = doc(db, 'inventory', `${currentProject.id}_${year}`);
-    await deleteDoc(invRef);
-  };
-
   const updateSeason = async (year: number, season: Season) => {
     if (!currentProject) return;
     syncStatuses(season.root);
@@ -311,6 +300,42 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ...season,
       projectId: currentProject.id,
     });
+  };
+
+  const deletePhase = async (year: number, phaseId: string) => {
+    if (!currentProject) return;
+    const season = seasons[year];
+    if (!season) return;
+
+    // Helper function to remove a node from tree structure
+    const removeNodeById = (nodes: PhaseNode[], id: string): PhaseNode[] => {
+      return nodes.filter((node) => {
+        if (node.id === id) return false;
+        if (node.branches) {
+          node.branches = node.branches
+            .map((branch) => ({
+              ...branch,
+              nodes: removeNodeById(branch.nodes, id),
+            }))
+            .filter((branch) => branch.nodes.length > 0 || node.branches!.length > 1);
+          
+          // If only one branch remains, collapse it
+          if (node.branches.length === 1) {
+            node.branches = null;
+          } else if (node.branches.length === 0) {
+            node.branches = null;
+          }
+        }
+        return true;
+      });
+    };
+
+    const updatedSeason: Season = {
+      ...season,
+      root: removeNodeById([...season.root], phaseId),
+    };
+
+    await updateSeason(year, updatedSeason);
   };
 
   const deleteSeason = async (year: number) => {
@@ -404,7 +429,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createSeason,
     deleteSeason,
     updateSeason,
-    deleteSeason,
+    deletePhase,
     updateInventory,
     updateLibrary,
     updateAppState,

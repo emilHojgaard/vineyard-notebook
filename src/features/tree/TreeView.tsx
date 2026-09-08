@@ -36,10 +36,11 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason, deleteSeason } = useData();
+  const { seasons, appState, updateAppState, updateSeason, deleteSeason, deletePhase } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
+  const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -86,6 +87,17 @@ export function TreeView() {
     } catch (error) {
       console.error('Failed to delete season:', error);
       alert('Failed to delete season. Please try again.');
+    }
+  };
+
+  const handleDeletePhase = async () => {
+    if (!confirmDeletePhase) return;
+    try {
+      await deletePhase(appState.year, confirmDeletePhase.id);
+      setConfirmDeletePhase(null);
+    } catch (error) {
+      console.error('Failed to delete phase:', error);
+      alert('Failed to delete phase. Please try again.');
     }
   };
 
@@ -205,6 +217,18 @@ export function TreeView() {
                     {layoutNode.node.name}
                   </div>
                 </div>
+                {!isLocked && !isArchived && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeletePhase({ id: layoutNode.node.id, name: layoutNode.node.name });
+                    }}
+                    className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors flex-shrink-0"
+                    title="Delete phase"
+                  >
+                    <Icon name="trash" size={11} />
+                  </button>
+                )}
               </button>
             );
           })}
@@ -255,6 +279,17 @@ export function TreeView() {
         confirmText="Delete Season"
         onConfirm={handleDeleteSeason}
         onCancel={() => setConfirmDeleteSeason(null)}
+        isDanger
+      />
+
+      {/* Delete phase confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeletePhase !== null}
+        title="Delete Phase"
+        message={`Delete phase "${confirmDeletePhase?.name}"? All notes and data for this phase will be permanently removed.`}
+        confirmText="Delete"
+        onConfirm={handleDeletePhase}
+        onCancel={() => setConfirmDeletePhase(null)}
         isDanger
       />
     </div>
