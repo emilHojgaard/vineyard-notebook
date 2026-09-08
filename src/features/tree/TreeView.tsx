@@ -13,6 +13,7 @@ interface LayoutNode {
   col: number;
   accent: string;
   parentColor: string;
+  branchId: string | null;
 }
 
 interface LayoutEdge {
@@ -36,12 +37,12 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason, deleteSeason, deletePhase, addPhase, addBranch, deleteBranch } = useData();
+  const { seasons, appState, updateAppState, updateSeason, deleteSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
-  const [addingPhase, setAddingPhase] = useState<{ afterNodeId: string | null } | null>(null);
+  const [addingPhase, setAddingPhase] = useState<{ afterNodeId?: string; parentNodeId?: string; branchId?: string } | null>(null);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
@@ -49,7 +50,6 @@ export function TreeView() {
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
-  const focusedBranchId = appState.treeFocus;
 
   const layout = useMemo(() => {
     if (!season) return null;
@@ -74,7 +74,7 @@ export function TreeView() {
   }
 
   const handleFocusBranch = (branchId: string | null) => {
-    updateAppState({ treeFocus: branchId });
+    setFocusedBranchId(branchId);
   };
 
   // Determine which nodes/edges should be dimmed
@@ -110,7 +110,9 @@ export function TreeView() {
     if (!newPhaseName.trim() || !addingPhase) return;
 
     await addPhase(appState.year, newPhaseName.trim(), {
-      afterNodeId: addingPhase.afterNodeId || undefined,
+      afterNodeId: addingPhase.afterNodeId,
+      parentNodeId: addingPhase.parentNodeId,
+      branchId: addingPhase.branchId,
     });
     
     setNewPhaseName('');
@@ -225,6 +227,8 @@ export function TreeView() {
               : layoutNode.node.status;
             const isDim = getDimmed(layoutNode.node);
             const isActive = status === 'active';
+            // Only show add-phase button if node is in focused branch or no branch is focused
+            const canAddPhase = !focusedBranchId || layoutNode.branchId === focusedBranchId || (!layoutNode.branchId && !focusedBranchId);
 
             return (
               <div key={layoutNode.node.id}>
@@ -261,16 +265,18 @@ export function TreeView() {
                       >
                         <Icon name="branch" size={11} />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAddingPhase({ afterNodeId: layoutNode.node.id });
-                        }}
-                        className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
-                        title="Add phase"
-                      >
-                        <Icon name="plus" size={11} />
-                      </button>
+                      {canAddPhase && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddingPhase({ afterNodeId: layoutNode.node.id });
+                          }}
+                          className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
+                          title="Add phase"
+                        >
+                          <Icon name="plus" size={11} />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -292,23 +298,32 @@ export function TreeView() {
           {getBranchLabels(season.root, layout).map((label, i) => {
             const isDim = focusedBranchId && label.branchId !== focusedBranchId;
             return (
-              <button
-                key={i}
-                onClick={() => handleFocusBranch(label.branchId)}
-                className={`absolute px-3 py-1 text-xs font-bold uppercase tracking-wide border rounded-md shadow-sm hover:shadow-md transition-all ${
-                  isDim ? 'opacity-40' : ''
-                }`}
-                style={{
-                  left: label.x,
-                  top: label.y,
-                  backgroundColor: 'var(--surface)',
-                  borderColor: label.color,
-                  color: label.color,
-                  transform: 'translateX(-50%)',
-                }}
-              >
-                {label.name}
-              </button>
+              <div key={i} className="absolute flex items-center gap-2" style={{ left: label.x, top: label.y, transform: 'translateX(-50%)' }}>
+                <button
+                  onClick={() => handleFocusBranch(label.branchId)}
+                  className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border rounded-md shadow-sm hover:shadow-md transition-all ${
+                    isDim ? 'opacity-40' : ''
+                  }`}
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    borderColor: label.color,
+                    color: label.color,
+                  }}
+                >
+                  {label.name}
+                </button>
+                {/* Show + button for empty branches */}
+                {!isLocked && !isArchived && label.isEmpty && (
+                  <button
+                    onClick={() => setAddingPhase({ parentNodeId: label.parentNodeId, branchId: label.branchId })}
+                    className="w-6 h-6 flex items-center justify-center border-2 border-dashed rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
+                    style={{ borderColor: label.color, opacity: isDim ? 0.4 : 1 }}
+                    title="Add phase to this branch"
+                  >
+                    <Icon name="plus" size={12} />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -352,7 +367,14 @@ export function TreeView() {
       {addingPhase && (
         <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
-            <h3 className="text-base font-bold text-ink mb-3">Add Phase</h3>
+            <h3 className="text-base font-bold text-ink mb-3">
+              Add Phase{addingPhase.branchId ? ' to Branch' : ''}
+            </h3>
+            {addingPhase.branchId && (
+              <p className="text-sm text-ink-soft mb-4">
+                Adding to branch
+              </p>
+            )}
             <input
               type="text"
               value={newPhaseName}
@@ -456,7 +478,8 @@ function buildTreeLayout(root: Node[]): TreeLayout {
   function walkChain(
     chain: Node[],
     startY: number,
-    parentColor: string
+    parentColor: string,
+    branchId: string | null = null
   ): { minCol: number; maxCol: number; endY: number } {
     if (chain.length === 0) {
       return { minCol: 0, maxCol: 0, endY: startY };
@@ -481,7 +504,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
           const col = nextLeafCol++;
           return { minCol: col, maxCol: col, endY: branchStartY };
         }
-        return walkChain(branch.nodes, branchStartY, branchColor);
+        return walkChain(branch.nodes, branchStartY, branchColor, branch.id);
       });
 
       // Column range is the union of all branch results
@@ -503,6 +526,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
           col: centerCol,
           accent: parentColor,
           parentColor,
+          branchId,
         });
 
         // Connect to next node in chain (vertical edge)
@@ -573,6 +597,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
           col,
           accent: parentColor,
           parentColor,
+          branchId,
         });
 
         // Connect to next node in chain (vertical edge)
@@ -615,8 +640,8 @@ function getBranchColor(parentColor: string, idx: number): string {
 function getBranchLabels(
   root: Node[],
   layout: TreeLayout
-): Array<{ x: number; y: number; name: string; color: string; branchId: string }> {
-  const labels: Array<{ x: number; y: number; name: string; color: string; branchId: string }> = [];
+): Array<{ x: number; y: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> {
+  const labels: Array<{ x: number; y: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> = [];
 
   function walk(nodes: Node[], parentColor: string, depth: number = 0) {
     for (let i = 0; i < nodes.length; i++) {
@@ -635,6 +660,8 @@ function getBranchLabels(
                 name: branch.name,
                 color: branchAccent,
                 branchId: branch.id,
+                isEmpty: false,
+                parentNodeId: node.id,
               });
             }
             walk(branch.nodes, branchAccent, depth + 1);
@@ -651,6 +678,8 @@ function getBranchLabels(
                 name: branch.name,
                 color: branchAccent,
                 branchId: branch.id,
+                isEmpty: true,
+                parentNodeId: node.id,
               });
             }
           }

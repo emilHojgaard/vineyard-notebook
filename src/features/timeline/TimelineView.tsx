@@ -7,7 +7,7 @@ import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason, deletePhase, addPhase, addBranch, deleteBranch } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deleteSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -117,6 +117,9 @@ export function TimelineView() {
   };
 
   const handleSelectBranch = (nodeId: string, branchId: string) => {
+    // Set as focused branch
+    setFocusedBranchId(branchId);
+    // Also update the branch selection for display
     updateAppState({
       branchSelection: {
         ...appState.branchSelection,
@@ -175,6 +178,9 @@ export function TimelineView() {
         ? node.branches.find((b) => b.id === appState.branchSelection[node.id]) || node.branches[0]
         : null;
 
+      // Check if this node is in the focused branch
+      const isInFocusedBranch = !focusedBranchId || branchId === focusedBranchId || (!branchId && !focusedBranchId);
+
       return (
         <div key={node.id}>
           <PhaseCard
@@ -188,6 +194,7 @@ export function TimelineView() {
             isLocked={isLocked}
             isArchived={isArchived}
             alert={getPhaseAlert(node)}
+            isHighlighted={isInFocusedBranch}
           />
 
           {/* Branch tabs */}
@@ -203,18 +210,19 @@ export function TimelineView() {
                 {node.branches.map((branch, idx) => {
                   const branchAccent = branchColor(accent, idx);
                   const isSelected = branch.id === selectedBranch?.id;
+                  const isFocused = branch.id === focusedBranchId;
 
                   return (
                     <button
                       key={branch.id}
                       onClick={() => handleSelectBranch(node.id, branch.id)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-colors ${
-                        isSelected
+                        isSelected || isFocused
                           ? 'bg-surface border-border'
                           : 'bg-surface-2 border-transparent'
                       }`}
                       style={
-                        isSelected
+                        isSelected || isFocused
                           ? {
                               backgroundColor: `color-mix(in srgb, ${branchAccent} 14%, var(--surface))`,
                               borderColor: branchAccent,
@@ -226,14 +234,14 @@ export function TimelineView() {
                         className="w-2 h-2 rounded-full"
                         style={{
                           backgroundColor: branchAccent,
-                          opacity: isSelected ? 1 : 0.45,
+                          opacity: (isSelected || isFocused) ? 1 : 0.45,
                         }}
                       />
                       <span
                         className="text-xs font-semibold"
                         style={{
-                          color: isSelected ? branchAccent : 'var(--ink-faint)',
-                          fontWeight: isSelected ? 700 : 600,
+                          color: (isSelected || isFocused) ? branchAccent : 'var(--ink-faint)',
+                          fontWeight: (isSelected || isFocused) ? 700 : 600,
                         }}
                       >
                         {branch.name}
@@ -265,15 +273,22 @@ export function TimelineView() {
 
               {selectedBranch && (
                 <>
-                  {renderNodeList(
-                    selectedBranch.nodes,
-                    branchColor(accent, node.branches.indexOf(selectedBranch)),
-                    node.id,
-                    selectedBranch.id
+                  {selectedBranch.nodes.length > 0 ? (
+                    renderNodeList(
+                      selectedBranch.nodes,
+                      branchColor(accent, node.branches.indexOf(selectedBranch)),
+                      node.id,
+                      selectedBranch.id
+                    )
+                  ) : (
+                    // Empty branch - show placeholder
+                    <div className="ml-6 mt-2 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint text-xs text-center">
+                      Empty branch
+                    </div>
                   )}
                   
-                  {/* Add phase button for this branch */}
-                  {!isLocked && !isArchived && (
+                  {/* Add phase button for this branch - only show if this branch is focused or no branch is focused */}
+                  {!isLocked && !isArchived && (!focusedBranchId || focusedBranchId === selectedBranch.id) && (
                     <div className="ml-6">
                       {addingPhase && addingPhaseContext?.parentNodeId === node.id && addingPhaseContext?.branchId === selectedBranch.id ? (
                         <div className="bg-surface-2 border border-border rounded-lg p-3 mt-2">
@@ -365,6 +380,16 @@ export function TimelineView() {
             <span>Archived season (read-only)</span>
           </div>
         )}
+        {focusedBranchId && (
+          <div className="text-center mt-2">
+            <button
+              onClick={() => setFocusedBranchId(null)}
+              className="text-xs font-semibold text-barrel hover:underline"
+            >
+              Clear branch focus
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Phase list */}
@@ -388,9 +413,9 @@ export function TimelineView() {
           <div className="space-y-2">
             {renderNodeList(season.root)}
 
-            {/* Add phase button/form (for trunk) */}
+            {/* Add phase button/form (for trunk) - only show if no branch is focused */}
             {/* Hide if any phase in root has 2+ branches */}
-            {!isLocked && !isArchived && !season.root.some(node => node.branches && node.branches.length > 1) && (
+            {!isLocked && !isArchived && !focusedBranchId && !season.root.some(node => node.branches && node.branches.length > 1) && (
               <>
                 {addingPhase && !addingPhaseContext?.parentNodeId && !addingPhaseContext?.branchId ? (
                   <div className="bg-surface-2 border border-border rounded-lg p-3 mt-4">
@@ -548,9 +573,10 @@ interface PhaseCardProps {
   isLocked: boolean;
   isArchived: boolean;
   alert: { text: string; type: 'event' | 'inv' } | null;
+  isHighlighted: boolean;
 }
 
-function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBranch, isLocked, isArchived, alert }: PhaseCardProps) {
+function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBranch, isLocked, isArchived, alert, isHighlighted }: PhaseCardProps) {
   const status = node.start && node.end ? derivedStatus(node) : node.status;
 
   const statusConfig = {
@@ -583,13 +609,14 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
       <div className="flex-1 pb-2">
         <button
           onClick={onOpenModal}
-          className={`w-full bg-surface border rounded-lg p-3 text-left hover:bg-surface-2 transition-colors ${
+          className={`w-full bg-surface border rounded-lg p-3 text-left hover:bg-surface-2 transition-all ${
             status === 'done' ? 'opacity-60' : ''
-          }`}
+          } ${!isHighlighted ? 'opacity-40' : ''}`}
           style={{
             borderColor: status === 'active' ? accent : 'var(--border)',
             borderLeftColor: accent,
             borderLeftWidth: '3px',
+            transform: isHighlighted ? 'scale(1)' : 'scale(0.98)',
           }}
         >
           <div className="flex items-start gap-2">
