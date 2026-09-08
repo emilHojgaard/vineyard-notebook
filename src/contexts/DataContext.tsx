@@ -34,6 +34,8 @@ interface DataContextType {
   appState: AppState;
   members: Member[];
   loading: boolean;
+  focusedBranchId: string | null;
+  setFocusedBranchId: (branchId: string | null) => void;
   createProject: (name: string) => Promise<string>;
   selectProject: (projectId: string) => void;
   createSeason: (year: number) => Promise<void>;
@@ -70,6 +72,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [library, setLibrary] = useState<Library | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
 
   // Default app state
   const [appState, setAppState] = useState<AppState>({
@@ -723,6 +726,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     appState,
     members,
     loading,
+    focusedBranchId,
+    setFocusedBranchId,
     createProject,
     selectProject,
     createSeason,
