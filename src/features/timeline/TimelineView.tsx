@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node, Branch } from '../../types';
-import { fmtRange, derivedStatus, uid, branchColor, TRUNK_COLOR, daysUntil, invStatus } from '../../lib/utils';
+import { fmtRange, derivedStatus, uid, branchColor, TRUNK_COLOR, daysUntil, invStatus, createDefaultPhases } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -14,6 +14,7 @@ export function TimelineView() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [addingPhase, setAddingPhase] = useState(false);
   const [newPhaseName, setNewPhaseName] = useState('');
+  const [addingPhaseContext, setAddingPhaseContext] = useState<{ parentNodeId: string | null; branchId: string | null } | null>(null);
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
@@ -65,7 +66,7 @@ export function TimelineView() {
   }
 
   const handleAddPhase = () => {
-    if (!newPhaseName.trim()) return;
+    if (!newPhaseName.trim() || !addingPhaseContext) return;
 
     const newNode: Node = {
       id: uid('n'),
@@ -81,9 +82,36 @@ export function TimelineView() {
     };
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
-    updatedSeason.root.push(newNode);
+    
+    // If parentNodeId and branchId are null, add to trunk
+    if (!addingPhaseContext.parentNodeId || !addingPhaseContext.branchId) {
+      updatedSeason.root.push(newNode);
+    } else {
+      // Find the parent node and specific branch, then add to that branch
+      const findAndAddToBranch = (nodes: Node[]): boolean => {
+        for (const node of nodes) {
+          if (node.id === addingPhaseContext.parentNodeId && node.branches) {
+            const branch = node.branches.find(b => b.id === addingPhaseContext.branchId);
+            if (branch) {
+              branch.nodes.push(newNode);
+              return true;
+            }
+          }
+          if (node.branches) {
+            for (const branch of node.branches) {
+              if (findAndAddToBranch(branch.nodes)) return true;
+            }
+          }
+        }
+        return false;
+      };
+      
+      findAndAddToBranch(updatedSeason.root);
+    }
+    
     setNewPhaseName('');
     setAddingPhase(false);
+    setAddingPhaseContext(null);
     updateSeason(appState.year, updatedSeason);
   };
 
@@ -146,21 +174,49 @@ export function TimelineView() {
           nodes: afterNodes,
         };
 
-        // Create new branch
+        // Create new branch with phase inheritance
+        const defaultPhases = createDefaultPhases();
+        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
+        
+        let newBranchNodes: Node[] = [];
+        if (parentPhaseIndex !== -1) {
+          // Copy the parent phase and all phases after it from defaults
+          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
+            ...JSON.parse(JSON.stringify(phase)),
+            id: uid('n'),
+            notes: [],
+            events: [],
+          }));
+        }
+        
         const newBranch: Branch = {
           id: uid('b'),
           name: newBranchName.trim(),
-          nodes: [],
+          nodes: newBranchNodes,
         };
 
         // Set branches on the node (always 2+ branches)
         foundNode.branches = [originalBranch, newBranch];
       } else {
-        // Node already has branches, just add a new one
+        // Node already has branches, just add a new one with phase inheritance
+        const defaultPhases = createDefaultPhases();
+        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
+        
+        let newBranchNodes: Node[] = [];
+        if (parentPhaseIndex !== -1) {
+          // Copy the parent phase and all phases after it from defaults
+          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
+            ...JSON.parse(JSON.stringify(phase)),
+            id: uid('n'),
+            notes: [],
+            events: [],
+          }));
+        }
+        
         const newBranch: Branch = {
           id: uid('b'),
           name: newBranchName.trim(),
-          nodes: [],
+          nodes: newBranchNodes,
         };
         foundNode.branches.push(newBranch);
       }
@@ -274,7 +330,7 @@ export function TimelineView() {
     return null;
   };
 
-  const renderNodeList = (nodes: Node[], accent: string = TRUNK_COLOR) => {
+  const renderNodeList = (nodes: Node[], accent: string = TRUNK_COLOR, parentNodeId: string | null = null, branchId: string | null = null) => {
     return nodes.map((node, index) => {
       const selectedBranch = node.branches
         ? node.branches.find((b) => b.id === appState.branchSelection[node.id]) || node.branches[0]
@@ -368,7 +424,65 @@ export function TimelineView() {
                 )}
               </div>
 
-              {selectedBranch && renderNodeList(selectedBranch.nodes, branchColor(accent, node.branches.indexOf(selectedBranch)))}
+              {selectedBranch && (
+                <>
+                  {renderNodeList(
+                    selectedBranch.nodes,
+                    branchColor(accent, node.branches.indexOf(selectedBranch)),
+                    node.id,
+                    selectedBranch.id
+                  )}
+                  
+                  {/* Add phase button for this branch */}
+                  {!isLocked && !isArchived && (
+                    <div className="ml-6">
+                      {addingPhase && addingPhaseContext?.parentNodeId === node.id && addingPhaseContext?.branchId === selectedBranch.id ? (
+                        <div className="bg-surface-2 border border-border rounded-lg p-3 mt-2">
+                          <input
+                            type="text"
+                            value={newPhaseName}
+                            onChange={(e) => setNewPhaseName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+                            placeholder="Phase name"
+                            autoFocus
+                            className="w-full px-3 py-2 mb-2 border border-border rounded-md bg-surface text-ink text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleAddPhase}
+                              disabled={!newPhaseName.trim()}
+                              className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+                            >
+                              Add Phase
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAddingPhase(false);
+                                setNewPhaseName('');
+                                setAddingPhaseContext(null);
+                              }}
+                              className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setAddingPhase(true);
+                            setAddingPhaseContext({ parentNodeId: node.id, branchId: selectedBranch.id });
+                          }}
+                          className="w-full mt-2 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Icon name="plus" size={14} />
+                          Add Phase to {selectedBranch.name}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -421,7 +535,10 @@ export function TimelineView() {
             <p className="text-ink-faint mb-3">No phases yet</p>
             {!isLocked && !isArchived && (
               <button
-                onClick={() => setAddingPhase(true)}
+                onClick={() => {
+                  setAddingPhase(true);
+                  setAddingPhaseContext({ parentNodeId: null, branchId: null });
+                }}
                 className="text-burgundy font-semibold hover:underline"
               >
                 + Add first phase
@@ -432,10 +549,10 @@ export function TimelineView() {
           <div className="space-y-2">
             {renderNodeList(season.root)}
 
-            {/* Add phase button/form */}
+            {/* Add phase button/form (for trunk) */}
             {!isLocked && !isArchived && (
               <>
-                {addingPhase ? (
+                {addingPhase && !addingPhaseContext?.parentNodeId && !addingPhaseContext?.branchId ? (
                   <div className="bg-surface-2 border border-border rounded-lg p-3 mt-4">
                     <input
                       type="text"
@@ -458,6 +575,7 @@ export function TimelineView() {
                         onClick={() => {
                           setAddingPhase(false);
                           setNewPhaseName('');
+                          setAddingPhaseContext(null);
                         }}
                         className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
                       >
@@ -466,13 +584,18 @@ export function TimelineView() {
                     </div>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setAddingPhase(true)}
-                    className="w-full mt-4 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Icon name="plus" size={14} />
-                    Add Phase
-                  </button>
+                  !addingPhase && (
+                    <button
+                      onClick={() => {
+                        setAddingPhase(true);
+                        setAddingPhaseContext({ parentNodeId: null, branchId: null });
+                      }}
+                      className="w-full mt-4 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Icon name="plus" size={14} />
+                      Add Phase
+                    </button>
+                  )
                 )}
               </>
             )}
