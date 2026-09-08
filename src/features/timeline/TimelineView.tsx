@@ -98,68 +98,116 @@ export function TimelineView() {
     }
   };
 
+  // Helper to find and update a node anywhere in the tree
+  const findAndUpdateNode = (
+    nodes: Node[],
+    nodeId: string,
+    updateFn: (node: Node, parentNodes: Node[]) => boolean
+  ): boolean => {
+    // Check if node is in this array
+    const node = nodes.find((n) => n.id === nodeId);
+    if (node) {
+      return updateFn(node, nodes);
+    }
+
+    // Recursively search in branches
+    for (const node of nodes) {
+      if (node.branches) {
+        for (const branch of node.branches) {
+          if (findAndUpdateNode(branch.nodes, nodeId, updateFn)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  };
+
   const handleSplitPhase = (node: Node) => {
     if (!newBranchName.trim()) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
     
-    // Find the node in the updated season
-    const updatedNode = updatedSeason.root.find((n: Node) => n.id === node.id);
-    if (!updatedNode) return;
+    // Find the node anywhere in the tree and update it
+    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
+      if (!parentNodes) return false; // Should not happen
+      
+      const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
+      if (nodeIndex === -1) return false;
 
-    // Find the index of this node in its parent array
-    const nodeIndex = updatedSeason.root.findIndex((n: Node) => n.id === node.id);
-    if (nodeIndex === -1) return;
+      // If node doesn't have branches yet, create initial split
+      if (!foundNode.branches) {
+        // Move any phases after this node into "Original" branch
+        const afterNodes = parentNodes.splice(nodeIndex + 1);
+        const originalBranch: Branch = {
+          id: uid('b'),
+          name: 'Original',
+          nodes: afterNodes,
+        };
 
-    // Move any phases after this node into "Original" branch
-    const afterNodes = updatedSeason.root.splice(nodeIndex + 1);
-    const originalBranch: Branch = {
-      id: uid('b'),
-      name: 'Original',
-      nodes: afterNodes,
-    };
+        // Create new branch
+        const newBranch: Branch = {
+          id: uid('b'),
+          name: newBranchName.trim(),
+          nodes: [],
+        };
 
-    // Create new branch
-    const newBranch: Branch = {
-      id: uid('b'),
-      name: newBranchName.trim(),
-      nodes: [],
-    };
+        // Set branches on the node (always 2+ branches)
+        foundNode.branches = [originalBranch, newBranch];
+      } else {
+        // Node already has branches, just add a new one
+        const newBranch: Branch = {
+          id: uid('b'),
+          name: newBranchName.trim(),
+          nodes: [],
+        };
+        foundNode.branches.push(newBranch);
+      }
 
-    // Set branches on the node (always 2+ branches)
-    updatedNode.branches = [originalBranch, newBranch];
+      return true;
+    });
 
-    setNewBranchName('');
-    setBranchingNode(null);
-    updateSeason(appState.year, updatedSeason);
+    if (found) {
+      setNewBranchName('');
+      setBranchingNode(null);
+      updateSeason(appState.year, updatedSeason);
+    }
   };
 
   const handleDeleteBranch = (node: Node, branchId: string) => {
     if (!node.branches) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
-    const updatedNode = updatedSeason.root.find((n: Node) => n.id === node.id);
-    if (!updatedNode || !updatedNode.branches) return;
+    
+    // Find the node anywhere in the tree and update it
+    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
+      if (!foundNode.branches) return false;
 
-    const branchIndex = updatedNode.branches.findIndex((b: Branch) => b.id === branchId);
-    if (branchIndex === -1) return;
+      const branchIndex = foundNode.branches.findIndex((b: Branch) => b.id === branchId);
+      if (branchIndex === -1) return false;
 
-    // Remove the branch
-    updatedNode.branches.splice(branchIndex, 1);
+      // Remove the branch
+      foundNode.branches.splice(branchIndex, 1);
 
-    // If only one branch remains, collapse back to trunk
-    if (updatedNode.branches.length === 1) {
-      const remaining = updatedNode.branches[0];
-      const nodeIndex = updatedSeason.root.findIndex((n: Node) => n.id === node.id);
-      if (nodeIndex !== -1) {
-        // Splice the remaining branch's nodes back into trunk after this node
-        updatedSeason.root.splice(nodeIndex + 1, 0, ...remaining.nodes);
-        updatedNode.branches = null;
+      // If only one branch remains, collapse back to parent
+      if (foundNode.branches.length === 1) {
+        const remaining = foundNode.branches[0];
+        const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
+        if (nodeIndex !== -1) {
+          // Splice the remaining branch's nodes back after this node
+          parentNodes.splice(nodeIndex + 1, 0, ...remaining.nodes);
+          foundNode.branches = null;
+        }
       }
-    }
 
-    updateSeason(appState.year, updatedSeason);
-    setConfirmDeleteBranch(null);
+      return true;
+    });
+
+    if (found) {
+      updateSeason(appState.year, updatedSeason);
+      setConfirmDeleteBranch(null);
+    }
   };
 
   const handleDeleteSeason = async () => {
@@ -241,6 +289,7 @@ export function TimelineView() {
             accent={accent}
             onOpenModal={() => setSelectedNode(node)}
             onDelete={() => setConfirmDeletePhase({ id: node.id, name: node.name })}
+            onBranch={() => setBranchingNode(node)}
             isLocked={isLocked}
             isArchived={isArchived}
             alert={getPhaseAlert(node)}
@@ -532,12 +581,13 @@ interface PhaseCardProps {
   accent: string;
   onOpenModal: () => void;
   onDelete: () => void;
+  onBranch: () => void;
   isLocked: boolean;
   isArchived: boolean;
   alert: { text: string; type: 'event' | 'inv' } | null;
 }
 
-function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, isLocked, isArchived, alert }: PhaseCardProps) {
+function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBranch, isLocked, isArchived, alert }: PhaseCardProps) {
   const status = node.start && node.end ? derivedStatus(node) : node.status;
 
   const statusConfig = {
@@ -602,16 +652,28 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, isLoc
                 <span>{config.label}</span>
               </div>
               {!isLocked && !isArchived && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
-                  title="Delete phase"
-                >
-                  <Icon name="trash" size={12} />
-                </button>
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onBranch();
+                    }}
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                    title="Create branch"
+                  >
+                    <Icon name="branch" size={12} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                    title="Delete phase"
+                  >
+                    <Icon name="trash" size={12} />
+                  </button>
+                </>
               )}
             </div>
           </div>
