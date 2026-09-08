@@ -550,7 +550,8 @@ export function TimelineView() {
             {renderNodeList(season.root)}
 
             {/* Add phase button/form (for trunk) */}
-            {!isLocked && !isArchived && (
+            {/* Hide if any phase in root has 2+ branches */}
+            {!isLocked && !isArchived && !season.root.some(node => node.branches && node.branches.length > 1) && (
               <>
                 {addingPhase && !addingPhaseContext?.parentNodeId && !addingPhaseContext?.branchId ? (
                   <div className="bg-surface-2 border border-border rounded-lg p-3 mt-4">

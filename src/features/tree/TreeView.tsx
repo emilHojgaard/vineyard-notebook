@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node, Branch } from '../../types';
-import { branchColor, TRUNK_COLOR, derivedStatus, uid } from '../../lib/utils';
+import { branchColor, TRUNK_COLOR, derivedStatus, uid, createDefaultPhases } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -41,6 +41,11 @@ export function TreeView() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
+  const [addingPhase, setAddingPhase] = useState<{ afterNodeId: string | null } | null>(null);
+  const [newPhaseName, setNewPhaseName] = useState('');
+  const [branchingNode, setBranchingNode] = useState<Node | null>(null);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -98,6 +103,192 @@ export function TreeView() {
     } catch (error) {
       console.error('Failed to delete phase:', error);
       alert('Failed to delete phase. Please try again.');
+    }
+  };
+
+  const handleAddPhase = () => {
+    if (!newPhaseName.trim() || !addingPhase) return;
+
+    const newNode: Node = {
+      id: uid('n'),
+      name: newPhaseName.trim(),
+      start: '',
+      end: '',
+      status: 'upcoming',
+      notes: [],
+      events: [],
+      invIds: [],
+      libIds: [],
+      branches: null,
+    };
+
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    
+    // Find the node to add after
+    if (!addingPhase.afterNodeId) {
+      // Add to end of trunk
+      updatedSeason.root.push(newNode);
+    } else {
+      // Find the node and add after it
+      const findAndAddAfter = (nodes: Node[]): boolean => {
+        for (let i = 0; i < nodes.length; i++) {
+          if (nodes[i].id === addingPhase.afterNodeId) {
+            nodes.splice(i + 1, 0, newNode);
+            return true;
+          }
+          if (nodes[i].branches) {
+            for (const branch of nodes[i].branches) {
+              if (findAndAddAfter(branch.nodes)) return true;
+            }
+          }
+        }
+        return false;
+      };
+      findAndAddAfter(updatedSeason.root);
+    }
+    
+    setNewPhaseName('');
+    setAddingPhase(null);
+    updateSeason(appState.year, updatedSeason);
+  };
+
+  // Helper to find and update a node anywhere in the tree
+  const findAndUpdateNode = (
+    nodes: Node[],
+    nodeId: string,
+    updateFn: (node: Node, parentNodes: Node[]) => boolean
+  ): boolean => {
+    // Check if node is in this array
+    const node = nodes.find((n) => n.id === nodeId);
+    if (node) {
+      return updateFn(node, nodes);
+    }
+
+    // Recursively search in branches
+    for (const node of nodes) {
+      if (node.branches) {
+        for (const branch of node.branches) {
+          if (findAndUpdateNode(branch.nodes, nodeId, updateFn)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const handleSplitPhase = (node: Node) => {
+    if (!newBranchName.trim()) return;
+
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    
+    // Find the node anywhere in the tree and update it
+    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
+      if (!parentNodes) return false;
+      
+      const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
+      if (nodeIndex === -1) return false;
+
+      // If node doesn't have branches yet, create initial split
+      if (!foundNode.branches) {
+        // Move any phases after this node into "Original" branch
+        const afterNodes = parentNodes.splice(nodeIndex + 1);
+        const originalBranch: Branch = {
+          id: uid('b'),
+          name: 'Original',
+          nodes: afterNodes,
+        };
+
+        // Create new branch with phase inheritance
+        const defaultPhases = createDefaultPhases();
+        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
+        
+        let newBranchNodes: Node[] = [];
+        if (parentPhaseIndex !== -1) {
+          // Copy the parent phase and all phases after it from defaults
+          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
+            ...JSON.parse(JSON.stringify(phase)),
+            id: uid('n'),
+            notes: [],
+            events: [],
+          }));
+        }
+        
+        const newBranch: Branch = {
+          id: uid('b'),
+          name: newBranchName.trim(),
+          nodes: newBranchNodes,
+        };
+
+        // Set branches on the node (always 2+ branches)
+        foundNode.branches = [originalBranch, newBranch];
+      } else {
+        // Node already has branches, just add a new one with phase inheritance
+        const defaultPhases = createDefaultPhases();
+        const parentPhaseIndex = defaultPhases.findIndex(p => p.name === node.name);
+        
+        let newBranchNodes: Node[] = [];
+        if (parentPhaseIndex !== -1) {
+          // Copy the parent phase and all phases after it from defaults
+          newBranchNodes = defaultPhases.slice(parentPhaseIndex).map(phase => ({
+            ...JSON.parse(JSON.stringify(phase)),
+            id: uid('n'),
+            notes: [],
+            events: [],
+          }));
+        }
+        
+        const newBranch: Branch = {
+          id: uid('b'),
+          name: newBranchName.trim(),
+          nodes: newBranchNodes,
+        };
+        foundNode.branches.push(newBranch);
+      }
+
+      return true;
+    });
+
+    if (found) {
+      setNewBranchName('');
+      setBranchingNode(null);
+      updateSeason(appState.year, updatedSeason);
+    }
+  };
+
+  const handleDeleteBranch = (node: Node, branchId: string) => {
+    if (!node.branches) return;
+
+    const updatedSeason = JSON.parse(JSON.stringify(season));
+    
+    // Find the node anywhere in the tree and update it
+    const found = findAndUpdateNode(updatedSeason.root, node.id, (foundNode, parentNodes) => {
+      if (!foundNode.branches) return false;
+
+      const branchIndex = foundNode.branches.findIndex((b: Branch) => b.id === branchId);
+      if (branchIndex === -1) return false;
+
+      // Remove the branch
+      foundNode.branches.splice(branchIndex, 1);
+
+      // If only one branch remains, collapse back to parent
+      if (foundNode.branches.length === 1) {
+        const remaining = foundNode.branches[0];
+        const nodeIndex = parentNodes.findIndex((n: Node) => n.id === node.id);
+        if (nodeIndex !== -1) {
+          // Splice the remaining branch's nodes back after this node
+          parentNodes.splice(nodeIndex + 1, 0, ...remaining.nodes);
+          foundNode.branches = null;
+        }
+      }
+
+      return true;
+    });
+
+    if (found) {
+      updateSeason(appState.year, updatedSeason);
+      setConfirmDeleteBranch(null);
     }
   };
 
@@ -195,41 +386,64 @@ export function TreeView() {
             const isActive = status === 'active';
 
             return (
-              <button
-                key={layoutNode.node.id}
-                onClick={() => setSelectedNode(layoutNode.node)}
-                className={`absolute flex items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
-                  status === 'done' ? 'opacity-60' : ''
-                } ${isDim ? 'opacity-25' : ''}`}
-                style={{
-                  left: layoutNode.x,
-                  top: layoutNode.y,
-                  width: NODE_WIDTH,
-                  height: NODE_HEIGHT,
-                  borderColor: isActive ? layoutNode.accent : 'var(--border)',
-                  borderLeftColor: layoutNode.accent,
-                  borderLeftWidth: '3px',
-                  transform: isDim ? 'scale(0.95)' : 'scale(1)',
-                }}
-              >
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs font-semibold text-ink truncate">
-                    {layoutNode.node.name}
+              <div key={layoutNode.node.id}>
+                <button
+                  onClick={() => setSelectedNode(layoutNode.node)}
+                  className={`absolute flex items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
+                    status === 'done' ? 'opacity-60' : ''
+                  } ${isDim ? 'opacity-25' : ''}`}
+                  style={{
+                    left: layoutNode.x,
+                    top: layoutNode.y,
+                    width: NODE_WIDTH,
+                    height: NODE_HEIGHT,
+                    borderColor: isActive ? layoutNode.accent : 'var(--border)',
+                    borderLeftColor: layoutNode.accent,
+                    borderLeftWidth: '3px',
+                    transform: isDim ? 'scale(0.95)' : 'scale(1)',
+                  }}
+                >
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-xs font-semibold text-ink truncate">
+                      {layoutNode.node.name}
+                    </div>
                   </div>
-                </div>
-                {!isLocked && !isArchived && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmDeletePhase({ id: layoutNode.node.id, name: layoutNode.node.name });
-                    }}
-                    className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors flex-shrink-0"
-                    title="Delete phase"
-                  >
-                    <Icon name="trash" size={11} />
-                  </button>
-                )}
-              </button>
+                  {!isLocked && !isArchived && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBranchingNode(layoutNode.node);
+                        }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
+                        title="Create branch"
+                      >
+                        <Icon name="branch" size={11} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddingPhase({ afterNodeId: layoutNode.node.id });
+                        }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
+                        title="Add phase"
+                      >
+                        <Icon name="plus" size={11} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeletePhase({ id: layoutNode.node.id, name: layoutNode.node.name });
+                        }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors flex-shrink-0"
+                        title="Delete phase"
+                      >
+                        <Icon name="trash" size={11} />
+                      </button>
+                    </>
+                  )}
+                </button>
+              </div>
             );
           })}
 
@@ -290,6 +504,99 @@ export function TreeView() {
         confirmText="Delete"
         onConfirm={handleDeletePhase}
         onCancel={() => setConfirmDeletePhase(null)}
+        isDanger
+      />
+
+      {/* Add phase modal */}
+      {addingPhase && (
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
+            <h3 className="text-base font-bold text-ink mb-3">Add Phase</h3>
+            <input
+              type="text"
+              value={newPhaseName}
+              onChange={(e) => setNewPhaseName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+              placeholder="Phase name"
+              autoFocus
+              className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddPhase}
+                disabled={!newPhaseName.trim()}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+              >
+                Add Phase
+              </button>
+              <button
+                onClick={() => {
+                  setAddingPhase(null);
+                  setNewPhaseName('');
+                }}
+                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Branch creation modal */}
+      {branchingNode && (
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
+            <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
+            <p className="text-sm text-ink-soft mb-4">
+              Splitting from <strong>{branchingNode.name}</strong>
+            </p>
+            <input
+              type="text"
+              value={newBranchName}
+              onChange={(e) => setNewBranchName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSplitPhase(branchingNode)}
+              placeholder="Branch name (e.g. Red Wine)"
+              autoFocus
+              className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSplitPhase(branchingNode)}
+                disabled={!newBranchName.trim()}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+              >
+                Create Branch
+              </button>
+              <button
+                onClick={() => {
+                  setBranchingNode(null);
+                  setNewBranchName('');
+                }}
+                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete branch confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteBranch !== null}
+        title="Delete Branch"
+        message={`Delete this branch? ${
+          confirmDeleteBranch?.node.branches?.find((b) => b.id === confirmDeleteBranch.branchId)
+            ?.nodes.length || 0
+        } phase(s) will be removed.`}
+        confirmText="Delete"
+        onConfirm={() => {
+          if (confirmDeleteBranch) {
+            handleDeleteBranch(confirmDeleteBranch.node, confirmDeleteBranch.branchId);
+          }
+        }}
+        onCancel={() => setConfirmDeleteBranch(null)}
         isDanger
       />
     </div>
