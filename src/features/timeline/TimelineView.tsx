@@ -129,6 +129,50 @@ export function TimelineView() {
     });
   };
 
+  // Get all node IDs that should be highlighted when a branch is focused
+  const getHighlightedNodeIds = (): Set<string> => {
+    const highlighted = new Set<string>();
+    if (!focusedBranchId || !season) return highlighted;
+
+    // Find the focused branch and collect ancestors + branch nodes
+    function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
+      for (const node of nodes) {
+        if (node.branches) {
+          for (const branch of node.branches) {
+            if (branch.id === focusedBranchId) {
+              // Found the focused branch!
+              // Add all ancestors
+              ancestors.forEach(id => highlighted.add(id));
+              // Add this node (parent of the branch)
+              highlighted.add(node.id);
+              // Add all nodes in the focused branch
+              function collectBranchNodes(branchNodes: Node[]) {
+                for (const n of branchNodes) {
+                  highlighted.add(n.id);
+                  if (n.branches) {
+                    n.branches.forEach(b => collectBranchNodes(b.nodes));
+                  }
+                }
+              }
+              collectBranchNodes(branch.nodes);
+              return true;
+            }
+            // Recurse into this branch
+            if (walkAndCollect(branch.nodes, [...ancestors, node.id])) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    walkAndCollect(season.root, []);
+    return highlighted;
+  };
+
+  const highlightedNodeIds = getHighlightedNodeIds();
+
   const getPhaseAlert = (node: Node): { text: string; type: 'event' | 'inv' } | null => {
     // Check for upcoming events first (higher priority)
     const upcomingEvents = node.events.filter((ev) => {
@@ -179,8 +223,8 @@ export function TimelineView() {
         ? node.branches.find((b) => b.id === appState.branchSelection[node.id]) || node.branches[0]
         : null;
 
-      // Check if this node is in the focused branch
-      const isInFocusedBranch = !focusedBranchId || branchId === focusedBranchId || (!branchId && !focusedBranchId);
+      // Check if this node should be highlighted
+      const isHighlighted = !focusedBranchId || highlightedNodeIds.has(node.id);
 
       return (
         <div key={node.id}>
@@ -199,7 +243,7 @@ export function TimelineView() {
             isLocked={isLocked}
             isArchived={isArchived}
             alert={getPhaseAlert(node)}
-            isHighlighted={isInFocusedBranch}
+            isHighlighted={isHighlighted}
           />
 
           {/* Branch tabs */}
