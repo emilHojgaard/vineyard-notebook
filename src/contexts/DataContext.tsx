@@ -388,6 +388,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const findAndAddAfter = (nodes: PhaseNode[]): boolean => {
         for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].id === options.afterNodeId) {
+            // If the node we're adding after has branches, transfer them to the new node
+            if (nodes[i].branches && nodes[i].branches.length > 0) {
+              newNode.branches = nodes[i].branches;
+              nodes[i].branches = null;
+            }
             nodes.splice(i + 1, 0, newNode);
             return true;
           }
@@ -471,15 +476,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // If the node has branches, promote them to the parent
     if (node.branches && node.branches.length > 0) {
-      if (parent && parent.branches) {
-        // Add all child branches to parent's branches
-        parent.branches.push(...node.branches);
-      } else if (!parent) {
-        // Node is in root - can't promote branches to root level
-        // In this case, we need to handle it specially
-        // We'll convert the branches into a branch structure on the parent array
-        // For simplicity, we'll just delete the node and its branches
-        // (This is a rare edge case - deleting a trunk phase with branches)
+      if (parent) {
+        // If parent has branches, add to them
+        if (parent.branches) {
+          parent.branches.push(...node.branches);
+        } else {
+          // Parent doesn't have branches yet - transfer deleted node's branches to parent
+          parent.branches = node.branches;
+        }
+      } else {
+        // Node is in root - need to find the previous sibling to receive branches
+        // If there's a previous sibling in the array, give it the branches
+        if (nodeIndex > 0) {
+          const prevNode = parentNodes[nodeIndex - 1];
+          if (prevNode.branches) {
+            prevNode.branches.push(...node.branches);
+          } else {
+            prevNode.branches = node.branches;
+          }
+        }
+        // If no previous sibling, branches are lost (rare edge case)
+        // This happens when deleting the FIRST trunk phase that has branches
       }
     }
 
