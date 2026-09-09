@@ -134,15 +134,18 @@ export function TimelineView() {
     const highlighted = new Set<string>();
     if (!focusedBranchId || !season) return highlighted;
 
-    // Find the focused branch and collect ancestors + branch nodes
+    // Find the focused branch and collect ALL ancestors up to root + branch nodes
     function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
-      for (const node of nodes) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const currentAncestors = [...ancestors, ...nodes.slice(0, i).map(n => n.id)];
+        
         if (node.branches) {
           for (const branch of node.branches) {
             if (branch.id === focusedBranchId) {
               // Found the focused branch!
-              // Add all ancestors
-              ancestors.forEach(id => highlighted.add(id));
+              // Add all ancestors (including preceding siblings)
+              currentAncestors.forEach(id => highlighted.add(id));
               // Add this node (parent of the branch)
               highlighted.add(node.id);
               // Add all nodes in the focused branch
@@ -158,7 +161,7 @@ export function TimelineView() {
               return true;
             }
             // Recurse into this branch
-            if (walkAndCollect(branch.nodes, [...ancestors, node.id])) {
+            if (walkAndCollect(branch.nodes, [...currentAncestors, node.id])) {
               return true;
             }
           }
@@ -322,22 +325,17 @@ export function TimelineView() {
 
               {selectedBranch && (
                 <>
-                  {selectedBranch.nodes.length > 0 ? (
+                  {selectedBranch.nodes.length > 0 && (
                     renderNodeList(
                       selectedBranch.nodes,
                       branchColor(accent, node.branches.indexOf(selectedBranch)),
                       node.id,
                       selectedBranch.id
                     )
-                  ) : (
-                    // Empty branch - show placeholder
-                    <div className="ml-6 mt-2 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint text-xs text-center">
-                      Empty branch
-                    </div>
                   )}
                   
-                  {/* Add phase button for this branch - only show if this branch is focused or no branch is focused */}
-                  {!isLocked && !isArchived && (!focusedBranchId || focusedBranchId === selectedBranch.id) && (
+                  {/* Add phase button for this branch - only show for EMPTY branches and if focused or no branch is focused */}
+                  {!isLocked && !isArchived && selectedBranch.nodes.length === 0 && (!focusedBranchId || focusedBranchId === selectedBranch.id) && (
                     <div className="ml-6">
                       {addingPhase && addingPhaseContext?.parentNodeId === node.id && addingPhaseContext?.branchId === selectedBranch.id ? (
                         <div className="bg-surface-2 border border-border rounded-lg p-3 mt-2">

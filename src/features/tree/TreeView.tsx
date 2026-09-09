@@ -82,15 +82,18 @@ export function TreeView() {
     const highlighted = new Set<string>();
     if (!focusedBranchId || !season) return highlighted;
 
-    // Find the focused branch and collect ancestors + branch nodes
+    // Find the focused branch and collect ALL ancestors up to root + branch nodes
     function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
-      for (const node of nodes) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const currentAncestors = [...ancestors, ...nodes.slice(0, i).map(n => n.id)];
+        
         if (node.branches) {
           for (const branch of node.branches) {
             if (branch.id === focusedBranchId) {
               // Found the focused branch!
-              // Add all ancestors
-              ancestors.forEach(id => highlighted.add(id));
+              // Add all ancestors (including preceding siblings)
+              currentAncestors.forEach(id => highlighted.add(id));
               // Add this node (parent of the branch)
               highlighted.add(node.id);
               // Add all nodes in the focused branch
@@ -106,7 +109,7 @@ export function TreeView() {
               return true;
             }
             // Recurse into this branch
-            if (walkAndCollect(branch.nodes, [...ancestors, node.id])) {
+            if (walkAndCollect(branch.nodes, [...currentAncestors, node.id])) {
               return true;
             }
           }
