@@ -77,11 +77,55 @@ export function TreeView() {
     setFocusedBranchId(branchId);
   };
 
+  // Get all node IDs that should be highlighted when a branch is focused
+  const getHighlightedNodeIds = (): Set<string> => {
+    const highlighted = new Set<string>();
+    if (!focusedBranchId || !season) return highlighted;
+
+    // Find the focused branch and collect ancestors + branch nodes
+    function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
+      for (const node of nodes) {
+        if (node.branches) {
+          for (const branch of node.branches) {
+            if (branch.id === focusedBranchId) {
+              // Found the focused branch!
+              // Add all ancestors
+              ancestors.forEach(id => highlighted.add(id));
+              // Add this node (parent of the branch)
+              highlighted.add(node.id);
+              // Add all nodes in the focused branch
+              function collectBranchNodes(branchNodes: Node[]) {
+                for (const n of branchNodes) {
+                  highlighted.add(n.id);
+                  if (n.branches) {
+                    n.branches.forEach(b => collectBranchNodes(b.nodes));
+                  }
+                }
+              }
+              collectBranchNodes(branch.nodes);
+              return true;
+            }
+            // Recurse into this branch
+            if (walkAndCollect(branch.nodes, [...ancestors, node.id])) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    walkAndCollect(season.root, []);
+    return highlighted;
+  };
+
+  const highlightedNodeIds = getHighlightedNodeIds();
+
   // Determine which nodes/edges should be dimmed
   const getDimmed = (node: Node): boolean => {
     if (!focusedBranchId) return false;
-    // Check if this node is part of the focused branch
-    return !isInBranch(season.root, node, focusedBranchId);
+    // Check if this node should be highlighted
+    return !highlightedNodeIds.has(node.id);
   };
 
   const handleDeleteSeason = async () => {
@@ -294,29 +338,56 @@ export function TreeView() {
           {getBranchLabels(season.root, layout).map((label, i) => {
             const isDim = focusedBranchId && label.branchId !== focusedBranchId;
             return (
-              <div key={i} className="absolute flex items-center gap-2" style={{ left: label.x, top: label.y, transform: 'translateX(-50%)' }}>
-                <button
-                  onClick={() => handleFocusBranch(label.branchId)}
-                  className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border rounded-md shadow-sm hover:shadow-md transition-all ${
-                    isDim ? 'opacity-40' : ''
-                  }`}
-                  style={{
-                    backgroundColor: 'var(--surface)',
-                    borderColor: label.color,
-                    color: label.color,
-                  }}
-                >
-                  {label.name}
-                </button>
-                {/* Show + button for empty branches */}
+              <div key={i}>
+                {/* Branch label with delete button */}
+                <div className="absolute flex items-center gap-2" style={{ left: label.x, top: label.y, transform: 'translateX(-50%)' }}>
+                  <button
+                    onClick={() => handleFocusBranch(label.branchId)}
+                    className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border rounded-md shadow-sm hover:shadow-md transition-all ${
+                      isDim ? 'opacity-40' : ''
+                    }`}
+                    style={{
+                      backgroundColor: 'var(--surface)',
+                      borderColor: label.color,
+                      color: label.color,
+                    }}
+                  >
+                    {label.name}
+                  </button>
+                  {/* Delete button */}
+                  {!isLocked && !isArchived && (
+                    <button
+                      onClick={() => {
+                        const parentNode = findNodeById(season.root, label.parentNodeId);
+                        if (parentNode) {
+                          setConfirmDeleteBranch({ node: parentNode, branchId: label.branchId });
+                        }
+                      }}
+                      className="w-6 h-6 flex items-center justify-center rounded-md text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                      style={{ opacity: isDim ? 0.4 : 1 }}
+                      title="Delete branch"
+                    >
+                      <Icon name="trash" size={11} />
+                    </button>
+                  )}
+                </div>
+                {/* Show + button for empty branches (positioned below label like a phase would be) */}
                 {!isLocked && !isArchived && label.isEmpty && (
                   <button
                     onClick={() => setAddingPhase({ parentNodeId: label.parentNodeId, branchId: label.branchId })}
-                    className="w-6 h-6 flex items-center justify-center border-2 border-dashed rounded-md text-ink-faint hover:text-ink-soft hover:border-barrel transition-colors"
-                    style={{ borderColor: label.color, opacity: isDim ? 0.4 : 1 }}
+                    className="absolute flex items-center justify-center gap-2 px-3 bg-surface border-2 border-dashed rounded-lg shadow-sm hover:shadow-md transition-all"
+                    style={{
+                      left: label.x - NODE_WIDTH / 2,
+                      top: label.emptyButtonY,
+                      width: NODE_WIDTH,
+                      height: NODE_HEIGHT,
+                      borderColor: label.color,
+                      opacity: isDim ? 0.4 : 1,
+                    }}
                     title="Add phase to this branch"
                   >
-                    <Icon name="plus" size={12} />
+                    <Icon name="plus" size={14} />
+                    <span className="text-xs text-ink-faint">Add Phase</span>
                   </button>
                 )}
               </div>
@@ -633,11 +704,24 @@ function getBranchColor(parentColor: string, idx: number): string {
   return branchColor(parentColor, idx);
 }
 
+function findNodeById(nodes: Node[], id: string): Node | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.branches) {
+      for (const branch of node.branches) {
+        const found = findNodeById(branch.nodes, id);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
 function getBranchLabels(
   root: Node[],
   layout: TreeLayout
-): Array<{ x: number; y: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> {
-  const labels: Array<{ x: number; y: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> = [];
+): Array<{ x: number; y: number; emptyButtonY?: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> {
+  const labels: Array<{ x: number; y: number; emptyButtonY?: number; name: string; color: string; branchId: string; isEmpty: boolean; parentNodeId: string }> = [];
 
   function walk(nodes: Node[], parentColor: string, depth: number = 0) {
     for (let i = 0; i < nodes.length; i++) {
@@ -662,15 +746,18 @@ function getBranchLabels(
             }
             walk(branch.nodes, branchAccent, depth + 1);
           } else {
-            // Empty branch - place label at branch point
+            // Empty branch - place label at branch point and button below
             const parentNode = layout.nodes.find((ln) => ln.node.id === node.id);
             if (parentNode) {
               // Calculate approximate position based on branch index
               // This is a simple heuristic - empty branches spread out horizontally
               const offsetX = (idx - (node.branches!.length - 1) / 2) * (NODE_WIDTH + COL_GAP);
+              const labelY = parentNode.y + NODE_HEIGHT + 15; // Label positioned just below parent
+              const buttonY = labelY + 35; // Button positioned below label (where first phase would be)
               labels.push({
                 x: parentNode.x + NODE_WIDTH / 2 + offsetX,
-                y: parentNode.y + NODE_HEIGHT + ROW_GAP / 2,
+                y: labelY,
+                emptyButtonY: buttonY,
                 name: branch.name,
                 color: branchAccent,
                 branchId: branch.id,
@@ -688,32 +775,4 @@ function getBranchLabels(
   return labels;
 }
 
-function isInBranch(root: Node[], target: Node, branchId: string): boolean {
-  function walk(nodes: Node[]): boolean {
-    for (const node of nodes) {
-      if (node.id === target.id) return true;
-      if (node.branches) {
-        for (const branch of node.branches) {
-          if (branch.id === branchId) {
-            return walkNodes(branch.nodes);
-          }
-        }
-      }
-    }
-    return false;
-  }
 
-  function walkNodes(nodes: Node[]): boolean {
-    for (const node of nodes) {
-      if (node.id === target.id) return true;
-      if (node.branches) {
-        for (const branch of node.branches) {
-          if (walkNodes(branch.nodes)) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  return walk(root);
-}
