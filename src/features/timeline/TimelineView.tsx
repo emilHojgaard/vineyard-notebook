@@ -14,7 +14,7 @@ export function TimelineView() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [addingPhase, setAddingPhase] = useState(false);
   const [newPhaseName, setNewPhaseName] = useState('');
-  const [addingPhaseContext, setAddingPhaseContext] = useState<{ parentNodeId: string | null; branchId: string | null } | null>(null);
+  const [addingPhaseContext, setAddingPhaseContext] = useState<{ parentNodeId?: string | null; branchId?: string | null; afterNodeId?: string | null } | null>(null);
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
@@ -71,6 +71,7 @@ export function TimelineView() {
     await addPhase(appState.year, newPhaseName.trim(), {
       parentNodeId: addingPhaseContext.parentNodeId || undefined,
       branchId: addingPhaseContext.branchId || undefined,
+      afterNodeId: addingPhaseContext.afterNodeId || undefined,
     });
     
     setNewPhaseName('');
@@ -193,7 +194,7 @@ export function TimelineView() {
             onBranch={() => setBranchingNode(node)}
             onAddPhase={() => {
               setAddingPhase(true);
-              setAddingPhaseContext({ parentNodeId: node.id, branchId: branchId });
+              setAddingPhaseContext({ afterNodeId: node.id, branchId: branchId });
             }}
             isLocked={isLocked}
             isArchived={isArchived}
@@ -513,8 +514,8 @@ export function TimelineView() {
         isDanger
       />
 
-      {/* Add phase modal */}
-      {addingPhase && addingPhaseContext && addingPhaseContext.parentNodeId && (
+      {/* Add phase modal - show when adding after a phase (afterNodeId) or adding first phase (no parent/branch) */}
+      {addingPhase && addingPhaseContext && (addingPhaseContext.afterNodeId || (addingPhaseContext.parentNodeId === null && addingPhaseContext.branchId === null)) && (
         <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">

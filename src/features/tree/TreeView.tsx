@@ -227,8 +227,6 @@ export function TreeView() {
               : layoutNode.node.status;
             const isDim = getDimmed(layoutNode.node);
             const isActive = status === 'active';
-            // Only show add-phase button if node is in focused branch or no branch is focused
-            const canAddPhase = !focusedBranchId || layoutNode.branchId === focusedBranchId || (!layoutNode.branchId && !focusedBranchId);
 
             return (
               <div key={layoutNode.node.id}>
@@ -265,18 +263,16 @@ export function TreeView() {
                       >
                         <Icon name="branch" size={11} />
                       </button>
-                      {canAddPhase && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddingPhase({ afterNodeId: layoutNode.node.id });
-                          }}
-                          className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
-                          title="Add phase"
-                        >
-                          <Icon name="plus" size={11} />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddingPhase({ afterNodeId: layoutNode.node.id });
+                        }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
+                        title="Add phase"
+                      >
+                        <Icon name="plus" size={11} />
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
