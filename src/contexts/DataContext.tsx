@@ -28,9 +28,14 @@ import { syncStatuses, createDefaultPhases, uid } from '../lib/utils';
 interface DataContextType {
   currentProject: Project | null;
   projects: Project[];
-  seasons: Record<number, Season>;
-  inventory: Record<number, Inventory>;
-  library: Library | null;
+  // Raw state (scoped by projectId)
+  allSeasons: Record<string, Record<number, Season>>; // projectId -> year -> Season
+  allInventory: Record<string, Record<number, Inventory>>; // projectId -> year -> Inventory
+  allLibrary: Record<string, Library>; // projectId -> Library
+  // Scoped accessors for current project
+  seasons: Record<number, Season>; // current project's seasons
+  inventory: Record<number, Inventory>; // current project's inventory
+  library: Library | null; // current project's library
   appState: AppState;
   members: Member[];
   loading: boolean;
@@ -67,12 +72,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [seasons, setSeasons] = useState<Record<number, Season>>({});
-  const [inventory, setInventory] = useState<Record<number, Inventory>>({});
-  const [library, setLibrary] = useState<Library | null>(null);
+  const [allSeasons, setAllSeasons] = useState<Record<string, Record<number, Season>>>({});
+  const [allInventory, setAllInventory] = useState<Record<string, Record<number, Inventory>>>({});
+  const [allLibrary, setAllLibrary] = useState<Record<string, Library>>({});
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
+
+  // Computed values for current project (for backward compatibility with existing views)
+  const seasons = currentProject ? (allSeasons[currentProject.id] || {}) : {};
+  const inventory = currentProject ? (allInventory[currentProject.id] || {}) : {};
+  const library = currentProject ? (allLibrary[currentProject.id] || null) : null;
 
   // Default app state
   const [appState, setAppState] = useState<AppState>({
@@ -143,7 +153,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             syncStatuses(loadedSeasons[year].root);
           }
         });
-        setSeasons(loadedSeasons);
+        setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
       })
     );
 
@@ -162,7 +172,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             loadedInventory[year] = { sections: data.sections || [] };
           }
         });
-        setInventory(loadedInventory);
+        setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
       })
     );
 
@@ -170,11 +180,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const libraryDoc = doc(db, 'library', currentProject.id);
     unsubscribers.push(
       onSnapshot(libraryDoc, (snapshot) => {
-        if (snapshot.exists()) {
-          setLibrary(snapshot.data() as Library);
-        } else {
-          setLibrary({ sections: [] });
-        }
+        const lib = snapshot.exists() 
+          ? (snapshot.data() as Library) 
+          : { sections: [] };
+        setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
       })
     );
 
@@ -309,6 +318,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       projectId: currentProject.id,
     });
   };
+
+
 
   // Helper to find and update a node anywhere in the tree
   const findAndUpdateNode = (
@@ -667,16 +678,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await deleteDoc(doc(db, 'inventory', `${currentProject.id}_${year}`));
     
     // Update local state
-    setSeasons((prev) => {
-      const updated = { ...prev };
-      delete updated[year];
-      return updated;
+    setAllSeasons((prev) => {
+      const projectSeasons = { ...(prev[currentProject.id] || {}) };
+      delete projectSeasons[year];
+      return { ...prev, [currentProject.id]: projectSeasons };
     });
     
-    setInventory((prev) => {
-      const updated = { ...prev };
-      delete updated[year];
-      return updated;
+    setAllInventory((prev) => {
+      const projectInventory = { ...(prev[currentProject.id] || {}) };
+      delete projectInventory[year];
+      return { ...prev, [currentProject.id]: projectInventory };
     });
     
     // Switch to another season if available
@@ -737,6 +748,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const value = {
     currentProject,
     projects,
+    allSeasons,
+    allInventory,
+    allLibrary,
     seasons,
     inventory,
     library,
