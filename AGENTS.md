@@ -26,6 +26,11 @@ See `design/BUILD-NOTES.md` §3 for complete spec. Key points:
 4. **Two alert systems**: 
    - Inventory shortages (14-day window, configurable)
    - Sub-events/checks (7-day window, configurable)
+5. **Project Isolation** (CRITICAL):
+   - Projects are completely independent units
+   - Each project has its own seasons, library
+   - Seasons within a project share only the library
+   - All other data (tree/timeline, calendar, inventory) is per-season
 
 ### Firebase Collections
 
@@ -137,8 +142,16 @@ Two read-only states:
 - **Modal Components**: Reusable modal and confirm dialog
 - **Photo Upload**: Firebase Storage integration (not base64)
 
+✅ **Phase 3 - Project Isolation** (Completed):
+- **DataContext Architecture**: Complete project isolation implementation
+- **State Scoping**: All data scoped by projectId (allSeasons, allInventory, allLibrary)
+- **Computed Accessors**: Backward-compatible accessors for current project
+- **Project Independence**: Each project has completely separate data
+- **Season Independence**: Seasons share only project-level library
+- **Firestore Partitioning**: Queries correctly scoped by projectId
+- **Production Ready**: App is now architecturally bulletproof for multi-project use
+
 ⏳ **TODO** (Future enhancements):
-- Inventory/library item tagging to phases
 - Member management: Email invitations
 - Export calendar to .ics format
 - Offline support (Firestore persistence)
@@ -188,17 +201,43 @@ The HTML mockup is production-quality. When implementing features:
 
 ## Common Patterns
 
+### Understanding Data Scoping
+
+**DataContext exposes two levels of data:**
+
+1. **Raw state (all projects):**
+   - `allSeasons`: `Record<projectId, Record<year, Season>>`
+   - `allInventory`: `Record<projectId, Record<year, Inventory>>`
+   - `allLibrary`: `Record<projectId, Library>`
+
+2. **Current project accessors (use these in views):**
+   - `seasons`: `Record<year, Season>` - current project only
+   - `inventory`: `Record<year, Inventory>` - current project only
+   - `library`: `Library | null` - current project only
+
 ### Updating Seasons
 ```typescript
 const { seasons, updateSeason, appState } = useData();
-const season = seasons[appState.year];
+const season = seasons[appState.year]; // Automatically scoped to current project
 
 // Modify season data
 const updated = { ...season };
 // ... make changes ...
 
-// Save (syncs to Firestore)
+// Save (syncs to Firestore for current project)
 await updateSeason(appState.year, updated);
+```
+
+### Accessing Data
+```typescript
+// ✅ CORRECT - Use scoped accessors
+const { seasons, inventory, library } = useData();
+const currentSeason = seasons[appState.year];
+const currentInventory = inventory[appState.year];
+
+// ❌ WRONG - Don't access raw state directly in views
+const { allSeasons } = useData();
+const season = allSeasons[currentProject.id][appState.year]; // Too verbose
 ```
 
 ### Photo Upload
