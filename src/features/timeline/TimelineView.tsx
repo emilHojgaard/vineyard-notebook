@@ -191,6 +191,10 @@ export function TimelineView() {
             onOpenModal={() => setSelectedNode(node)}
             onDelete={() => setConfirmDeletePhase({ id: node.id, name: node.name })}
             onBranch={() => setBranchingNode(node)}
+            onAddPhase={() => {
+              setAddingPhase(true);
+              setAddingPhaseContext({ parentNodeId: node.id, branchId: branchId });
+            }}
             isLocked={isLocked}
             isArchived={isArchived}
             alert={getPhaseAlert(node)}
@@ -413,57 +417,7 @@ export function TimelineView() {
           <div className="space-y-2">
             {renderNodeList(season.root)}
 
-            {/* Add phase button/form (for trunk) - only show if no branch is focused */}
-            {/* Hide if any phase in root has 2+ branches */}
-            {!isLocked && !isArchived && !focusedBranchId && !season.root.some(node => node.branches && node.branches.length > 1) && (
-              <>
-                {addingPhase && !addingPhaseContext?.parentNodeId && !addingPhaseContext?.branchId ? (
-                  <div className="bg-surface-2 border border-border rounded-lg p-3 mt-4">
-                    <input
-                      type="text"
-                      value={newPhaseName}
-                      onChange={(e) => setNewPhaseName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
-                      placeholder="Phase name"
-                      autoFocus
-                      className="w-full px-3 py-2 mb-2 border border-border rounded-md bg-surface text-ink text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAddPhase}
-                        disabled={!newPhaseName.trim()}
-                        className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
-                      >
-                        Add Phase
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAddingPhase(false);
-                          setNewPhaseName('');
-                          setAddingPhaseContext(null);
-                        }}
-                        className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  !addingPhase && (
-                    <button
-                      onClick={() => {
-                        setAddingPhase(true);
-                        setAddingPhaseContext({ parentNodeId: null, branchId: null });
-                      }}
-                      className="w-full mt-4 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Icon name="plus" size={14} />
-                      Add Phase
-                    </button>
-                  )
-                )}
-              </>
-            )}
+            {/* Bottom "Add Phase" button removed - use + button on phase cards instead */}
           </div>
         )}
       </div>
@@ -558,6 +512,45 @@ export function TimelineView() {
         onCancel={() => setConfirmDeletePhase(null)}
         isDanger
       />
+
+      {/* Add phase modal */}
+      {addingPhase && addingPhaseContext && addingPhaseContext.parentNodeId && (
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
+            <h3 className="text-base font-bold text-ink mb-3">
+              Add Phase
+            </h3>
+            <input
+              type="text"
+              value={newPhaseName}
+              onChange={(e) => setNewPhaseName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+              placeholder="Phase name"
+              autoFocus
+              className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddPhase}
+                disabled={!newPhaseName.trim()}
+                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+              >
+                Add Phase
+              </button>
+              <button
+                onClick={() => {
+                  setAddingPhase(false);
+                  setNewPhaseName('');
+                  setAddingPhaseContext(null);
+                }}
+                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -570,13 +563,14 @@ interface PhaseCardProps {
   onOpenModal: () => void;
   onDelete: () => void;
   onBranch: () => void;
+  onAddPhase: () => void;
   isLocked: boolean;
   isArchived: boolean;
   alert: { text: string; type: 'event' | 'inv' } | null;
   isHighlighted: boolean;
 }
 
-function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBranch, isLocked, isArchived, alert, isHighlighted }: PhaseCardProps) {
+function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBranch, onAddPhase, isLocked, isArchived, alert, isHighlighted }: PhaseCardProps) {
   const status = node.start && node.end ? derivedStatus(node) : node.status;
 
   const statusConfig = {
@@ -634,13 +628,17 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <div
-                className="flex items-center gap-1 text-xs font-semibold"
-                style={{ color: config.color }}
-              >
-                {config.icon && <Icon name={config.icon as any} size={12} />}
-                <span>{config.label}</span>
-              </div>
+              {/* Status badge - only show in lock mode */}
+              {isLocked && (
+                <div
+                  className="flex items-center gap-1 text-xs font-semibold"
+                  style={{ color: config.color }}
+                >
+                  {config.icon && <Icon name={config.icon as any} size={12} />}
+                  <span>{config.label}</span>
+                </div>
+              )}
+              {/* Action buttons - only show in edit mode */}
               {!isLocked && !isArchived && (
                 <>
                   <button
@@ -652,6 +650,16 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
                     title="Create branch"
                   >
                     <Icon name="branch" size={12} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddPhase();
+                    }}
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                    title="Add phase"
+                  >
+                    <Icon name="plus" size={12} />
                   </button>
                   <button
                     onClick={(e) => {
