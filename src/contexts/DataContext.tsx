@@ -273,6 +273,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
+    // Immediately set as current project (don't wait for snapshot)
+    const newProject: Project = {
+      id: projectId,
+      name,
+      members: [currentUser.uid],
+      createdBy: currentUser.uid,
+      createdAt: new Date(),
+    };
+    setCurrentProject(newProject);
+
     return projectId;
   };
 
