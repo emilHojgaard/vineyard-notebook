@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from './Icon';
 import { Header } from './Header';
+import { SeasonSelector } from './SeasonSelector';
 import { useData } from '../contexts/DataContext';
 
 interface AppShellProps {
@@ -29,6 +30,9 @@ export function AppShell({ children }: AppShellProps) {
           <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
             <Header onSettingsClick={() => setShowSettings(!showSettings)} />
+            
+            {/* Season Selector */}
+            <SeasonSelector showAddButton={!appState.locked} />
 
             {/* Settings overlay */}
             {showSettings && (
