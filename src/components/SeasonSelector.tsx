@@ -67,6 +67,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     try {
       await deleteSeason(confirmDeleteSeason);
       setConfirmDeleteSeason(null);
+      setIsExpanded(false); // Auto-collapse after deletion
     } catch (error) {
       console.error('Failed to delete season:', error);
       alert('Failed to delete season. Please try again.');
@@ -101,7 +102,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       <div 
         className="bg-surface px-4 py-2 border-b border-border transition-all duration-300"
         style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          backgroundColor: 'rgba(147, 118, 95, 0.06)',
           transform: hideOnScroll ? 'translateY(-100%)' : 'translateY(0)',
           opacity: hideOnScroll ? 0 : 1,
           maxHeight: hideOnScroll ? '0' : '500px',
