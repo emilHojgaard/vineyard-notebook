@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -15,6 +15,8 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
+  const [hideOnScroll, setHideOnScroll] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   // Get sorted year list (newest first)
   const sortedYears = Object.keys(seasons)
@@ -51,6 +53,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       updateAppState({ year: selectedYear });
       setIsCreating(false);
       setShowDuplicateConfirm(false);
+      setIsExpanded(false); // Auto-collapse after creation
     } catch (error) {
       console.error('Failed to create season:', error);
       alert('Failed to create season. Please try again.');
@@ -73,9 +76,38 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   // Get sorted year list (newest first)
   const hasSeasons = sortedYears.length > 0;
 
+  // Scroll detection to hide season selector
+  useEffect(() => {
+    const contentDiv = document.getElementById('app-content');
+    if (!contentDiv) return;
+
+    const handleScroll = () => {
+      const currentScrollY = contentDiv.scrollTop;
+      // Hide when scrolling down, show when scrolling up
+      if (currentScrollY > lastScrollY && currentScrollY > 20) {
+        setHideOnScroll(true);
+      } else if (currentScrollY < lastScrollY) {
+        setHideOnScroll(false);
+      }
+      setLastScrollY(currentScrollY);
+    };
+
+    contentDiv.addEventListener('scroll', handleScroll, { passive: true });
+    return () => contentDiv.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
   return (
     <>
-      <div className="bg-surface px-4 py-2 border-b border-border">
+      <div 
+        className="bg-surface px-4 py-2 border-b border-border transition-all duration-300"
+        style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          transform: hideOnScroll ? 'translateY(-100%)' : 'translateY(0)',
+          opacity: hideOnScroll ? 0 : 1,
+          maxHeight: hideOnScroll ? '0' : '500px',
+          overflow: 'hidden',
+        }}
+      >
         {hasSeasons ? (
           <>
             {/* Season selector button */}
@@ -133,7 +165,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                 {showAddButton && (
                   <button
                     onClick={handleAddSeasonClick}
-                    className="w-full px-3 py-2 border-t border-border text-left text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center gap-2"
+                    className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
                   >
                     <Icon name="plus" size={14} />
                     <span>Add Season</span>
