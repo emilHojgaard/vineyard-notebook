@@ -7,7 +7,7 @@ import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, createSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -19,46 +19,15 @@ export function TimelineView() {
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
-  const [creating, setCreating] = useState(false);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
 
-  const handleCreateSeason = async () => {
-    setCreating(true);
-    try {
-      await createSeason(appState.year);
-    } catch (error) {
-      console.error('Failed to create season:', error);
-      alert('Failed to create season. Please try again.');
-    } finally {
-      setCreating(false);
-    }
-  };
-
   if (!season) {
     return (
-      <div className="p-8 text-center">
-        <div className="max-w-sm mx-auto">
-          <div className="mb-6">
-            <div className="text-lg font-semibold text-ink mb-2">
-              No season exists for {appState.year}
-            </div>
-            <p className="text-sm text-ink-soft">
-              Create a new season with 7 default winemaking phases to get started
-            </p>
-          </div>
-          <button
-            onClick={handleCreateSeason}
-            disabled={creating}
-            className="w-full px-6 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? 'Creating...' : `Create ${appState.year} Season`}
-          </button>
-          <p className="text-xs text-ink-faint mt-4">
-            Default phases: Growing Season, Pre-Harvest Monitoring, Harvest & Crush,
-            Primary Fermentation, Racking, Aging, and Bottling
-          </p>
+      <div className="p-8 text-center flex items-center justify-center" style={{ minHeight: '400px' }}>
+        <div className="text-lg font-semibold text-ink-soft">
+          No season exists for {appState.year}
         </div>
       </div>
     );
