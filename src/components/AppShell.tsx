@@ -31,8 +31,10 @@ export function AppShell({ children }: AppShellProps) {
             {/* Header */}
             <Header onSettingsClick={() => setShowSettings(!showSettings)} />
             
-            {/* Season Selector */}
-            <SeasonSelector showAddButton={!appState.locked} />
+            {/* Season Selector - hidden in library view */}
+            {appState.tab !== 'library' && (
+              <SeasonSelector showAddButton={!appState.locked} />
+            )}
 
             {/* Settings overlay */}
             {showSettings && (

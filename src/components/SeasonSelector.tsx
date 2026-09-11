@@ -8,12 +8,13 @@ interface SeasonSelectorProps {
 }
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
-  const { seasons, appState, updateAppState, createSeason } = useData();
+  const { seasons, appState, updateAppState, createSeason, deleteSeason } = useData();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
 
   // Get sorted year list (newest first)
   const sortedYears = Object.keys(seasons)
@@ -58,64 +59,107 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     }
   };
 
-  const currentSeasonTitle = seasons[appState.year]?.title || `${appState.year}`;
+  const handleDeleteSeason = async () => {
+    if (confirmDeleteSeason === null) return;
+    try {
+      await deleteSeason(confirmDeleteSeason);
+      setConfirmDeleteSeason(null);
+    } catch (error) {
+      console.error('Failed to delete season:', error);
+      alert('Failed to delete season. Please try again.');
+    }
+  };
+
+  // Get sorted year list (newest first)
+  const hasSeasons = sortedYears.length > 0;
 
   return (
     <>
-      <div className="bg-surface px-4 py-3 border-b border-border">
-        {/* Season selector button */}
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
-          >
-            <span>{appState.year}</span>
-            <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
-          </button>
-        </div>
-
-        {/* Expanded season list */}
-        {isExpanded && (
-          <div className="mt-3 bg-surface-2 border border-border rounded-md overflow-hidden">
-            {/* Season list */}
-            <div className="max-h-48 overflow-y-auto">
-              {sortedYears.map((year) => (
-                <button
-                  key={year}
-                  onClick={() => handleYearChange(year)}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
-                    year === appState.year
-                      ? 'bg-burgundy/10 text-burgundy'
-                      : 'text-ink hover:bg-surface'
-                  }`}
-                >
-                  {year}
-                  {seasons[year]?.status !== 'current' && (
-                    <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
-                  )}
-                </button>
-              ))}
+      <div className="bg-surface px-4 py-2 border-b border-border">
+        {hasSeasons ? (
+          <>
+            {/* Season selector button */}
+            <div className="flex items-center justify-center gap-2">
+              <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
+              >
+                <span>{appState.year}</span>
+                <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
+              </button>
             </div>
 
-            {/* Add Season button (only shown when edit mode is ON) */}
-            {showAddButton && (
-              <button
-                onClick={handleAddSeasonClick}
-                className="w-full px-4 py-2.5 border-t border-border text-left text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center gap-2"
-              >
-                <Icon name="plus" size={14} />
-                <span>Add Season</span>
-              </button>
-            )}
-          </div>
-        )}
+            {/* Expanded season list */}
+            {isExpanded && (
+              <div className="mt-2 bg-surface-2 border border-border rounded-md overflow-hidden">
+                {/* Season list */}
+                <div className="max-h-48 overflow-y-auto">
+                  {sortedYears.map((year) => (
+                    <div
+                      key={year}
+                      className={`flex items-center justify-between px-3 py-2 text-sm font-semibold transition-colors ${
+                        year === appState.year
+                          ? 'bg-burgundy/10 text-burgundy'
+                          : 'text-ink hover:bg-surface'
+                      }`}
+                    >
+                      <button
+                        onClick={() => handleYearChange(year)}
+                        className="flex-1 text-left"
+                      >
+                        {year}
+                        {seasons[year]?.status !== 'current' && (
+                          <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
+                        )}
+                      </button>
+                      {showAddButton && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteSeason(year);
+                          }}
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                          title="Delete season"
+                        >
+                          <Icon name="trash" size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-        {/* Archived indicator */}
-        {seasons[appState.year]?.status !== 'current' && (
-          <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1.5 px-2 flex items-center justify-center gap-2 mt-2">
-            <Icon name="lock" size={11} />
-            <span>Archived season (read-only)</span>
+                {/* Add Season button (only shown when edit mode is ON) */}
+                {showAddButton && (
+                  <button
+                    onClick={handleAddSeasonClick}
+                    className="w-full px-3 py-2 border-t border-border text-left text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center gap-2"
+                  >
+                    <Icon name="plus" size={14} />
+                    <span>Add Season</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Archived indicator */}
+            {seasons[appState.year]?.status !== 'current' && (
+              <div className="text-xs text-center text-ink-soft bg-surface-2 border border-border rounded-md py-1 px-2 flex items-center justify-center gap-1.5 mt-2">
+                <Icon name="lock" size={11} />
+                <span>Archived season (read-only)</span>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Empty state - no seasons exist */
+          <div className="text-center">
+            <button
+              onClick={handleAddSeasonClick}
+              className="w-full px-4 py-2 bg-burgundy text-white font-semibold rounded-md text-sm hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
+            >
+              <Icon name="plus" size={14} />
+              <span>Create Season</span>
+            </button>
           </div>
         )}
       </div>
@@ -195,6 +239,17 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
           setSelectedYear(new Date().getFullYear());
         }}
         isDanger={false}
+      />
+
+      {/* Delete season confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteSeason !== null}
+        title="Delete Season"
+        message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
+        confirmText="Delete Season"
+        onConfirm={handleDeleteSeason}
+        onCancel={() => setConfirmDeleteSeason(null)}
+        isDanger
       />
     </>
   );
