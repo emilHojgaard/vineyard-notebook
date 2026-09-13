@@ -30,6 +30,7 @@ const icons = {
   chevronleft: '<polyline points="14.5 5 8 12 14.5 19"/>',
   chevronright: '<polyline points="9.5 5 16 12 9.5 19"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
+  users: '<circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="2.5"/><path d="M3 19c0-3.5 2.7-6.3 6-6.3s6 2.8 6 6.3"/><path d="M16.5 19c0-2.5 1.8-4.5 4-4.5s4 2 4 4.5"/>',
   folder: '<path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-2H5a2 2 0 0 0-2 2z"/>',
 };
 

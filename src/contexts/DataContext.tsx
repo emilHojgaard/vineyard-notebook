@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -20,6 +21,7 @@ import type {
   Library,
   AppState,
   Member,
+  Invitation,
   Node as PhaseNode,
   Branch,
 } from '../types';
@@ -38,6 +40,7 @@ interface DataContextType {
   library: Library | null; // current project's library
   appState: AppState;
   members: Member[];
+  pendingInvitations: Invitation[] | null;
   loading: boolean;
   focusedBranchId: string | null;
   setFocusedBranchId: (branchId: string | null) => void;
@@ -54,8 +57,9 @@ interface DataContextType {
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
   updateAppState: (state: Partial<AppState>) => void;
-  inviteMembers: (emails: string[]) => Promise<void>;
+  inviteMember: (email: string) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
+  cancelInvitation: (invitationId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -76,6 +80,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [allInventory, setAllInventory] = useState<Record<string, Record<number, Inventory>>>({});
   const [allLibrary, setAllLibrary] = useState<Record<string, Library>>({});
   const [members, setMembers] = useState<Member[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
 
@@ -189,6 +194,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // Load members
     loadMembers(currentProject.id);
+
+    // Load pending invitations
+    const invitationsQuery = query(
+      collection(db, 'invitations'),
+      where('projectId', '==', currentProject.id),
+      where('status', '==', 'pending')
+    );
+    unsubscribers.push(
+      onSnapshot(invitationsQuery, (snapshot) => {
+        const invites = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        })) as Invitation[];
+        setPendingInvitations(invites);
+      })
+    );
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
@@ -732,11 +754,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setAppState((prev) => ({ ...prev, ...state }));
   };
 
-  const inviteMembers = async (emails: string[]) => {
-    if (!currentProject) return;
-    // TODO: Send email invitations
-    // For now, this is a placeholder
-    console.log('Invite members:', emails);
+  const inviteMember = async (email: string) => {
+    if (!currentProject || !currentUser) throw new Error('Not authenticated');
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user already exists in Firebase Auth
+    // Since we can't query Auth directly from client, we'll check the users collection
+    const usersRef = collection(db, 'users');
+    const userQuery = query(usersRef, where('email', '==', normalizedEmail));
+    const userSnapshot = await getDocs(userQuery);
+
+    if (!userSnapshot.empty) {
+      // User exists - add them directly to the project
+      const userDoc = userSnapshot.docs[0];
+      const userId = userDoc.id;
+
+      // Check if already a member
+      if (currentProject.members.includes(userId)) {
+        throw new Error('User is already a member');
+      }
+
+      // Add to project members
+      const projectRef = doc(db, 'projects', currentProject.id);
+      await updateDoc(projectRef, {
+        members: [...currentProject.members, userId],
+      });
+
+      // Reload members
+      await loadMembers(currentProject.id);
+    } else {
+      // User doesn't exist yet - create pending invitation
+      const invitationRef = doc(collection(db, 'invitations'));
+      await setDoc(invitationRef, {
+        projectId: currentProject.id,
+        email: normalizedEmail,
+        invitedBy: currentUser.uid,
+        createdAt: Timestamp.now(),
+        status: 'pending',
+      });
+    }
   };
 
   const removeMember = async (memberId: string) => {
@@ -755,6 +812,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await loadMembers(currentProject.id);
   };
 
+  const cancelInvitation = async (invitationId: string) => {
+    await deleteDoc(doc(db, 'invitations', invitationId));
+  };
+
   const value = {
     currentProject,
     projects,
@@ -766,6 +827,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     library,
     appState,
     members,
+    pendingInvitations,
     loading,
     focusedBranchId,
     setFocusedBranchId,
@@ -782,8 +844,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateInventory,
     updateLibrary,
     updateAppState,
-    inviteMembers,
+    inviteMember,
     removeMember,
+    cancelInvitation,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

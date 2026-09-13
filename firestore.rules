@@ -50,5 +50,24 @@ service cloud.firestore {
       allow update, delete: if request.auth != null &&
                                request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.members;
     }
+
+    // Invitations - project members can create, invited users can read their own
+    match /invitations/{invitationId} {
+      // Project members can read all invitations for their project
+      allow read: if request.auth != null && (
+        request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members ||
+        request.auth.token.email.lower() == resource.data.email
+      );
+      // Project members can create invitations
+      allow create: if request.auth != null &&
+                       request.auth.uid in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.members;
+      // Only the inviter or project members can delete
+      allow delete: if request.auth != null && (
+        request.auth.uid == resource.data.invitedBy ||
+        request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members
+      );
+      // No one can update invitations (they are deleted when processed)
+      allow update: if false;
+    }
   }
 }

@@ -115,3 +115,12 @@ export interface Member {
   displayName: string;
   role: 'owner' | 'member';
 }
+
+export interface Invitation {
+  id: string;
+  projectId: string;
+  email: string;
+  invitedBy: string; // user ID
+  createdAt: string; // ISO date
+  status: 'pending' | 'accepted';
+}

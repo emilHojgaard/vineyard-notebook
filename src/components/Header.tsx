@@ -9,9 +9,10 @@ import { db } from '../lib/firebase';
 
 interface HeaderProps {
   onSettingsClick: () => void;
+  onMembersClick: () => void;
 }
 
-export function Header({ onSettingsClick }: HeaderProps) {
+export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const { currentProject, projects, selectProject, appState, updateAppState } = useData();
   const { currentUser, logout } = useAuth();
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -138,6 +139,15 @@ export function Header({ onSettingsClick }: HeaderProps) {
               )}
             </div>
           )}
+
+          {/* Members button */}
+          <button
+            onClick={onMembersClick}
+            className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
+            title="Members"
+          >
+            <Icon name="users" size={12} />
+          </button>
 
           {/* Settings button */}
           <button

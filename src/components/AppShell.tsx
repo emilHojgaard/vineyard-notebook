@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { Header } from './Header';
 import { SeasonSelector } from './SeasonSelector';
 import { useData } from '../contexts/DataContext';
+import { MembersView } from '../features/members/MembersView';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { appState, updateAppState, currentProject } = useData();
   const [showSettings, setShowSettings] = React.useState(false);
+  const [showMembers, setShowMembers] = React.useState(false);
 
   const handleTabChange = (tab: typeof appState.tab) => {
     updateAppState({ tab });
@@ -29,11 +31,32 @@ export function AppShell({ children }: AppShellProps) {
           {/* Phone screen */}
           <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
-            <Header onSettingsClick={() => setShowSettings(!showSettings)} />
+            <Header 
+              onSettingsClick={() => setShowSettings(!showSettings)} 
+              onMembersClick={() => setShowMembers(!showMembers)}
+            />
             
             {/* Season Selector - hidden in library view */}
             {appState.tab !== 'library' && (
               <SeasonSelector showAddButton={!appState.locked} />
+            )}
+
+            {/* Members overlay */}
+            {showMembers && (
+              <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-parchment rounded-xl max-w-sm w-full max-h-[85vh] overflow-y-auto shadow-phone">
+                  <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-parchment z-10">
+                    <h3 className="text-lg font-semibold text-ink">Members</h3>
+                    <button
+                      onClick={() => setShowMembers(false)}
+                      className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                  <MembersView />
+                </div>
+              </div>
             )}
 
             {/* Settings overlay */}
