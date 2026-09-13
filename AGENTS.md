@@ -45,6 +45,13 @@ users/{userId}
   - email: string
   - displayName: string
 
+invitations/{invitationId}
+  - projectId: string
+  - email: string
+  - invitedBy: string
+  - createdAt: Timestamp
+  - status: 'pending' | 'accepted'
+
 seasons/{projectId}_{year}
   - projectId: string
   - status: 'current' | 'completed'
@@ -71,6 +78,7 @@ src/
     calendar/      # Month view
     inventory/     # Equipment & supplies
     library/       # Reference materials
+    members/       # Member management
   contexts/        # React contexts (AuthContext, DataContext)
   lib/             # Utilities (firebase.ts, utils.ts)
   types/           # TypeScript definitions
@@ -151,11 +159,20 @@ Two read-only states:
 - **Firestore Partitioning**: Queries correctly scoped by projectId
 - **Production Ready**: App is now architecturally bulletproof for multi-project use
 
+✅ **Phase 4 - Member Management** (Completed):
+- **Member Invitations**: Invite users via email with automatic account detection
+- **Pending Invitations**: System for users without accounts, auto-processed on signup/login
+- **Member List**: View current project members with roles (Owner/Member)
+- **Remove Members**: Delete members with safeguards (can't remove last member/owner)
+- **Security Rules**: Comprehensive Firestore rules for invitations collection
+- **UI Integration**: Accessible via header button, clean modal interface
+- **Real-time Updates**: Members and invitations update via Firestore snapshots
+
 ⏳ **TODO** (Future enhancements):
-- Member management: Email invitations
 - Export calendar to .ics format
 - Offline support (Firestore persistence)
 - Performance optimization (code splitting)
+- Email notifications for member invitations (currently manual)
 
 ## Development Commands
 
