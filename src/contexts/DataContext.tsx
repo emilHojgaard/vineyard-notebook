@@ -102,6 +102,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     treeFocus: null,
   });
 
+  // Accept pending invitations on login
+  useEffect(() => {
+    if (currentUser) {
+      acceptPendingInvitations();
+    }
+  }, [currentUser]);
+
   // Load user's projects
   useEffect(() => {
     if (!currentUser) {
@@ -239,6 +246,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const loadedMembers = (await Promise.all(memberPromises)).filter(Boolean) as Member[];
     setMembers(loadedMembers);
+  };
+
+  const acceptPendingInvitations = async () => {
+    if (!currentUser) return;
+
+    // Query for pending invitations matching user's email
+    const invitationsRef = collection(db, 'invitations');
+    const q = query(
+      invitationsRef,
+      where('email', '==', currentUser.email?.toLowerCase()),
+      where('status', '==', 'pending')
+    );
+    const snapshot = await getDocs(q);
+
+    // Process each invitation
+    for (const inviteDoc of snapshot.docs) {
+      const invitation = inviteDoc.data();
+      const projectId = invitation.projectId;
+
+      // Add user to project
+      const projectRef = doc(db, 'projects', projectId);
+      const projectDoc = await getDoc(projectRef);
+      if (projectDoc.exists()) {
+        const currentMembers = projectDoc.data().members || [];
+        if (!currentMembers.includes(currentUser.uid)) {
+          await updateDoc(projectRef, {
+            members: [...currentMembers, currentUser.uid],
+          });
+        }
+      }
+
+      // Delete invitation (firestore rules don't allow updates)
+      await deleteDoc(doc(db, 'invitations', inviteDoc.id));
+    }
   };
 
   const createProject = async (name: string): Promise<string> => {
@@ -759,41 +800,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user already exists in Firebase Auth
-    // Since we can't query Auth directly from client, we'll check the users collection
-    const usersRef = collection(db, 'users');
-    const userQuery = query(usersRef, where('email', '==', normalizedEmail));
-    const userSnapshot = await getDocs(userQuery);
-
-    if (!userSnapshot.empty) {
-      // User exists - add them directly to the project
-      const userDoc = userSnapshot.docs[0];
-      const userId = userDoc.id;
-
-      // Check if already a member
-      if (currentProject.members.includes(userId)) {
-        throw new Error('User is already a member');
-      }
-
-      // Add to project members
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        members: [...currentProject.members, userId],
-      });
-
-      // Reload members
-      await loadMembers(currentProject.id);
-    } else {
-      // User doesn't exist yet - create pending invitation
-      const invitationRef = doc(collection(db, 'invitations'));
-      await setDoc(invitationRef, {
-        projectId: currentProject.id,
-        email: normalizedEmail,
-        invitedBy: currentUser.uid,
-        createdAt: Timestamp.now(),
-        status: 'pending',
-      });
+    // Check if already invited
+    const invitationsRef = collection(db, 'invitations');
+    const inviteQuery = query(
+      invitationsRef,
+      where('projectId', '==', currentProject.id),
+      where('email', '==', normalizedEmail),
+      where('status', '==', 'pending')
+    );
+    const existingInvites = await getDocs(inviteQuery);
+    
+    if (!existingInvites.empty) {
+      throw new Error('User is already invited');
     }
+
+    // Create pending invitation (works for both existing and new users)
+    const invitationRef = doc(collection(db, 'invitations'));
+    await setDoc(invitationRef, {
+      projectId: currentProject.id,
+      email: normalizedEmail,
+      invitedBy: currentUser.uid,
+      createdAt: Timestamp.now(),
+      status: 'pending',
+    });
+    
+    // Real-time listener will automatically update pendingInvitations
   };
 
   const removeMember = async (memberId: string) => {
