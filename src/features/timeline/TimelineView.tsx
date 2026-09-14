@@ -642,3 +642,5 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
     </div>
   );
 }
+
+export default TimelineView;

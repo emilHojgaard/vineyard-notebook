@@ -721,4 +721,5 @@ function getBranchLabels(
   return labels;
 }
 
+export default TreeView;
 

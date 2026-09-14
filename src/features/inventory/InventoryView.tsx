@@ -408,3 +408,5 @@ export function InventoryView() {
     </div>
   );
 }
+
+export default InventoryView;

@@ -1,14 +1,18 @@
 
+import { lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { LoginPage } from './features/auth/LoginPage';
 import { ProjectSetup } from './features/auth/ProjectSetup';
 import { AppShell } from './components/AppShell';
-import { TimelineView } from './features/timeline/TimelineView';
-import { TreeView } from './features/tree/TreeView';
-import { CalendarView } from './features/calendar/CalendarView';
-import { InventoryView } from './features/inventory/InventoryView';
-import { LibraryView } from './features/library/LibraryView';
+import { LoadingSpinner } from './components/LoadingSpinner';
+
+// Lazy load main feature views for better performance
+const TimelineView = lazy(() => import('./features/timeline/TimelineView'));
+const TreeView = lazy(() => import('./features/tree/TreeView'));
+const CalendarView = lazy(() => import('./features/calendar/CalendarView'));
+const InventoryView = lazy(() => import('./features/inventory/InventoryView'));
+const LibraryView = lazy(() => import('./features/library/LibraryView'));
 
 function AppContent() {
   const { currentUser } = useAuth();
@@ -47,7 +51,13 @@ function AppContent() {
     }
   };
 
-  return <AppShell>{renderTab()}</AppShell>;
+  return (
+    <AppShell>
+      <Suspense fallback={<LoadingSpinner />}>
+        {renderTab()}
+      </Suspense>
+    </AppShell>
+  );
 }
 
 function App() {
