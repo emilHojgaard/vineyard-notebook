@@ -3,6 +3,7 @@ import { useData } from '../../contexts/DataContext';
 import type { Node, Event } from '../../types';
 import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
+import { generateICS, downloadICS } from '../../lib/calendar-export';
 
 interface CalendarEvent {
   id: string;
@@ -334,13 +335,24 @@ export function CalendarView() {
           )}
         </div>
 
-        {/* Export button (placeholder) */}
+        {/* Export button */}
         <button
-          onClick={() => alert('Calendar export coming soon!')}
-          className="w-full mt-6 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+          onClick={() => {
+            const icsContent = generateICS(allEvents, season.title);
+            if (icsContent) {
+              downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
+            } else {
+              alert('No events to export or error generating calendar file.');
+            }
+          }}
+          disabled={allEvents.length === 0}
+          className="w-full mt-6 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
         >
           <Icon name="download" size={14} />
           Export to calendar (.ics)
+          {allEvents.length > 0 && (
+            <span className="text-xs">({allEvents.length} events)</span>
+          )}
         </button>
       </div>
     </div>
