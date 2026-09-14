@@ -13,7 +13,8 @@ import {
   Timestamp,
   arrayUnion,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from './AuthContext';
 import type {
   Project,
@@ -61,6 +62,9 @@ interface DataContextType {
   inviteMember: (email: string) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
   cancelInvitation: (invitationId: string) => Promise<void>;
+  generateCalendarToken: () => Promise<string>;
+  revokeCalendarToken: (token: string) => Promise<void>;
+  listCalendarTokens: () => Promise<Array<{ id: string; createdAt: string | null }>>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -850,6 +854,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await deleteDoc(doc(db, 'invitations', invitationId));
   };
 
+  const generateCalendarToken = async (): Promise<string> => {
+    if (!currentProject) throw new Error('No project selected');
+    const generateToken = httpsCallable(functions, 'generateCalendarToken');
+    const result = await generateToken({ projectId: currentProject.id });
+    return (result.data as { token: string }).token;
+  };
+
+  const revokeCalendarToken = async (token: string): Promise<void> => {
+    const revokeToken = httpsCallable(functions, 'revokeCalendarToken');
+    await revokeToken({ token });
+  };
+
+  const listCalendarTokens = async (): Promise<Array<{ id: string; createdAt: string | null }>> => {
+    if (!currentProject) return [];
+    const listTokens = httpsCallable(functions, 'listCalendarTokens');
+    const result = await listTokens({ projectId: currentProject.id });
+    return (result.data as { tokens: Array<{ id: string; createdAt: string | null }> }).tokens;
+  };
+
   const value = {
     currentProject,
     projects,
@@ -881,6 +904,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     inviteMember,
     removeMember,
     cancelInvitation,
+    generateCalendarToken,
+    revokeCalendarToken,
+    listCalendarTokens,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

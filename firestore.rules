@@ -69,5 +69,12 @@ service cloud.firestore {
       // No one can update invitations (they are deleted when processed)
       allow update: if false;
     }
+
+    // Calendar tokens - users can only read/write their own tokens
+    match /calendar_tokens/{tokenId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
   }
 }

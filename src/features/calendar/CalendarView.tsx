@@ -4,6 +4,7 @@ import type { Node, Event } from '../../types';
 import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { generateICS, downloadICS } from '../../lib/calendar-export';
+import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
 
 interface CalendarEvent {
   id: string;
@@ -18,6 +19,7 @@ interface CalendarEvent {
 export function CalendarView() {
   const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -335,6 +337,15 @@ export function CalendarView() {
           )}
         </div>
 
+        {/* Calendar subscription button */}
+        <button
+          onClick={() => setShowSubscriptionModal(true)}
+          className="w-full mt-6 px-4 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
+        >
+          <Icon name="link" size={14} />
+          Subscribe to Calendar
+        </button>
+
         {/* Export button */}
         <button
           onClick={() => {
@@ -346,15 +357,23 @@ export function CalendarView() {
             }
           }}
           disabled={allEvents.length === 0}
-          className="w-full mt-6 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
+          className="w-full mt-3 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
         >
           <Icon name="download" size={14} />
-          Export to calendar (.ics)
+          Download .ics file
           {allEvents.length > 0 && (
             <span className="text-xs">({allEvents.length} events)</span>
           )}
         </button>
       </div>
+
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <CalendarSubscriptionModal
+          onClose={() => setShowSubscriptionModal(false)}
+          seasonYear={appState.year}
+        />
+      )}
     </div>
   );
 }

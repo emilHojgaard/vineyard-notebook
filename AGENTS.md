@@ -64,6 +64,11 @@ inventory/{projectId}_{year}
 
 library/{projectId}
   - sections: LibrarySection[]
+
+calendar_tokens/{tokenId}
+  - userId: string
+  - projectId: string
+  - createdAt: Timestamp
 ```
 
 ### File Structure
@@ -75,13 +80,17 @@ src/
     auth/          # Login, signup, project setup
     timeline/      # Phase timeline with notes
     tree/          # Visual tree diagram
-    calendar/      # Month view
+    calendar/      # Month view + subscription modal
     inventory/     # Equipment & supplies
     library/       # Reference materials
     members/       # Member management
   contexts/        # React contexts (AuthContext, DataContext)
   lib/             # Utilities (firebase.ts, utils.ts)
   types/           # TypeScript definitions
+functions/        # Firebase Cloud Functions
+  src/
+    index.ts       # Calendar feed + token management
+    ics-generator.ts  # .ics file generation
 ```
 
 ## Key Implementation Notes
@@ -169,10 +178,20 @@ Two read-only states:
 - **UI Integration**: Accessible via header button, clean modal interface
 - **Real-time Updates**: Members and invitations update via Firestore snapshots
 
+✅ **Phase 5 - Calendar Features** (Completed):
+- **Static Export**: Download .ics files with phases and sub-events
+- **Firebase Cloud Functions**: HTTP endpoint for live .ics feed generation
+- **Token-based Auth**: Secure calendar subscriptions with revocable tokens
+- **Calendar Feed**: Live .ics feed that auto-syncs with Google/Outlook/Apple Calendar
+- **Token Management**: Generate, list, and revoke calendar tokens
+- **Subscription UI**: Modal with instructions for major calendar apps
+- **ICS Generator**: Recursive tree walker to extract all events
+
 ⏳ **TODO** (Future enhancements):
 - Offline support (Firestore persistence)
 - Performance optimization (code splitting)
 - Email notifications for member invitations (currently manual)
+- Token expiration and usage analytics
 
 ## Development Commands
 
@@ -215,6 +234,40 @@ The HTML mockup is production-quality. When implementing features:
 2. Port logic + UX patterns to React
 3. Replace localStorage with Firebase
 4. Replace base64 photos with Storage URLs
+
+## Calendar Subscription
+
+Users can subscribe to a live calendar feed that auto-syncs with their calendar app:
+
+### Architecture
+- **HTTP Endpoint**: `/calendarFeed/:projectId/:seasonYear?token=xxx`
+- **Token-based Auth**: Secure tokens stored in Firestore
+- **ICS Generation**: Dynamically generated from current season data
+- **Calendar Apps**: Google Calendar, Outlook, Apple Calendar support
+
+### Token Management
+```typescript
+const { generateCalendarToken, revokeCalendarToken, listCalendarTokens } = useData();
+
+// Generate a new token
+const token = await generateCalendarToken();
+const subscriptionUrl = `${functionUrl}/${projectId}/${year}?token=${token}`;
+
+// Revoke a token
+await revokeCalendarToken(token);
+```
+
+### Deployment
+```bash
+# Install and build functions
+cd functions && npm install && npm run build
+
+# Deploy functions and rules
+firebase deploy --only functions
+firebase deploy --only firestore:rules
+```
+
+See `CALENDAR-SUBSCRIPTION.md` for complete documentation.
 
 ## Common Patterns
 
