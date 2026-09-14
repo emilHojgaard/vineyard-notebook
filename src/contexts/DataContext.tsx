@@ -11,6 +11,7 @@ import {
   query,
   where,
   Timestamp,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -270,9 +271,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const projectDoc = await getDoc(projectRef);
       if (projectDoc.exists()) {
         const currentMembers = projectDoc.data().members || [];
+        // Only add if not already a member
         if (!currentMembers.includes(currentUser.uid)) {
+          // Use arrayUnion for atomic append operation (prevents race conditions)
           await updateDoc(projectRef, {
-            members: [...currentMembers, currentUser.uid],
+            members: arrayUnion(currentUser.uid),
           });
         }
       }
