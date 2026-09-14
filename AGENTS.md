@@ -141,6 +141,7 @@ Two read-only states:
 - **Calendar View**: Month grid with navigation
 - **Calendar View**: Agenda list (upcoming 30 days)
 - **Calendar View**: Phase and sub-event display
+- **Calendar View**: Export to .ics format (phases and sub-events)
 - **Inventory**: Sections and items with full CRUD
 - **Inventory**: Have/need quantities with status (need/partial/have)
 - **Inventory**: Pricing and units
@@ -169,7 +170,6 @@ Two read-only states:
 - **Real-time Updates**: Members and invitations update via Firestore snapshots
 
 ⏳ **TODO** (Future enhancements):
-- Export calendar to .ics format
 - Offline support (Firestore persistence)
 - Performance optimization (code splitting)
 - Email notifications for member invitations (currently manual)
@@ -274,6 +274,17 @@ import { walkNodes } from '../lib/utils';
 walkNodes(season.root, (node) => {
   // Process each node
 });
+```
+
+### Calendar Export
+```typescript
+import { generateICS, downloadICS } from '../lib/calendar-export';
+
+// Generate .ics file from calendar events
+const icsContent = generateICS(allEvents, season.title);
+if (icsContent) {
+  downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
+}
 ```
 
 ## Maintaining this file
