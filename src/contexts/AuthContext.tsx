@@ -20,12 +20,23 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 
+interface PendingInvitation {
+  id: string;
+  projectId: string;
+  projectName: string;
+  email: string;
+  invitedBy: string;
+}
+
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   loading: boolean;
+  pendingInvitations: PendingInvitation[];
   signup: (email: string, password: string, displayName: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  acceptInvitation: (invitationId: string) => Promise<void>;
+  declineInvitation: (invitationId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,12 +52,13 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Check for pending invitations when user logs in
-        await processPendingInvitations(user);
+        // Load pending invitations when user logs in
+        await loadPendingInvitations(user);
       }
       setCurrentUser(user);
       setLoading(false);
@@ -55,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const processPendingInvitations = async (user: FirebaseUser) => {
+  const loadPendingInvitations = async (user: FirebaseUser) => {
     if (!user.email) return;
 
     const normalizedEmail = user.email.toLowerCase();
@@ -67,27 +79,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const snapshot = await getDocs(invitationsQuery);
     
-    // Process each pending invitation
+    // Load all pending invitations with project names
+    const invitations: PendingInvitation[] = [];
     for (const inviteDoc of snapshot.docs) {
       const invitation = inviteDoc.data();
       const projectId = invitation.projectId;
 
-      // Add user to project members
+      // Fetch project name
       const projectRef = doc(db, 'projects', projectId);
       const projectDoc = await getDoc(projectRef);
       
       if (projectDoc.exists()) {
-        const currentMembers = projectDoc.data().members || [];
-        if (!currentMembers.includes(user.uid)) {
-          await updateDoc(projectRef, {
-            members: [...currentMembers, user.uid],
-          });
-        }
+        invitations.push({
+          id: inviteDoc.id,
+          projectId,
+          projectName: projectDoc.data().name || 'Unknown Project',
+          email: invitation.email,
+          invitedBy: invitation.invitedBy,
+        });
       }
-
-      // Mark invitation as accepted
-      await deleteDoc(doc(db, 'invitations', inviteDoc.id));
     }
+
+    setPendingInvitations(invitations);
+  };
+
+  const acceptInvitation = async (invitationId: string) => {
+    if (!currentUser) return;
+
+    const invitation = pendingInvitations.find(inv => inv.id === invitationId);
+    if (!invitation) return;
+
+    // Add user to project members
+    const projectRef = doc(db, 'projects', invitation.projectId);
+    const projectDoc = await getDoc(projectRef);
+    
+    if (projectDoc.exists()) {
+      const currentMembers = projectDoc.data().members || [];
+      if (!currentMembers.includes(currentUser.uid)) {
+        await updateDoc(projectRef, {
+          members: [...currentMembers, currentUser.uid],
+        });
+      }
+    }
+
+    // Delete the invitation
+    await deleteDoc(doc(db, 'invitations', invitationId));
+
+    // Remove from local state
+    setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+  };
+
+  const declineInvitation = async (invitationId: string) => {
+    // Delete the invitation without adding user to project
+    await deleteDoc(doc(db, 'invitations', invitationId));
+
+    // Remove from local state
+    setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
   };
 
   const signup = async (email: string, password: string, displayName: string) => {
@@ -102,8 +149,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName,
       });
       
-      // Process any pending invitations for this email
-      await processPendingInvitations(userCredential.user);
+      // Load any pending invitations for this email
+      await loadPendingInvitations(userCredential.user);
     }
   };
 
@@ -118,9 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = {
     currentUser,
     loading,
+    pendingInvitations,
     signup,
     login,
     logout,
+    acceptInvitation,
+    declineInvitation,
   };
 
   return (

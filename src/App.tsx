@@ -6,6 +6,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { ProjectSetup } from './features/auth/ProjectSetup';
 import { AppShell } from './components/AppShell';
 import { LoadingSpinner } from './components/LoadingSpinner';
+import { InvitationPrompt } from './components/InvitationPrompt';
 
 // Lazy load main feature views for better performance
 const TimelineView = lazy(() => import('./features/timeline/TimelineView'));
@@ -65,6 +66,7 @@ function App() {
     <AuthProvider>
       <DataProvider>
         <AppContent />
+        <InvitationPrompt />
       </DataProvider>
     </AuthProvider>
   );
