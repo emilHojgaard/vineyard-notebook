@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
@@ -46,6 +46,7 @@ export function TreeView() {
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -54,6 +55,28 @@ export function TreeView() {
     if (!season) return null;
     return buildTreeLayout(season.root);
   }, [season]);
+
+  // Auto-center the tree on initial load
+  useEffect(() => {
+    if (!layout || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const contentWidth = layout.width;
+    const contentHeight = layout.height;
+
+    // Calculate scroll position to center the tree
+    const scrollLeft = Math.max(0, (contentWidth - containerWidth) / 2);
+    const scrollTop = Math.max(0, (contentHeight - containerHeight) / 2);
+
+    // Center the view
+    container.scrollTo({
+      left: scrollLeft,
+      top: scrollTop,
+      behavior: 'auto', // Use 'auto' for instant positioning on mount
+    });
+  }, [layout]); // Run when layout is first calculated
 
   if (!season) {
     return (
@@ -191,7 +214,7 @@ export function TreeView() {
       </div>
 
       {/* Tree canvas */}
-      <div className="overflow-auto px-4 pb-8">
+      <div ref={scrollContainerRef} className="overflow-auto px-4 pb-8">
         <div
           className="relative mx-auto"
           style={{
