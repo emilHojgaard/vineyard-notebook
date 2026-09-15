@@ -290,6 +290,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setCurrentProject(project);
+      
+      // Update year to newest season in the new project
+      const projectSeasons = allSeasons[projectId] || {};
+      const availableYears = Object.keys(projectSeasons).map(Number);
+      if (availableYears.length > 0) {
+        const newestYear = Math.max(...availableYears);
+        updateAppState({ year: newestYear });
+      }
     }
   };
 
