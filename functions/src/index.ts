@@ -1,6 +1,13 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import cors from 'cors';
 import { generateICS } from './ics-generator';
+
+// Initialize CORS with options to allow development and production origins
+const corsHandler = cors({
+  origin: true, // Allows all origins (for calendar clients)
+  credentials: true,
+});
 
 admin.initializeApp();
 
@@ -77,16 +84,8 @@ async function isProjectMember(
  * URL: /calendarFeed/:projectId/:seasonYear?token=xxx
  */
 export const calendarFeed = functions.https.onRequest(async (req, res) => {
-  // Enable CORS for calendar clients
-  res.set('Access-Control-Allow-Origin', '*');
-  
-  if (req.method === 'OPTIONS') {
-    res.set('Access-Control-Allow-Methods', 'GET');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-    res.status(204).send('');
-    return;
-  }
-
+  // Handle CORS
+  return corsHandler(req, res, async () => {
   // Extract parameters
   const pathParts = req.path.split('/').filter(p => p);
   const projectId = pathParts[0];
@@ -160,6 +159,7 @@ export const calendarFeed = functions.https.onRequest(async (req, res) => {
     console.error('Error generating calendar feed:', error);
     res.status(500).send('Internal server error');
   }
+  });
 });
 
 /**
