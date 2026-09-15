@@ -223,6 +223,36 @@ npm run preview      # Preview production build
    VITE_FIREBASE_APP_ID=...
    ```
 
+### Cloud Functions Setup
+
+The app uses Firebase Cloud Functions for calendar subscription features:
+
+1. Install and build functions:
+   ```bash
+   cd functions
+   npm install
+   npm run build
+   ```
+
+2. Deploy functions:
+   ```bash
+   firebase deploy --only functions
+   ```
+
+3. **CORS Configuration**: Functions use the `cors` package to handle cross-origin requests:
+   - `calendarFeed` (onRequest): Uses CORS middleware, allows all origins for calendar clients
+   - Callable functions (`onCall`): CORS handled automatically by Firebase SDK
+   - Client uses `httpsCallable` from Firebase Functions SDK (initialized in `firebase.ts`)
+
+4. For local development with emulators:
+   ```bash
+   # Set environment variable
+   export VITE_USE_FIREBASE_EMULATOR=true
+   
+   # Start functions emulator
+   cd functions && npm run serve
+   ```
+
 ## Design Reference
 
 **Always consult**:
