@@ -5,6 +5,7 @@ import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../l
 import { Icon } from '../../components/Icon';
 import { generateICS, downloadICS } from '../../lib/calendar-export';
 import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
+import { DayEventsModal } from './DayEventsModal';
 
 interface CalendarEvent {
   id: string;
@@ -31,6 +32,11 @@ export function CalendarView() {
     // Default to January of the season's year
     return `${seasonYear}-01`;
   });
+
+  const [selectedDay, setSelectedDay] = useState<{
+    date: string;
+    events: CalendarEvent[];
+  } | null>(null);
 
   // Extract all calendar events from the season
   const allEvents = useMemo(() => {
@@ -232,7 +238,21 @@ export function CalendarView() {
     return daysDiff >= 0 && daysDiff <= 30;
   });
 
+  const isArchived = season.status !== 'current';
+
   return (
+    <>
+      <DayEventsModal
+        isOpen={selectedDay !== null}
+        onClose={() => setSelectedDay(null)}
+        date={selectedDay?.date || ''}
+        events={selectedDay?.events || []}
+        onUpdate={() => {
+          // Force re-render by updating a dummy state or refetching
+          // The events will automatically update due to useMemo dependency on season
+        }}
+        isArchived={isArchived}
+      />
     <div className="pb-20">
       {/* Header */}
       <div className="bg-surface px-4 py-3 border-b border-border">
@@ -269,14 +289,23 @@ export function CalendarView() {
           </div>
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((dayData, idx) => (
-              <div
+              <button
                 key={idx}
-                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative ${
+                onClick={() => {
+                  if (dayData.day !== null) {
+                    setSelectedDay({
+                      date: dayData.date,
+                      events: dayData.events,
+                    });
+                  }
+                }}
+                disabled={dayData.day === null}
+                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-colors ${
                   dayData.day === null
-                    ? 'bg-transparent'
+                    ? 'bg-transparent cursor-default'
                     : dayData.isToday
-                    ? 'bg-surface border-2 border-burgundy font-bold'
-                    : 'bg-surface border border-border'
+                    ? 'bg-surface border-2 border-burgundy font-bold hover:bg-surface-2 cursor-pointer'
+                    : 'bg-surface border border-border hover:bg-surface-2 cursor-pointer'
                 }`}
               >
                 {dayData.day !== null && (
@@ -295,7 +324,7 @@ export function CalendarView() {
                     )}
                   </>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -375,6 +404,7 @@ export function CalendarView() {
         />
       )}
     </div>
+    </>
   );
 }
 
