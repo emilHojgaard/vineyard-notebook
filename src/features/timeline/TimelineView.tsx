@@ -556,9 +556,9 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
 
       {/* Card */}
       <div className="flex-1 pb-2">
-        <button
+        <div
           onClick={onOpenModal}
-          className={`w-full bg-surface border rounded-lg p-3 text-left hover:bg-surface-2 transition-all ${
+          className={`w-full bg-surface border rounded-lg p-3 text-left hover:bg-surface-2 transition-all cursor-pointer ${
             status === 'done' ? 'opacity-60' : ''
           } ${!isHighlighted ? 'opacity-40' : ''}`}
           style={{
@@ -630,7 +630,7 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
               )}
             </div>
           </div>
-        </button>
+        </div>
 
         {alert && (
           <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-status-need/10 border border-status-need/30 rounded-md">
