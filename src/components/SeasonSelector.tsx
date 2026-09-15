@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -17,6 +17,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [hideOnScroll, setHideOnScroll] = useState(false);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const selectorRef = useRef<HTMLDivElement>(null);
 
   // Get sorted year list (newest first)
   const sortedYears = Object.keys(seasons)
@@ -97,9 +98,38 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     return () => contentDiv.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
+  // Auto-close expanded list when scrolled out of view
+  useEffect(() => {
+    if (!isExpanded || !selectorRef.current) return;
+
+    const contentDiv = document.getElementById('app-content');
+    if (!contentDiv) return;
+
+    // Use IntersectionObserver to detect when selector is out of view
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          // If the selector is less than 50% visible, close the dropdown
+          if (entry.intersectionRatio < 0.5) {
+            setIsExpanded(false);
+          }
+        });
+      },
+      {
+        root: contentDiv,
+        threshold: [0.5], // Trigger when 50% visible/hidden
+      }
+    );
+
+    observer.observe(selectorRef.current);
+
+    return () => observer.disconnect();
+  }, [isExpanded]);
+
   return (
     <>
       <div 
+        ref={selectorRef}
         className="bg-surface px-4 py-2 border-b border-border transition-all duration-300"
         style={{
           backgroundColor: 'rgba(147, 118, 95, 0.06)',
