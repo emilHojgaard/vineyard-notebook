@@ -229,6 +229,41 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [currentProject]);
 
+  // Auto-adjust appState when switching projects or when seasons change
+  useEffect(() => {
+    if (!currentProject) return;
+    
+    const projectSeasons = allSeasons[currentProject.id] || {};
+    const availableYears = Object.keys(projectSeasons).map(Number).filter(y => !isNaN(y));
+    
+    // If current appState.year doesn't exist in this project's seasons
+    if (availableYears.length > 0 && !projectSeasons[appState.year]) {
+      // Switch to the most recent year and reset project-specific state
+      const mostRecentYear = Math.max(...availableYears);
+      setAppState((prev) => ({ 
+        ...prev, 
+        year: mostRecentYear,
+        branchSelection: {}, // Clear branch selection (node IDs are season-specific)
+        treeFocus: null, // Clear tree focus (branch IDs are season-specific)
+        locked: false, // Reset lock state
+      }));
+      setFocusedBranchId(null); // Clear focused branch (branch IDs are season-specific)
+    } else if (availableYears.length === 0) {
+      // No seasons yet - use current year and reset state
+      const currentYear = new Date().getFullYear();
+      if (appState.year !== currentYear) {
+        setAppState((prev) => ({ 
+          ...prev, 
+          year: currentYear,
+          branchSelection: {},
+          treeFocus: null,
+          locked: false,
+        }));
+        setFocusedBranchId(null);
+      }
+    }
+  }, [currentProject, allSeasons, appState.year]);
+
   const loadMembers = async (projectId: string) => {
     const projectDoc = await getDoc(doc(db, 'projects', projectId));
     if (!projectDoc.exists()) return;
@@ -359,7 +394,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const selectProject = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
+      // Get available seasons for the new project
+      const projectSeasons = allSeasons[projectId] || {};
+      const availableYears = Object.keys(projectSeasons).map(Number).filter(y => !isNaN(y));
+      
+      // Immediately reset to a valid year for this project to prevent
+      // UI from trying to render non-existent seasons during the switch
+      if (availableYears.length > 0) {
+        // If current year doesn't exist in new project, switch to most recent
+        if (!projectSeasons[appState.year]) {
+          const mostRecentYear = Math.max(...availableYears);
+          setAppState((prev) => ({ 
+            ...prev, 
+            year: mostRecentYear,
+            branchSelection: {},
+            treeFocus: null,
+            locked: false,
+          }));
+          setFocusedBranchId(null);
+        } else {
+          // Current year exists in new project, just reset UI state
+          setAppState((prev) => ({ 
+            ...prev,
+            branchSelection: {},
+            treeFocus: null,
+            locked: false,
+          }));
+          setFocusedBranchId(null);
+        }
+      } else {
+        // No seasons yet - reset to current year
+        const currentYear = new Date().getFullYear();
+        setAppState((prev) => ({ 
+          ...prev, 
+          year: currentYear,
+          branchSelection: {},
+          treeFocus: null,
+          locked: false,
+        }));
+        setFocusedBranchId(null);
+      }
+      
       setCurrentProject(project);
+      // Note: The useEffect will also fire as a backup to ensure
+      // year stays valid as seasons load/change
     }
   };
 

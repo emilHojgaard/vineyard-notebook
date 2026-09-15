@@ -167,6 +167,7 @@ Two read-only states:
 - **Project Independence**: Each project has completely separate data
 - **Season Independence**: Seasons share only project-level library
 - **Firestore Partitioning**: Queries correctly scoped by projectId
+- **UI State Sync**: Auto-adjust year and reset UI state when switching projects
 - **Production Ready**: App is now architecturally bulletproof for multi-project use
 
 ✅ **Phase 4 - Member Management** (Completed):
