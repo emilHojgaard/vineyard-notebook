@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
@@ -56,20 +56,25 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  // Center the tree view on initial load and when layout changes
+  // Center the tree view on initial load and when layout or season changes
   useEffect(() => {
     if (!scrollContainerRef.current || !layout) return;
     
-    const container = scrollContainerRef.current;
-    const containerWidth = container.clientWidth;
-    const contentWidth = layout.width;
-    
-    // Only center if content is wider than container
-    if (contentWidth > containerWidth) {
-      const scrollLeft = (contentWidth - containerWidth) / 2;
-      container.scrollLeft = scrollLeft;
-    }
-  }, [layout]);
+    // Use requestAnimationFrame to ensure DOM is fully rendered
+    requestAnimationFrame(() => {
+      if (!scrollContainerRef.current || !layout) return;
+      
+      const container = scrollContainerRef.current;
+      const containerWidth = container.clientWidth;
+      const contentWidth = layout.width;
+      
+      // Only center if content is wider than container
+      if (contentWidth > containerWidth) {
+        const scrollLeft = (contentWidth - containerWidth) / 2;
+        container.scrollLeft = scrollLeft;
+      }
+    });
+  }, [layout, appState.year]);
 
   if (!season) {
     return (
