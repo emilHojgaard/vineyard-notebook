@@ -3,9 +3,7 @@ import { useData } from '../../contexts/DataContext';
 import type { Node, Event } from '../../types';
 import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
-import { generateICS, downloadICS } from '../../lib/calendar-export';
-import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
-import { DayEventsModal } from './DayEventsModal';
+import { Modal } from '../../components/Modal';
 
 interface CalendarEvent {
   id: string;
@@ -20,7 +18,8 @@ interface CalendarEvent {
 export function CalendarView() {
   const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDateEvents, setSelectedDateEvents] = useState<CalendarEvent[]>([]);
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -231,12 +230,10 @@ export function CalendarView() {
     'December',
   ];
 
-  // Get upcoming events for agenda (next 30 days from today)
-  const upcomingEvents = allEvents.filter((e) => {
-    const eventDate = parseDate(e.date);
-    const daysDiff = Math.ceil((eventDate.getTime() - today.getTime()) / 86400000);
-    return daysDiff >= 0 && daysDiff <= 30;
-  });
+  const handleDateClick = (date: string, events: CalendarEvent[]) => {
+    setSelectedDate(date);
+    setSelectedDateEvents(events);
+  };
 
   const isArchived = season.status !== 'current';
 
@@ -291,16 +288,9 @@ export function CalendarView() {
             {calendarDays.map((dayData, idx) => (
               <button
                 key={idx}
-                onClick={() => {
-                  if (dayData.day !== null) {
-                    setSelectedDay({
-                      date: dayData.date,
-                      events: dayData.events,
-                    });
-                  }
-                }}
+                onClick={() => dayData.day !== null && handleDateClick(dayData.date, dayData.events)}
                 disabled={dayData.day === null}
-                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-colors ${
+                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
                   dayData.day === null
                     ? 'bg-transparent cursor-default'
                     : dayData.isToday
@@ -329,79 +319,60 @@ export function CalendarView() {
           </div>
         </div>
 
-        {/* Agenda */}
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3">
-            Upcoming (Next 30 days)
-          </h3>
-          {upcomingEvents.length === 0 ? (
-            <div className="text-sm text-ink-faint text-center py-6">
-              No upcoming events
+        {/* Hint text */}
+        <div className="text-center text-sm text-ink-faint mt-4">
+          Click any date to view events
+        </div>
+      </div>
+
+      {/* Day events modal */}
+      {selectedDate && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            setSelectedDate(null);
+            setSelectedDateEvents([]);
+          }}
+          title={fmtDate(selectedDate)}
+        >
+          {selectedDateEvents.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-ink-soft mb-4">No events on this day</p>
+              <p className="text-sm text-ink-faint">
+                Add phases and events in the Timeline tab
+              </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {upcomingEvents.map((event) => (
+            <div className="space-y-3">
+              {selectedDateEvents.map((event) => (
                 <div
                   key={event.id}
-                  className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md"
+                  className="flex items-start gap-3 px-3 py-3 bg-surface border border-border rounded-md"
                 >
                   <div
-                    className="w-1 h-full min-h-[30px] rounded-full flex-shrink-0"
+                    className="w-1 h-full min-h-[40px] rounded-full flex-shrink-0"
                     style={{ backgroundColor: event.color }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-ink">
+                    <div className="text-sm font-semibold text-ink mb-1">
                       {event.title}
-                      {event.type === 'check' && (
-                        <span className="ml-2 text-xs font-bold uppercase tracking-wide text-ink-faint border border-border rounded px-1.5 py-0.5">
-                          {event.checkName}
-                        </span>
-                      )}
                     </div>
-                    <div className="text-xs text-ink-soft mt-0.5">{fmtDate(event.date)}</div>
+                    {event.type === 'check' && (
+                      <div className="text-xs font-bold uppercase tracking-wide text-ink-faint border border-border rounded px-2 py-1 inline-block">
+                        {event.checkName}
+                      </div>
+                    )}
+                    {event.type === 'phase' && (
+                      <div className="text-xs text-ink-soft">
+                        Phase {event.id.includes('-end') ? 'end' : 'start'}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        {/* Calendar subscription button */}
-        <button
-          onClick={() => setShowSubscriptionModal(true)}
-          className="w-full mt-6 px-4 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
-        >
-          <Icon name="link" size={14} />
-          Subscribe to Calendar
-        </button>
-
-        {/* Export button */}
-        <button
-          onClick={() => {
-            const icsContent = generateICS(allEvents, season.title);
-            if (icsContent) {
-              downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
-            } else {
-              alert('No events to export or error generating calendar file.');
-            }
-          }}
-          disabled={allEvents.length === 0}
-          className="w-full mt-3 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
-        >
-          <Icon name="download" size={14} />
-          Download .ics file
-          {allEvents.length > 0 && (
-            <span className="text-xs">({allEvents.length} events)</span>
-          )}
-        </button>
-      </div>
-
-      {/* Subscription Modal */}
-      {showSubscriptionModal && (
-        <CalendarSubscriptionModal
-          onClose={() => setShowSubscriptionModal(false)}
-          seasonYear={appState.year}
-        />
+        </Modal>
       )}
     </div>
     </>
