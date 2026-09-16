@@ -83,6 +83,11 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     setIsExpanded(false);
   }, [currentProject]);
 
+  // Close season selector when page/tab changes
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [appState.tab]);
+
   // Scroll detection to hide season selector (but not when expanded)
   useEffect(() => {
     const contentDiv = document.getElementById('app-content');
