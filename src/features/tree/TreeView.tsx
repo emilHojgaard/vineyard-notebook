@@ -214,6 +214,7 @@ export function TreeView() {
       {/* Tree canvas */}
       <div ref={scrollContainerRef} className="overflow-auto px-4 pb-8">
         <div
+          key={appState.year}
           className="relative mx-auto"
           style={{
             width: layout.width,
@@ -222,15 +223,18 @@ export function TreeView() {
         >
           {/* Edges (SVG paths) */}
           <svg
+            key={appState.year}
             className="absolute inset-0 pointer-events-none"
             width={layout.width}
             height={layout.height}
           >
             {layout.edges.map((edge, i) => {
               const isDim = false; // TODO: implement edge dimming based on focus
+              // Create unique key from edge coordinates to prevent ghost edges when season changes
+              const edgeKey = `${edge.x1}-${edge.y1}-${edge.x2}-${edge.y2}-${i}`;
               return (
                 <path
-                  key={i}
+                  key={edgeKey}
                   d={`M ${edge.x1} ${edge.y1} L ${edge.x2} ${edge.y2}`}
                   stroke={edge.color}
                   strokeWidth="2"
