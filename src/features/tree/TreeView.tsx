@@ -56,27 +56,22 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  // Auto-center the tree on initial load
-  useEffect(() => {
-    if (!layout || !scrollContainerRef.current) return;
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Center the tree view on initial load and when layout changes
+  useEffect(() => {
+    if (!scrollContainerRef.current || !layout) return;
+    
     const container = scrollContainerRef.current;
     const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
     const contentWidth = layout.width;
-    const contentHeight = layout.height;
-
-    // Calculate scroll position to center the tree
-    const scrollLeft = Math.max(0, (contentWidth - containerWidth) / 2);
-    const scrollTop = Math.max(0, (contentHeight - containerHeight) / 2);
-
-    // Center the view
-    container.scrollTo({
-      left: scrollLeft,
-      top: scrollTop,
-      behavior: 'auto', // Use 'auto' for instant positioning on mount
-    });
-  }, [layout]); // Run when layout is first calculated
+    
+    // Only center if content is wider than container
+    if (contentWidth > containerWidth) {
+      const scrollLeft = (contentWidth - containerWidth) / 2;
+      container.scrollLeft = scrollLeft;
+    }
+  }, [layout]);
 
   if (!season) {
     return (
