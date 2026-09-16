@@ -16,10 +16,16 @@ interface CalendarEvent {
 }
 
 export function CalendarView() {
-  const { seasons, appState, updateAppState } = useData();
+  const { seasons, appState, updateAppState, updateSeason } = useData();
   const season = seasons[appState.year];
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<CalendarEvent[]>([]);
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
+  const [newEventName, setNewEventName] = useState('');
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string>('');
+
+  const isLocked = appState.locked;
+  const isArchived = season?.status !== 'current';
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -233,6 +239,48 @@ export function CalendarView() {
   const handleDateClick = (date: string, events: CalendarEvent[]) => {
     setSelectedDate(date);
     setSelectedDateEvents(events);
+    setIsAddingEvent(false);
+    setNewEventName('');
+    setSelectedPhaseId('');
+  };
+
+  // Get all phases (nodes) for the phase selector
+  const allPhases = useMemo(() => {
+    if (!season) return [];
+    const phases: Array<{ id: string; name: string }> = [];
+    walkNodes(season.root, (node) => {
+      phases.push({ id: node.id, name: node.name });
+    });
+    return phases;
+  }, [season]);
+
+  const handleAddEvent = async () => {
+    if (!newEventName.trim() || !selectedPhaseId || !selectedDate || !season) return;
+
+    // Find the node and add the event
+    let nodeFound = false;
+    const updatedSeason = { ...season };
+    
+    walkNodes(updatedSeason.root, (node) => {
+      if (node.id === selectedPhaseId) {
+        node.events.push({
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: newEventName.trim(),
+          date: selectedDate,
+        });
+        nodeFound = true;
+      }
+    });
+
+    if (nodeFound) {
+      await updateSeason(appState.year, updatedSeason);
+      setIsAddingEvent(false);
+      setNewEventName('');
+      setSelectedPhaseId('');
+      // Refresh the selected date events
+      const newEvents = allEvents.filter((e) => e.date === selectedDate);
+      setSelectedDateEvents(newEvents);
+    }
   };
 
   const isArchived = season.status !== 'current';
@@ -332,18 +380,19 @@ export function CalendarView() {
           onClose={() => {
             setSelectedDate(null);
             setSelectedDateEvents([]);
+            setIsAddingEvent(false);
+            setNewEventName('');
+            setSelectedPhaseId('');
           }}
           title={fmtDate(selectedDate)}
         >
+          {/* Event list */}
           {selectedDateEvents.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-ink-soft mb-4">No events on this day</p>
-              <p className="text-sm text-ink-faint">
-                Add phases and events in the Timeline tab
-              </p>
+            <div className="text-center py-4">
+              <p className="text-ink-soft mb-2">No events on this day</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 mb-4">
               {selectedDateEvents.map((event) => (
                 <div
                   key={event.id}
@@ -370,6 +419,87 @@ export function CalendarView() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Add event section */}
+          {!isLocked && !isArchived && allPhases.length > 0 && (
+            <div className="border-t border-border pt-4">
+              {!isAddingEvent ? (
+                <button
+                  onClick={() => setIsAddingEvent(true)}
+                  className="w-full px-4 py-2 border-2 border-dashed border-border rounded-lg text-ink-soft font-semibold text-sm hover:text-burgundy hover:border-burgundy transition-colors flex items-center justify-center gap-2"
+                >
+                  <Icon name="plus" size={14} />
+                  Add Event
+                </button>
+              ) : (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3">
+                    Add Event to This Day
+                  </h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+                        Select Phase
+                      </label>
+                      <select
+                        value={selectedPhaseId}
+                        onChange={(e) => setSelectedPhaseId(e.target.value)}
+                        className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
+                      >
+                        <option value="">Choose a phase...</option>
+                        {allPhases.map((phase) => (
+                          <option key={phase.id} value={phase.id}>
+                            {phase.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+                        Event Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newEventName}
+                        onChange={(e) => setNewEventName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddEvent()}
+                        placeholder="e.g. Check pH levels"
+                        className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleAddEvent}
+                        disabled={!newEventName.trim() || !selectedPhaseId}
+                        className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Add Event
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsAddingEvent(false);
+                          setNewEventName('');
+                          setSelectedPhaseId('');
+                        }}
+                        className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Empty state when no phases exist */}
+          {!isLocked && !isArchived && allPhases.length === 0 && (
+            <div className="border-t border-border pt-4 text-center">
+              <p className="text-sm text-ink-faint">
+                Create phases in the Timeline tab first
+              </p>
             </div>
           )}
         </Modal>
