@@ -91,8 +91,16 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       }
 
       const currentScrollY = contentDiv.scrollTop;
-      // Hide when scrolling down, show when scrolling up
-      if (currentScrollY > lastScrollY && currentScrollY > 20) {
+      
+      // Never hide if the dropdown is expanded
+      if (isExpanded) {
+        setHideOnScroll(false);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+
+      // Hide when scrolling down significantly, show when scrolling up
+      if (currentScrollY > lastScrollY && currentScrollY > 50) {
         setHideOnScroll(true);
       } else if (currentScrollY < lastScrollY) {
         setHideOnScroll(false);
@@ -104,32 +112,11 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     return () => contentDiv.removeEventListener('scroll', handleScroll);
   }, [lastScrollY, isExpanded]);
 
-  // Auto-close expanded list when scrolled out of view
+  // When expanded, ensure we're visible
   useEffect(() => {
-    if (!isExpanded || !selectorRef.current) return;
-
-    const contentDiv = document.getElementById('app-content');
-    if (!contentDiv) return;
-
-    // Use IntersectionObserver to detect when selector is out of view
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          // If the selector is less than 50% visible, close the dropdown
-          if (entry.intersectionRatio < 0.5) {
-            setIsExpanded(false);
-          }
-        });
-      },
-      {
-        root: contentDiv,
-        threshold: [0.5], // Trigger when 50% visible/hidden
-      }
-    );
-
-    observer.observe(selectorRef.current);
-
-    return () => observer.disconnect();
+    if (isExpanded) {
+      setHideOnScroll(false);
+    }
   }, [isExpanded]);
 
   return (
