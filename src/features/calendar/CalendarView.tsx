@@ -263,33 +263,51 @@ export function CalendarView() {
     return phases;
   }, [season]);
 
+  // Helper to find a node by ID (stops after first match to avoid duplicates in branches)
+  const findNodeById = (nodeId: string): Node | null => {
+    let found: Node | null = null;
+
+    const walk = (nodes: Node[]) => {
+      for (const node of nodes) {
+        if (node.id === nodeId) {
+          found = node;
+          return;
+        }
+        if (node.branches) {
+          for (const branch of node.branches) {
+            walk(branch.nodes);
+            if (found) return;
+          }
+        }
+      }
+    };
+
+    if (season) {
+      walk(season.root);
+    }
+    return found;
+  };
+
   const handleAddEvent = async () => {
     if (!newEventName.trim() || !selectedPhaseId || !selectedDate || !season) return;
 
-    // Find the node and add the event
-    let nodeFound = false;
-    const updatedSeason = { ...season };
-    
-    walkNodes(updatedSeason.root, (node) => {
-      if (node.id === selectedPhaseId) {
-        node.events.push({
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: newEventName.trim(),
-          date: selectedDate,
-        });
-        nodeFound = true;
-      }
+    // Find the node and add the event (only to the first matching node)
+    const node = findNodeById(selectedPhaseId);
+    if (!node) return;
+
+    node.events.push({
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: newEventName.trim(),
+      date: selectedDate,
     });
 
-    if (nodeFound) {
-      await updateSeason(appState.year, updatedSeason);
-      setIsAddingEvent(false);
-      setNewEventName('');
-      setSelectedPhaseId('');
-      // Refresh the selected date events
-      const newEvents = allEvents.filter((e) => e.date === selectedDate);
-      setSelectedDateEvents(newEvents);
-    }
+    await updateSeason(appState.year, season);
+    setIsAddingEvent(false);
+    setNewEventName('');
+    setSelectedPhaseId('');
+    // Refresh the selected date events
+    const newEvents = allEvents.filter((e) => e.date === selectedDate);
+    setSelectedDateEvents(newEvents);
   };
 
   return (
