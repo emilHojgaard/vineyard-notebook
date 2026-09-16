@@ -38,10 +38,7 @@ export function CalendarView() {
     return `${seasonYear}-01`;
   });
 
-  const [selectedDay, setSelectedDay] = useState<{
-    date: string;
-    events: CalendarEvent[];
-  } | null>(null);
+
 
   // Extract all calendar events from the season
   const allEvents = useMemo(() => {
@@ -283,21 +280,7 @@ export function CalendarView() {
     }
   };
 
-  const isArchived = season.status !== 'current';
-
   return (
-    <>
-      <DayEventsModal
-        isOpen={selectedDay !== null}
-        onClose={() => setSelectedDay(null)}
-        date={selectedDay?.date || ''}
-        events={selectedDay?.events || []}
-        onUpdate={() => {
-          // Force re-render by updating a dummy state or refetching
-          // The events will automatically update due to useMemo dependency on season
-        }}
-        isArchived={isArchived}
-      />
     <div className="pb-20">
       {/* Header */}
       <div className="bg-surface px-4 py-3 border-b border-border">
@@ -505,7 +488,6 @@ export function CalendarView() {
         </Modal>
       )}
     </div>
-    </>
   );
 }
 

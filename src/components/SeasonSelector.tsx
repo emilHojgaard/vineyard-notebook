@@ -84,12 +84,6 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     if (!contentDiv) return;
 
     const handleScroll = () => {
-      // Don't hide if the list is expanded
-      if (isExpanded) {
-        setHideOnScroll(false);
-        return;
-      }
-
       const currentScrollY = contentDiv.scrollTop;
       
       // Never hide if the dropdown is expanded

@@ -56,8 +56,6 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
   // Center the tree view on initial load and when layout changes
   useEffect(() => {
     if (!scrollContainerRef.current || !layout) return;
