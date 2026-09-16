@@ -8,7 +8,7 @@ interface SeasonSelectorProps {
 }
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
-  const { seasons, appState, updateAppState, createSeason, deleteSeason } = useData();
+  const { seasons, appState, updateAppState, createSeason, deleteSeason, currentProject } = useData();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -77,6 +77,11 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
   // Get sorted year list (newest first)
   const hasSeasons = sortedYears.length > 0;
+
+  // Close season selector when project changes
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [currentProject]);
 
   // Scroll detection to hide season selector (but not when expanded)
   useEffect(() => {
