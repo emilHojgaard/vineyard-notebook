@@ -78,12 +78,18 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   // Get sorted year list (newest first)
   const hasSeasons = sortedYears.length > 0;
 
-  // Scroll detection to hide season selector
+  // Scroll detection to hide season selector (but not when expanded)
   useEffect(() => {
     const contentDiv = document.getElementById('app-content');
     if (!contentDiv) return;
 
     const handleScroll = () => {
+      // Don't hide if the list is expanded
+      if (isExpanded) {
+        setHideOnScroll(false);
+        return;
+      }
+
       const currentScrollY = contentDiv.scrollTop;
       // Hide when scrolling down, show when scrolling up
       if (currentScrollY > lastScrollY && currentScrollY > 20) {
@@ -96,7 +102,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
     contentDiv.addEventListener('scroll', handleScroll, { passive: true });
     return () => contentDiv.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, isExpanded]);
 
   // Auto-close expanded list when scrolled out of view
   useEffect(() => {
@@ -145,7 +151,10 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
             <div className="flex items-center justify-center gap-2">
               <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
               <button
-                onClick={() => setIsExpanded(!isExpanded)}
+                onClick={() => {
+                  setIsExpanded(!isExpanded);
+                  setHideOnScroll(false); // Ensure it's visible when expanding
+                }}
                 className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
               >
                 <span>{appState.year}</span>
