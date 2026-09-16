@@ -95,7 +95,19 @@ export function CalendarView() {
     }
 
     walkWithColor(season.root, TRUNK_COLOR);
-    return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    
+    // De-duplicate events: same phase can appear multiple times if it has branches
+    // We want each unique (date, title, type) combination to appear only once
+    const eventMap = new Map<string, CalendarEvent>();
+    events.forEach((event) => {
+      const key = `${event.date}|${event.title}|${event.type}|${event.checkName || ''}`;
+      if (!eventMap.has(key)) {
+        eventMap.set(key, event);
+      }
+    });
+    
+    const uniqueEvents = Array.from(eventMap.values());
+    return uniqueEvents.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }, [season]);
 
   // Update calendar month when season changes (smart start date logic)
