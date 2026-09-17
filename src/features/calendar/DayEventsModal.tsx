@@ -108,15 +108,47 @@ export function DayEventsModal({
   const phaseEvents = events.filter((e) => e.type === 'phase');
   const checkEvents = events.filter((e) => e.type === 'check');
 
-  // Get unique phases for the add event selector
-  const uniquePhases = Array.from(
-    new Map(
-      events.map((e) => {
-        const node = findNode(e.nodeId);
-        return [e.nodeId, { id: e.nodeId, name: e.title, color: e.color, node }];
-      })
-    ).values()
-  );
+  // Collect all phases with their branch context
+  const collectPhasesWithBranchContext = () => {
+    const phases: Array<{
+      id: string;
+      name: string;
+      displayName: string;
+      color: string;
+      node: Node | null;
+    }> = [];
+
+    const walk = (nodes: Node[], branchPath: string[]) => {
+      nodes.forEach((node) => {
+        // Build display name with branch context
+        let displayName = node.name;
+        if (branchPath.length > 0) {
+          displayName = `${node.name} (${branchPath.join(' → ')})`;
+        }
+
+        phases.push({
+          id: node.id,
+          name: node.name,
+          displayName,
+          color: '#000', // Will be set by walkWithColor in CalendarView
+          node,
+        });
+
+        // Walk branches
+        if (node.branches) {
+          node.branches.forEach((branch, idx) => {
+            const newPath = [...branchPath, branch.name];
+            walk(branch.nodes, newPath);
+          });
+        }
+      });
+    };
+
+    walk(season.root, []);
+    return phases;
+  };
+
+  const allPhases = collectPhasesWithBranchContext();
 
   return (
     <>
@@ -131,7 +163,7 @@ export function DayEventsModal({
             <div className="text-sm text-ink-faint italic mb-6">
               No events on this day
             </div>
-            {!isArchived && uniquePhases.length > 0 && (
+            {!isArchived && allPhases.length > 0 && (
               <div className="max-w-sm mx-auto">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-2 text-left">
                   Add a check for this day
@@ -143,9 +175,9 @@ export function DayEventsModal({
                     className="px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
                   >
                     <option value="">Select a phase...</option>
-                    {uniquePhases.map((phase) => (
+                    {allPhases.map((phase) => (
                       <option key={phase.id} value={phase.id}>
-                        {phase.name}
+                        {phase.displayName}
                       </option>
                     ))}
                   </select>
@@ -289,7 +321,7 @@ export function DayEventsModal({
             )}
 
             {/* Add new event */}
-            {!isArchived && uniquePhases.length > 0 && (
+            {!isArchived && allPhases.length > 0 && (
               <div className="pt-2 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-2">
                   Add Check
@@ -301,9 +333,9 @@ export function DayEventsModal({
                     className="px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
                   >
                     <option value="">Select a phase...</option>
-                    {uniquePhases.map((phase) => (
+                    {allPhases.map((phase) => (
                       <option key={phase.id} value={phase.id}>
-                        {phase.name}
+                        {phase.displayName}
                       </option>
                     ))}
                   </select>
