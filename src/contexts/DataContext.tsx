@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -11,10 +10,8 @@ import {
   query,
   where,
   Timestamp,
-  arrayUnion,
 } from 'firebase/firestore';
 import { db, functions } from '../lib/firebase';
-import { httpsCallable } from 'firebase/functions';
 import { useAuth } from './AuthContext';
 import type {
   Project,
@@ -23,7 +20,6 @@ import type {
   Library,
   AppState,
   Member,
-  Invitation,
   Node as PhaseNode,
   Branch,
 } from '../types';
@@ -42,7 +38,6 @@ interface DataContextType {
   library: Library | null; // current project's library
   appState: AppState;
   members: Member[];
-  pendingInvitations: Invitation[] | null;
   loading: boolean;
   focusedBranchId: string | null;
   setFocusedBranchId: (branchId: string | null) => void;
@@ -59,9 +54,8 @@ interface DataContextType {
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
   updateAppState: (state: Partial<AppState>) => void;
-  inviteMember: (email: string) => Promise<void>;
+  inviteMembers: (emails: string[]) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
-  cancelInvitation: (invitationId: string) => Promise<void>;
   generateCalendarToken: () => Promise<string>;
   revokeCalendarToken: (token: string) => Promise<void>;
   listCalendarTokens: () => Promise<Array<{ id: string; createdAt: string | null }>>;
@@ -85,7 +79,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [allInventory, setAllInventory] = useState<Record<string, Record<number, Inventory>>>({});
   const [allLibrary, setAllLibrary] = useState<Record<string, Library>>({});
   const [members, setMembers] = useState<Member[]>([]);
-  const [pendingInvitations, setPendingInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
 
@@ -106,13 +99,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     eventAlertDays: 7,
     treeFocus: null,
   });
-
-  // Accept pending invitations on login
-  useEffect(() => {
-    if (currentUser) {
-      acceptPendingInvitations();
-    }
-  }, [currentUser]);
 
   // Load user's projects
   useEffect(() => {
@@ -207,62 +193,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Load members
     loadMembers(currentProject.id);
 
-    // Load pending invitations
-    const invitationsQuery = query(
-      collection(db, 'invitations'),
-      where('projectId', '==', currentProject.id),
-      where('status', '==', 'pending')
-    );
-    unsubscribers.push(
-      onSnapshot(invitationsQuery, (snapshot) => {
-        const invites = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-        })) as Invitation[];
-        setPendingInvitations(invites);
-      })
-    );
-
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
   }, [currentProject]);
-
-  // Auto-adjust appState when switching projects or when seasons change
-  useEffect(() => {
-    if (!currentProject) return;
-    
-    const projectSeasons = allSeasons[currentProject.id] || {};
-    const availableYears = Object.keys(projectSeasons).map(Number).filter(y => !isNaN(y));
-    
-    // If current appState.year doesn't exist in this project's seasons
-    if (availableYears.length > 0 && !projectSeasons[appState.year]) {
-      // Switch to the most recent year and reset project-specific state
-      const mostRecentYear = Math.max(...availableYears);
-      setAppState((prev) => ({ 
-        ...prev, 
-        year: mostRecentYear,
-        branchSelection: {}, // Clear branch selection (node IDs are season-specific)
-        treeFocus: null, // Clear tree focus (branch IDs are season-specific)
-        locked: false, // Reset lock state
-      }));
-      setFocusedBranchId(null); // Clear focused branch (branch IDs are season-specific)
-    } else if (availableYears.length === 0) {
-      // No seasons yet - use current year and reset state
-      const currentYear = new Date().getFullYear();
-      if (appState.year !== currentYear) {
-        setAppState((prev) => ({ 
-          ...prev, 
-          year: currentYear,
-          branchSelection: {},
-          treeFocus: null,
-          locked: false,
-        }));
-        setFocusedBranchId(null);
-      }
-    }
-  }, [currentProject, allSeasons, appState.year]);
 
   const loadMembers = async (projectId: string) => {
     const projectDoc = await getDoc(doc(db, 'projects', projectId));
@@ -286,42 +220,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const loadedMembers = (await Promise.all(memberPromises)).filter(Boolean) as Member[];
     setMembers(loadedMembers);
-  };
-
-  const acceptPendingInvitations = async () => {
-    if (!currentUser) return;
-
-    // Query for pending invitations matching user's email
-    const invitationsRef = collection(db, 'invitations');
-    const q = query(
-      invitationsRef,
-      where('email', '==', currentUser.email?.toLowerCase()),
-      where('status', '==', 'pending')
-    );
-    const snapshot = await getDocs(q);
-
-    // Process each invitation
-    for (const inviteDoc of snapshot.docs) {
-      const invitation = inviteDoc.data();
-      const projectId = invitation.projectId;
-
-      // Add user to project
-      const projectRef = doc(db, 'projects', projectId);
-      const projectDoc = await getDoc(projectRef);
-      if (projectDoc.exists()) {
-        const currentMembers = projectDoc.data().members || [];
-        // Only add if not already a member
-        if (!currentMembers.includes(currentUser.uid)) {
-          // Use arrayUnion for atomic append operation (prevents race conditions)
-          await updateDoc(projectRef, {
-            members: arrayUnion(currentUser.uid),
-          });
-        }
-      }
-
-      // Delete invitation (firestore rules don't allow updates)
-      await deleteDoc(doc(db, 'invitations', inviteDoc.id));
-    }
   };
 
   const createProject = async (name: string): Promise<string> => {
@@ -394,50 +292,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const selectProject = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
-      // Get available seasons for the new project
-      const projectSeasons = allSeasons[projectId] || {};
-      const availableYears = Object.keys(projectSeasons).map(Number).filter(y => !isNaN(y));
-      
-      // Immediately reset to a valid year for this project to prevent
-      // UI from trying to render non-existent seasons during the switch
-      if (availableYears.length > 0) {
-        // If current year doesn't exist in new project, switch to most recent
-        if (!projectSeasons[appState.year]) {
-          const mostRecentYear = Math.max(...availableYears);
-          setAppState((prev) => ({ 
-            ...prev, 
-            year: mostRecentYear,
-            branchSelection: {},
-            treeFocus: null,
-            locked: false,
-          }));
-          setFocusedBranchId(null);
-        } else {
-          // Current year exists in new project, just reset UI state
-          setAppState((prev) => ({ 
-            ...prev,
-            branchSelection: {},
-            treeFocus: null,
-            locked: false,
-          }));
-          setFocusedBranchId(null);
-        }
-      } else {
-        // No seasons yet - reset to current year
-        const currentYear = new Date().getFullYear();
-        setAppState((prev) => ({ 
-          ...prev, 
-          year: currentYear,
-          branchSelection: {},
-          treeFocus: null,
-          locked: false,
-        }));
-        setFocusedBranchId(null);
-      }
-      
       setCurrentProject(project);
-      // Note: The useEffect will also fire as a backup to ensure
-      // year stays valid as seasons load/change
     }
   };
 
@@ -880,36 +735,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setAppState((prev) => ({ ...prev, ...state }));
   };
 
-  const inviteMember = async (email: string) => {
-    if (!currentProject || !currentUser) throw new Error('Not authenticated');
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Check if already invited
-    const invitationsRef = collection(db, 'invitations');
-    const inviteQuery = query(
-      invitationsRef,
-      where('projectId', '==', currentProject.id),
-      where('email', '==', normalizedEmail),
-      where('status', '==', 'pending')
-    );
-    const existingInvites = await getDocs(inviteQuery);
-    
-    if (!existingInvites.empty) {
-      throw new Error('User is already invited');
-    }
-
-    // Create pending invitation (works for both existing and new users)
-    const invitationRef = doc(collection(db, 'invitations'));
-    await setDoc(invitationRef, {
-      projectId: currentProject.id,
-      email: normalizedEmail,
-      invitedBy: currentUser.uid,
-      createdAt: Timestamp.now(),
-      status: 'pending',
-    });
-    
-    // Real-time listener will automatically update pendingInvitations
+  const inviteMembers = async (emails: string[]) => {
+    if (!currentProject) return;
+    // TODO: Send email invitations
+    // For now, this is a placeholder
+    console.log('Invite members:', emails);
   };
 
   const removeMember = async (memberId: string) => {
@@ -928,24 +758,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await loadMembers(currentProject.id);
   };
 
-  const cancelInvitation = async (invitationId: string) => {
-    await deleteDoc(doc(db, 'invitations', invitationId));
-  };
-
   const generateCalendarToken = async (): Promise<string> => {
     if (!currentProject) throw new Error('No project selected');
+    const { httpsCallable } = await import('firebase/functions');
     const generateToken = httpsCallable(functions, 'generateCalendarToken');
     const result = await generateToken({ projectId: currentProject.id });
     return (result.data as { token: string }).token;
   };
 
   const revokeCalendarToken = async (token: string): Promise<void> => {
+    const { httpsCallable } = await import('firebase/functions');
     const revokeToken = httpsCallable(functions, 'revokeCalendarToken');
     await revokeToken({ token });
   };
 
   const listCalendarTokens = async (): Promise<Array<{ id: string; createdAt: string | null }>> => {
     if (!currentProject) return [];
+    const { httpsCallable } = await import('firebase/functions');
     const listTokens = httpsCallable(functions, 'listCalendarTokens');
     const result = await listTokens({ projectId: currentProject.id });
     return (result.data as { tokens: Array<{ id: string; createdAt: string | null }> }).tokens;
@@ -962,7 +791,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     library,
     appState,
     members,
-    pendingInvitations,
     loading,
     focusedBranchId,
     setFocusedBranchId,
@@ -979,9 +807,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateInventory,
     updateLibrary,
     updateAppState,
-    inviteMember,
+    inviteMembers,
     removeMember,
-    cancelInvitation,
     generateCalendarToken,
     revokeCalendarToken,
     listCalendarTokens,

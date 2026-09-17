@@ -1,24 +1,12 @@
-/**
- * Generate iCalendar (.ics) file content from season data
- */
-
-interface Event {
-  id: string;
-  name: string;
-  date: string;
-}
+import { createEvents, EventAttributes, DateArray } from 'ics';
 
 interface Node {
   id: string;
   name: string;
-  start: string;
-  end: string;
-  events: Event[];
-  branches?: Array<{
-    id: string;
-    name: string;
-    nodes: Node[];
-  }> | null;
+  start: string | null;
+  end: string | null;
+  events: Array<{ id: string; name: string; date: string }>;
+  branches: Array<{ id: string; name: string; nodes: Node[] }> | null;
 }
 
 interface Season {
@@ -26,112 +14,95 @@ interface Season {
   root: Node[];
 }
 
-interface CalendarEvent {
-  uid: string;
-  summary: string;
-  dtstart: string;
-  dtend?: string;
-  description?: string;
+/**
+ * Convert ISO date string (YYYY-MM-DD) to ics DateArray format
+ * DateArray is [year, month, day] where month is 1-12
+ */
+function dateToArray(dateStr: string): DateArray {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return [year, month, day];
 }
 
 /**
- * Format date for iCalendar format (YYYYMMDD)
+ * Extract all events from season tree
  */
-function formatICSDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  return `${year}${month}${day}`;
-}
-
-/**
- * Walk all nodes in the tree and collect events
- */
-function walkNodes(nodes: Node[], callback: (node: Node) => void) {
-  nodes.forEach(node => {
-    callback(node);
-    if (node.branches) {
-      node.branches.forEach(branch => {
-        walkNodes(branch.nodes, callback);
-      });
-    }
-  });
-}
-
-/**
- * Extract all calendar events from season data
- */
-function extractEvents(season: Season): CalendarEvent[] {
-  const events: CalendarEvent[] = [];
-
-  walkNodes(season.root, (node) => {
-    // Add phase start as event
+function extractEvents(nodes: Node[], events: EventAttributes[] = []): EventAttributes[] {
+  nodes.forEach((node) => {
+    // Add phase start
     if (node.start) {
+      const eventDate = dateToArray(node.start);
       events.push({
+        title: `${node.name} (Start)`,
+        description: `Start of ${node.name} phase`,
+        start: eventDate,
+        startInputType: 'local',
+        startOutputType: 'local',
+        duration: { days: 1 },
+        productId: 'vineyard-notebook',
         uid: `${node.id}-start`,
-        summary: `${node.name} - Start`,
-        dtstart: formatICSDate(node.start),
-        description: `Phase: ${node.name}`,
       });
     }
 
-    // Add phase end as event (if different from start)
+    // Add phase end
     if (node.end && node.end !== node.start) {
+      const eventDate = dateToArray(node.end);
       events.push({
+        title: `${node.name} (End)`,
+        description: `End of ${node.name} phase`,
+        start: eventDate,
+        startInputType: 'local',
+        startOutputType: 'local',
+        duration: { days: 1 },
+        productId: 'vineyard-notebook',
         uid: `${node.id}-end`,
-        summary: `${node.name} - End`,
-        dtstart: formatICSDate(node.end),
-        description: `Phase: ${node.name}`,
       });
     }
 
-    // Add sub-events (checks)
+    // Add sub-events/checks
     node.events.forEach((event) => {
+      const eventDate = dateToArray(event.date);
       events.push({
+        title: `${node.name}: ${event.name}`,
+        description: `${event.name} for ${node.name}`,
+        start: eventDate,
+        startInputType: 'local',
+        startOutputType: 'local',
+        duration: { days: 1 },
+        productId: 'vineyard-notebook',
         uid: event.id,
-        summary: `${node.name} - ${event.name}`,
-        dtstart: formatICSDate(event.date),
-        description: `Check: ${event.name}\nPhase: ${node.name}`,
       });
     });
+
+    // Recurse into branches
+    if (node.branches) {
+      node.branches.forEach((branch) => {
+        extractEvents(branch.nodes, events);
+      });
+    }
   });
 
   return events;
 }
 
 /**
- * Generate iCalendar (.ics) file content
+ * Generate ICS calendar from season data
  */
-export function generateICS(season: Season, projectName: string): string {
-  const events = extractEvents(season);
-  const now = new Date();
-  const dtstamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+export function generateCalendar(season: Season): string | null {
+  const events = extractEvents(season.root);
 
-  let ics = 'BEGIN:VCALENDAR\r\n';
-  ics += 'VERSION:2.0\r\n';
-  ics += 'PRODID:-//Vineyard Notebook//Calendar Feed//EN\r\n';
-  ics += 'CALSCALE:GREGORIAN\r\n';
-  ics += 'METHOD:PUBLISH\r\n';
-  ics += `X-WR-CALNAME:${projectName} - ${season.title}\r\n`;
-  ics += 'X-WR-TIMEZONE:UTC\r\n';
-  ics += `X-WR-CALDESC:Vineyard activities for ${projectName} (${season.title})\r\n`;
+  if (events.length === 0) {
+    return null;
+  }
 
-  events.forEach(event => {
-    ics += 'BEGIN:VEVENT\r\n';
-    ics += `UID:${event.uid}@vineyard-notebook.app\r\n`;
-    ics += `DTSTAMP:${dtstamp}\r\n`;
-    ics += `DTSTART;VALUE=DATE:${event.dtstart}\r\n`;
-    if (event.dtend) {
-      ics += `DTEND;VALUE=DATE:${event.dtend}\r\n`;
+  try {
+    const { error, value } = createEvents(events);
+    if (error) {
+      console.error('Error creating .ics events:', error);
+      return null;
     }
-    ics += `SUMMARY:${event.summary}\r\n`;
-    if (event.description) {
-      // Escape special characters and wrap long lines
-      const desc = event.description.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n');
-      ics += `DESCRIPTION:${desc}\r\n`;
-    }
-    ics += 'END:VEVENT\r\n';
-  });
-
-  ics += 'END:VCALENDAR\r\n';
-  return ics;
+    return value || null;
+  } catch (err) {
+    console.error('Error generating .ics file:', err);
+    return null;
+  }
 }

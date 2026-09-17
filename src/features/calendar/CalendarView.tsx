@@ -3,7 +3,8 @@ import { useData } from '../../contexts/DataContext';
 import type { Node, Event } from '../../types';
 import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
-import { Modal } from '../../components/Modal';
+import { generateICS, downloadICS } from '../../lib/calendar-export';
+import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
 
 interface CalendarEvent {
   id: string;
@@ -16,16 +17,9 @@ interface CalendarEvent {
 }
 
 export function CalendarView() {
-  const { seasons, appState, updateAppState, updateSeason } = useData();
+  const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedDateEvents, setSelectedDateEvents] = useState<CalendarEvent[]>([]);
-  const [isAddingEvent, setIsAddingEvent] = useState(false);
-  const [newEventName, setNewEventName] = useState('');
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string>('');
-
-  const isLocked = appState.locked;
-  const isArchived = season?.status !== 'current';
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -37,8 +31,6 @@ export function CalendarView() {
     // Default to January of the season's year
     return `${seasonYear}-01`;
   });
-
-
 
   // Extract all calendar events from the season
   const allEvents = useMemo(() => {
@@ -95,19 +87,7 @@ export function CalendarView() {
     }
 
     walkWithColor(season.root, TRUNK_COLOR);
-    
-    // De-duplicate events: same phase can appear multiple times if it has branches
-    // We want each unique (date, title, type) combination to appear only once
-    const eventMap = new Map<string, CalendarEvent>();
-    events.forEach((event) => {
-      const key = `${event.date}|${event.title}|${event.type}|${event.checkName || ''}`;
-      if (!eventMap.has(key)) {
-        eventMap.set(key, event);
-      }
-    });
-    
-    const uniqueEvents = Array.from(eventMap.values());
-    return uniqueEvents.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }, [season]);
 
   // Update calendar month when season changes (smart start date logic)
@@ -133,40 +113,6 @@ export function CalendarView() {
       updateAppState({ calMonth: null });
     }
   }, [appState.year, season?.title, allEvents]);
-
-  // Get all phases (nodes) for the phase selector
-  const allPhases = useMemo(() => {
-    if (!season) return [];
-    const phases: Array<{ id: string; name: string; displayName: string }> = [];
-    
-    // Walk the tree and collect branch context for each phase
-    const walk = (nodes: Node[], branchPath: string[]) => {
-      nodes.forEach((node) => {
-        // Build display name with branch context
-        let displayName = node.name;
-        if (branchPath.length > 0) {
-          displayName = `${node.name} (${branchPath.join(' → ')})`;
-        }
-        
-        phases.push({
-          id: node.id,
-          name: node.name,
-          displayName,
-        });
-        
-        // Walk branches recursively
-        if (node.branches) {
-          node.branches.forEach((branch) => {
-            const newPath = [...branchPath, branch.name];
-            walk(branch.nodes, newPath);
-          });
-        }
-      });
-    };
-    
-    walk(season.root, []);
-    return phases;
-  }, [season]);
 
   const hasSeasons = Object.keys(seasons).length > 0;
 
@@ -279,60 +225,12 @@ export function CalendarView() {
     'December',
   ];
 
-  const handleDateClick = (date: string, events: CalendarEvent[]) => {
-    setSelectedDate(date);
-    setSelectedDateEvents(events);
-    setIsAddingEvent(false);
-    setNewEventName('');
-    setSelectedPhaseId('');
-  };
-
-  // Helper to find a node by ID (stops after first match to avoid duplicates in branches)
-  const findNodeById = (nodeId: string): Node | null => {
-    let found: Node | null = null;
-
-    const walk = (nodes: Node[]) => {
-      for (const node of nodes) {
-        if (node.id === nodeId) {
-          found = node;
-          return;
-        }
-        if (node.branches) {
-          for (const branch of node.branches) {
-            walk(branch.nodes);
-            if (found) return;
-          }
-        }
-      }
-    };
-
-    if (season) {
-      walk(season.root);
-    }
-    return found;
-  };
-
-  const handleAddEvent = async () => {
-    if (!newEventName.trim() || !selectedPhaseId || !selectedDate || !season) return;
-
-    // Find the node and add the event (only to the first matching node)
-    const node = findNodeById(selectedPhaseId);
-    if (!node) return;
-
-    node.events.push({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newEventName.trim(),
-      date: selectedDate,
-    });
-
-    await updateSeason(appState.year, season);
-    setIsAddingEvent(false);
-    setNewEventName('');
-    setSelectedPhaseId('');
-    // Refresh the selected date events
-    const newEvents = allEvents.filter((e) => e.date === selectedDate);
-    setSelectedDateEvents(newEvents);
-  };
+  // Get upcoming events for agenda (next 30 days from today)
+  const upcomingEvents = allEvents.filter((e) => {
+    const eventDate = parseDate(e.date);
+    const daysDiff = Math.ceil((eventDate.getTime() - today.getTime()) / 86400000);
+    return daysDiff >= 0 && daysDiff <= 30;
+  });
 
   return (
     <div className="pb-20">
@@ -371,16 +269,14 @@ export function CalendarView() {
           </div>
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((dayData, idx) => (
-              <button
+              <div
                 key={idx}
-                onClick={() => dayData.day !== null && handleDateClick(dayData.date, dayData.events)}
-                disabled={dayData.day === null}
-                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
+                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative ${
                   dayData.day === null
-                    ? 'bg-transparent cursor-default'
+                    ? 'bg-transparent'
                     : dayData.isToday
-                    ? 'bg-surface border-2 border-burgundy font-bold hover:bg-surface-2 cursor-pointer'
-                    : 'bg-surface border border-border hover:bg-surface-2 cursor-pointer'
+                    ? 'bg-surface border-2 border-burgundy font-bold'
+                    : 'bg-surface border border-border'
                 }`}
               >
                 {dayData.day !== null && (
@@ -399,150 +295,85 @@ export function CalendarView() {
                     )}
                   </>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         </div>
 
-        {/* Hint text */}
-        <div className="text-center text-sm text-ink-faint mt-4">
-          Click any date to view events
-        </div>
-      </div>
-
-      {/* Day events modal */}
-      {selectedDate && (
-        <Modal
-          isOpen={true}
-          onClose={() => {
-            setSelectedDate(null);
-            setSelectedDateEvents([]);
-            setIsAddingEvent(false);
-            setNewEventName('');
-            setSelectedPhaseId('');
-          }}
-          title={fmtDate(selectedDate)}
-        >
-          {/* Event list */}
-          {selectedDateEvents.length === 0 ? (
-            <div className="text-center py-4">
-              <p className="text-ink-soft mb-2">No events on this day</p>
+        {/* Agenda */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3">
+            Upcoming (Next 30 days)
+          </h3>
+          {upcomingEvents.length === 0 ? (
+            <div className="text-sm text-ink-faint text-center py-6">
+              No upcoming events
             </div>
           ) : (
-            <div className="space-y-3 mb-4">
-              {selectedDateEvents.map((event) => (
+            <div className="space-y-2">
+              {upcomingEvents.map((event) => (
                 <div
                   key={event.id}
-                  className="flex items-start gap-3 px-3 py-3 bg-surface border border-border rounded-md"
+                  className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md"
                 >
                   <div
-                    className="w-1 h-full min-h-[40px] rounded-full flex-shrink-0"
+                    className="w-1 h-full min-h-[30px] rounded-full flex-shrink-0"
                     style={{ backgroundColor: event.color }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-ink mb-1">
+                    <div className="text-sm font-semibold text-ink">
                       {event.title}
+                      {event.type === 'check' && (
+                        <span className="ml-2 text-xs font-bold uppercase tracking-wide text-ink-faint border border-border rounded px-1.5 py-0.5">
+                          {event.checkName}
+                        </span>
+                      )}
                     </div>
-                    {event.type === 'check' && (
-                      <div className="text-xs font-bold uppercase tracking-wide text-ink-faint border border-border rounded px-2 py-1 inline-block">
-                        {event.checkName}
-                      </div>
-                    )}
-                    {event.type === 'phase' && (
-                      <div className="text-xs text-ink-soft">
-                        Phase {event.id.includes('-end') ? 'end' : 'start'}
-                      </div>
-                    )}
+                    <div className="text-xs text-ink-soft mt-0.5">{fmtDate(event.date)}</div>
                   </div>
                 </div>
               ))}
             </div>
           )}
+        </div>
 
-          {/* Add event section */}
-          {!isLocked && !isArchived && allPhases.length > 0 && (
-            <div className="border-t border-border pt-4">
-              {!isAddingEvent ? (
-                <button
-                  onClick={() => setIsAddingEvent(true)}
-                  className="w-full px-4 py-2 border-2 border-dashed border-border rounded-lg text-ink-soft font-semibold text-sm hover:text-burgundy hover:border-burgundy transition-colors flex items-center justify-center gap-2"
-                >
-                  <Icon name="plus" size={14} />
-                  Add Event
-                </button>
-              ) : (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3">
-                    Add Event to This Day
-                  </h4>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
-                        Select Phase
-                      </label>
-                      <select
-                        value={selectedPhaseId}
-                        onChange={(e) => setSelectedPhaseId(e.target.value)}
-                        className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
-                      >
-                        <option value="">Choose a phase...</option>
-                        {allPhases.map((phase) => (
-                          <option key={phase.id} value={phase.id}>
-                            {phase.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
-                        Event Name
-                      </label>
-                      <input
-                        type="text"
-                        value={newEventName}
-                        onChange={(e) => setNewEventName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddEvent()}
-                        placeholder="e.g. Check pH levels"
-                        className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAddEvent}
-                        disabled={!newEventName.trim() || !selectedPhaseId}
-                        className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Add Event
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsAddingEvent(false);
-                          setNewEventName('');
-                          setSelectedPhaseId('');
-                        }}
-                        className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Calendar subscription button */}
+        <button
+          onClick={() => setShowSubscriptionModal(true)}
+          className="w-full mt-6 px-4 py-3 bg-surface border border-border rounded-lg text-ink font-semibold text-sm hover:bg-surface-2 transition-colors flex items-center justify-center gap-2"
+        >
+          <Icon name="link" size={14} />
+          Subscribe to Calendar
+        </button>
 
-          {/* Empty state when no phases exist */}
-          {!isLocked && !isArchived && allPhases.length === 0 && (
-            <div className="border-t border-border pt-4 text-center">
-              <p className="text-sm text-ink-faint">
-                Create phases in the Timeline tab first
-              </p>
-            </div>
+        {/* Export button */}
+        <button
+          onClick={() => {
+            const icsContent = generateICS(allEvents, season.title);
+            if (icsContent) {
+              downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
+            } else {
+              alert('No events to export or error generating calendar file.');
+            }
+          }}
+          disabled={allEvents.length === 0}
+          className="w-full mt-3 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
+        >
+          <Icon name="download" size={14} />
+          Download .ics file
+          {allEvents.length > 0 && (
+            <span className="text-xs">({allEvents.length} events)</span>
           )}
-        </Modal>
+        </button>
+      </div>
+
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <CalendarSubscriptionModal
+          onClose={() => setShowSubscriptionModal(false)}
+          seasonYear={appState.year}
+        />
       )}
     </div>
   );
 }
-
-export default CalendarView;
