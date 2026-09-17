@@ -134,6 +134,16 @@ export function CalendarView() {
     }
   }, [appState.year, season?.title, allEvents]);
 
+  // Get all phases (nodes) for the phase selector
+  const allPhases = useMemo(() => {
+    if (!season) return [];
+    const phases: Array<{ id: string; name: string }> = [];
+    walkNodes(season.root, (node) => {
+      phases.push({ id: node.id, name: node.name });
+    });
+    return phases;
+  }, [season]);
+
   const hasSeasons = Object.keys(seasons).length > 0;
 
   if (!hasSeasons) {
@@ -252,16 +262,6 @@ export function CalendarView() {
     setNewEventName('');
     setSelectedPhaseId('');
   };
-
-  // Get all phases (nodes) for the phase selector
-  const allPhases = useMemo(() => {
-    if (!season) return [];
-    const phases: Array<{ id: string; name: string }> = [];
-    walkNodes(season.root, (node) => {
-      phases.push({ id: node.id, name: node.name });
-    });
-    return phases;
-  }, [season]);
 
   // Helper to find a node by ID (stops after first match to avoid duplicates in branches)
   const findNodeById = (nodeId: string): Node | null => {
