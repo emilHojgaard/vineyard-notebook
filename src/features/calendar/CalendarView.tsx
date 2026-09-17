@@ -137,10 +137,34 @@ export function CalendarView() {
   // Get all phases (nodes) for the phase selector
   const allPhases = useMemo(() => {
     if (!season) return [];
-    const phases: Array<{ id: string; name: string }> = [];
-    walkNodes(season.root, (node) => {
-      phases.push({ id: node.id, name: node.name });
-    });
+    const phases: Array<{ id: string; name: string; displayName: string }> = [];
+    
+    // Walk the tree and collect branch context for each phase
+    const walk = (nodes: Node[], branchPath: string[]) => {
+      nodes.forEach((node) => {
+        // Build display name with branch context
+        let displayName = node.name;
+        if (branchPath.length > 0) {
+          displayName = `${node.name} (${branchPath.join(' → ')})`;
+        }
+        
+        phases.push({
+          id: node.id,
+          name: node.name,
+          displayName,
+        });
+        
+        // Walk branches recursively
+        if (node.branches) {
+          node.branches.forEach((branch) => {
+            const newPath = [...branchPath, branch.name];
+            walk(branch.nodes, newPath);
+          });
+        }
+      });
+    };
+    
+    walk(season.root, []);
     return phases;
   }, [season]);
 
@@ -464,7 +488,7 @@ export function CalendarView() {
                         <option value="">Choose a phase...</option>
                         {allPhases.map((phase) => (
                           <option key={phase.id} value={phase.id}>
-                            {phase.name}
+                            {phase.displayName}
                           </option>
                         ))}
                       </select>
