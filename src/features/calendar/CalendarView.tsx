@@ -225,13 +225,6 @@ export function CalendarView() {
     'December',
   ];
 
-  // Get upcoming events for agenda (next 30 days from today)
-  const upcomingEvents = allEvents.filter((e) => {
-    const eventDate = parseDate(e.date);
-    const daysDiff = Math.ceil((eventDate.getTime() - today.getTime()) / 86400000);
-    return daysDiff >= 0 && daysDiff <= 30;
-  });
-
   return (
     <div className="pb-20">
       {/* Header */}
@@ -298,43 +291,6 @@ export function CalendarView() {
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Agenda */}
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3">
-            Upcoming (Next 30 days)
-          </h3>
-          {upcomingEvents.length === 0 ? (
-            <div className="text-sm text-ink-faint text-center py-6">
-              No upcoming events
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {upcomingEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md"
-                >
-                  <div
-                    className="w-1 h-full min-h-[30px] rounded-full flex-shrink-0"
-                    style={{ backgroundColor: event.color }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-ink">
-                      {event.title}
-                      {event.type === 'check' && (
-                        <span className="ml-2 text-xs font-bold uppercase tracking-wide text-ink-faint border border-border rounded px-1.5 py-0.5">
-                          {event.checkName}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-ink-soft mt-0.5">{fmtDate(event.date)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Calendar subscription button */}
