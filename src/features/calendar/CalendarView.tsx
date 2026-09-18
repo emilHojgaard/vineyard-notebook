@@ -5,6 +5,7 @@ import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../l
 import { Icon } from '../../components/Icon';
 import { generateICS, downloadICS } from '../../lib/calendar-export';
 import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
+import { DayEventsModal } from './DayEventsModal';
 
 interface CalendarEvent {
   id: string;
@@ -20,6 +21,10 @@ export function CalendarView() {
   const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<{
+    date: string;
+    events: CalendarEvent[];
+  } | null>(null);
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -262,14 +267,16 @@ export function CalendarView() {
           </div>
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((dayData, idx) => (
-              <div
+              <button
                 key={idx}
-                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative ${
+                onClick={() => dayData.day !== null && setSelectedDay({ date: dayData.date, events: dayData.events })}
+                disabled={dayData.day === null}
+                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
                   dayData.day === null
-                    ? 'bg-transparent'
+                    ? 'bg-transparent cursor-default'
                     : dayData.isToday
-                    ? 'bg-surface border-2 border-burgundy font-bold'
-                    : 'bg-surface border border-border'
+                    ? 'bg-surface border-2 border-burgundy font-bold hover:bg-surface-2 cursor-pointer'
+                    : 'bg-surface border border-border hover:bg-surface-2 cursor-pointer'
                 }`}
               >
                 {dayData.day !== null && (
@@ -288,7 +295,7 @@ export function CalendarView() {
                     )}
                   </>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -322,6 +329,23 @@ export function CalendarView() {
           )}
         </button>
       </div>
+
+      {/* Day Events Modal */}
+      <DayEventsModal
+        isOpen={selectedDay !== null}
+        onClose={() => setSelectedDay(null)}
+        date={selectedDay?.date || ''}
+        events={selectedDay?.events || []}
+        onUpdate={() => {
+          // Events will automatically update due to useMemo dependency on season
+          // Just refresh the selected day events to reflect changes
+          if (selectedDay) {
+            const updatedEvents = allEvents.filter((e) => e.date === selectedDay.date);
+            setSelectedDay({ ...selectedDay, events: updatedEvents });
+          }
+        }}
+        isArchived={season?.status !== 'current'}
+      />
 
       {/* Subscription Modal */}
       {showSubscriptionModal && (
