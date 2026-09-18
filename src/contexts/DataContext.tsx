@@ -138,6 +138,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [currentUser]);
 
+  // Auto-adjust year when switching projects
+  useEffect(() => {
+    if (!currentProject) return;
+
+    // Get available years for this project (using the scoped accessor)
+    const availableYears = Object.keys(seasons).map(Number);
+
+    // If no seasons yet, wait for them to load
+    if (availableYears.length === 0) return;
+
+    // If current year doesn't exist in this project, switch to newest season
+    if (!seasons[appState.year]) {
+      const newestYear = Math.max(...availableYears);
+      setAppState((prev) => ({ ...prev, year: newestYear }));
+    }
+  }, [currentProject, seasons, appState.year]);
+
   // Load project data when project changes
   useEffect(() => {
     if (!currentProject) return;
