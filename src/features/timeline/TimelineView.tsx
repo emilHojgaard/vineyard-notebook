@@ -441,7 +441,19 @@ export function TimelineView() {
 
       {/* Branch creation modal */}
       {branchingNode && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setBranchingNode(null);
+              setNewBranchName('');
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
             <p className="text-sm text-ink-soft mb-4">
@@ -509,7 +521,19 @@ export function TimelineView() {
 
       {/* Add phase modal - show when adding after a phase (afterNodeId) or adding first phase (no parent/branch) */}
       {addingPhase && addingPhaseContext && (addingPhaseContext.afterNodeId || (addingPhaseContext.parentNodeId === null && addingPhaseContext.branchId === null)) && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setAddingPhase(null);
+              setNewPhaseName('');
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">
               Add Phase

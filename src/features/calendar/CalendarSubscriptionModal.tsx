@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { Icon } from '../../components/Icon';
+import { useModalKeyboard } from '../../components/useModalKeyboard';
 
 interface CalendarSubscriptionModalProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [existingTokens, setExistingTokens] = useState<Array<{ id: string; createdAt: string | null }>>([]);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const keyboard = useModalKeyboard(true, onClose, modalRef);
 
   // Get the function URL based on environment
   const getFunctionUrl = () => {
@@ -86,12 +89,13 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="calendar-subscription-title" onKeyDown={keyboard.onKeyDown} className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-ink">Calendar Subscription</h2>
+          <h2 id="calendar-subscription-title" className="text-xl font-bold text-ink">Calendar Subscription</h2>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded-md text-ink hover:bg-surface-2 transition-colors"
           >
             <Icon name="close" size={16} />

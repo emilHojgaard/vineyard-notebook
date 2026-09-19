@@ -253,7 +253,19 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
       {/* Create season modal */}
       {isCreating && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsCreating(false);
+              setSelectedYear(new Date().getFullYear());
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-ink">Add New Season</h3>

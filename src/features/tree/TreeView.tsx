@@ -403,7 +403,9 @@ export function TreeView() {
 
       {/* Add phase modal */}
       {addingPhase && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAddingPhase(null); setNewPhaseName(''); }
+        }} className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">
               Add Phase{addingPhase.branchId ? ' to Branch' : ''}
@@ -446,7 +448,9 @@ export function TreeView() {
 
       {/* Branch creation modal */}
       {branchingNode && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setBranchingNode(null); setNewBranchName(''); }
+        }} className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
             <p className="text-sm text-ink-soft mb-4">

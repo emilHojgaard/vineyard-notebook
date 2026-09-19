@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Icon } from './Icon';
+import { useModalKeyboard } from './useModalKeyboard';
 
 interface ModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface ModalProps {
 
 export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const keyboard = useModalKeyboard(isOpen, onClose, overlayRef);
 
   useEffect(() => {
     if (isOpen) {
@@ -23,22 +25,15 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
 
   return (
     <div
       ref={overlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title || 'Details'}
+      onKeyDown={keyboard.onKeyDown}
       className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={(e) => {
         if (e.target === overlayRef.current) {
@@ -56,6 +51,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/20 transition-colors"
           >
             <Icon name="x" size={16} />

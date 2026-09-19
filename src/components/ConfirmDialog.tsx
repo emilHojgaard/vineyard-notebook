@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { Icon } from './Icon';
+import { useModalKeyboard } from './useModalKeyboard';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -19,10 +21,20 @@ export function ConfirmDialog({
   onCancel,
   isDanger = false,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const keyboard = useModalKeyboard(isOpen, onCancel, dialogRef);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+    <div
+      ref={dialogRef}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+      onKeyDown={keyboard.onKeyDown}
+      className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+    >
       <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm">
         <div className="p-4">
           <div className="flex items-center gap-3 mb-3">
@@ -31,7 +43,7 @@ export function ConfirmDialog({
                 <Icon name="alert" size={20} color="var(--status-need)" />
               </div>
             )}
-            <h3 className="text-base font-bold text-ink">{title}</h3>
+            <h3 id="confirm-dialog-title" className="text-base font-bold text-ink">{title}</h3>
           </div>
           <p className="text-sm text-ink-soft leading-relaxed mb-4">{message}</p>
           <div className="flex gap-2">
