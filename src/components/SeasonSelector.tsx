@@ -144,6 +144,11 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
           backgroundColor: 'rgba(147, 118, 95, 0.06)',
           transform: hideOnScroll ? 'translateY(-100%)' : 'translateY(0)',
           opacity: hideOnScroll ? 0 : 1,
+          maxHeight: hideOnScroll ? '0' : '500px',
+          // Remove the selector's padding and border along with its content so
+          // the collapsed state does not leave a gap above the page content.
+          padding: hideOnScroll ? 0 : undefined,
+          borderBottomWidth: hideOnScroll ? 0 : undefined,
           overflow: 'hidden',
           pointerEvents: hideOnScroll ? 'none' : 'auto',
         }}
