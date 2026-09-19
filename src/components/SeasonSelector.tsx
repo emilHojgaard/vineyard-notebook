@@ -170,11 +170,17 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
               </button>
             </div>
 
-            {/* Expanded season list */}
-            {isExpanded && (
-              <div className="mt-2 bg-surface-2 border border-border rounded-md overflow-hidden">
-                {/* Season list */}
-                <div className="max-h-48 overflow-y-auto">
+            {/* Season list: keep the panel mounted so its layout footprint can animate to zero. */}
+            <div
+              className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+              }`}
+              aria-hidden={!isExpanded}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <div className="mt-2 bg-surface-2 border border-border rounded-md overflow-hidden">
+                  {/* Season list */}
+                  <div className="max-h-48 overflow-y-auto">
                   {sortedYears.map((year) => (
                     <div
                       key={year}
@@ -207,20 +213,21 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                       )}
                     </div>
                   ))}
-                </div>
+                  </div>
 
-                {/* Add Season button (only shown when edit mode is ON) */}
-                {showAddButton && (
-                  <button
-                    onClick={handleAddSeasonClick}
-                    className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Icon name="plus" size={14} />
-                    <span>Add Season</span>
-                  </button>
-                )}
+                  {/* Add Season button (only shown when edit mode is ON) */}
+                  {showAddButton && (
+                    <button
+                      onClick={handleAddSeasonClick}
+                      className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Icon name="plus" size={14} />
+                      <span>Add Season</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
 
             {/* Archived indicator */}
             {seasons[appState.year]?.status !== 'current' && (
