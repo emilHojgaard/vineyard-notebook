@@ -9,6 +9,7 @@ interface SeasonSelectorProps {
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const { seasons, appState, updateAppState, createSeason, deleteSeason, currentProject } = useData();
+  const canManageSeasons = showAddButton && !appState.locked;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -87,10 +88,26 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   // Get sorted year list (newest first)
   const hasSeasons = sortedYears.length > 0;
 
-  // Close season selector when project changes
+  // Keep the selected year valid for the newly selected project once its seasons load.
+  useEffect(() => {
+    if (sortedYears.length > 0 && !seasons[appState.year]) {
+      updateAppState({ year: sortedYears[0] });
+    }
+  }, [currentProject, seasons, appState.year, sortedYears]);
+
+  // Close season selector when project changes or edit mode is disabled
   useEffect(() => {
     setIsExpanded(false);
-  }, [currentProject]);
+  }, [currentProject, canManageSeasons]);
+
+  // Never leave season-management dialogs open in read-only mode.
+  useEffect(() => {
+    if (!canManageSeasons) {
+      setIsCreating(false);
+      setShowDuplicateConfirm(false);
+      setConfirmDeleteSeason(null);
+    }
+  }, [canManageSeasons]);
 
   // Close season selector when page/tab changes
   useEffect(() => {
@@ -158,16 +175,20 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
             {/* Season selector button */}
             <div className="flex items-center justify-center gap-2">
               <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
-              <button
-                onClick={() => {
-                  setIsExpanded(!isExpanded);
-                  setSelectorHidden(false); // Ensure it's visible when expanding
-                }}
-                className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
-              >
-                <span>{appState.year}</span>
-                <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
-              </button>
+              {canManageSeasons ? (
+                <button
+                  onClick={() => {
+                    setIsExpanded(!isExpanded);
+                    setSelectorHidden(false); // Ensure it's visible when expanding
+                  }}
+                  className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
+                >
+                  <span>{appState.year}</span>
+                  <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
+                </button>
+              ) : (
+                <span className="px-3 py-1.5 text-sm font-semibold text-ink">{appState.year}</span>
+              )}
             </div>
 
             {/* Season list: keep the panel mounted so its layout footprint can animate to zero. */}
@@ -199,7 +220,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                           <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
                         )}
                       </button>
-                      {showAddButton && (
+                      {canManageSeasons && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -216,7 +237,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                   </div>
 
                   {/* Add Season button (only shown when edit mode is ON) */}
-                  {showAddButton && (
+                  {canManageSeasons && (
                     <button
                       onClick={handleAddSeasonClick}
                       className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
@@ -240,19 +261,23 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
         ) : (
           /* Empty state - no seasons exist */
           <div className="text-center">
-            <button
-              onClick={handleAddSeasonClick}
-              className="w-full px-4 py-2 bg-burgundy text-white font-semibold rounded-md text-sm hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
-            >
-              <Icon name="plus" size={14} />
-              <span>Create Season</span>
-            </button>
+            {canManageSeasons ? (
+              <button
+                onClick={handleAddSeasonClick}
+                className="w-full px-4 py-2 bg-burgundy text-white font-semibold rounded-md text-sm hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
+              >
+                <Icon name="plus" size={14} />
+                <span>Create Season</span>
+              </button>
+            ) : (
+              <span className="text-sm font-semibold text-ink">{appState.year}</span>
+            )}
           </div>
         )}
       </div>
 
       {/* Create season modal */}
-      {isCreating && (
+      {canManageSeasons && isCreating && (
         <div
           role="dialog"
           aria-modal="true"
@@ -328,7 +353,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
       {/* Duplicate season confirmation */}
       <ConfirmDialog
-        isOpen={showDuplicateConfirm}
+        isOpen={canManageSeasons && showDuplicateConfirm}
         title="Season Already Exists"
         message={`A season for ${selectedYear} already exists. Are you sure you want to create another?`}
         confirmText="Create Anyway"
@@ -342,7 +367,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
       {/* Delete season confirmation */}
       <ConfirmDialog
-        isOpen={confirmDeleteSeason !== null}
+        isOpen={canManageSeasons && confirmDeleteSeason !== null}
         title="Delete Season"
         message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
         confirmText="Delete Season"
