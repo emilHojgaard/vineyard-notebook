@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -17,7 +17,16 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [hideOnScroll, setHideOnScroll] = useState(false);
   const lastScrollY = useRef(0);
+  const hideOnScrollRef = useRef(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+
+  // Keep the visual state idempotent so repeated boundary scroll events do not
+  // schedule redundant renders or reverse an in-progress transition.
+  const setSelectorHidden = useCallback((hidden: boolean) => {
+    if (hideOnScrollRef.current === hidden) return;
+    hideOnScrollRef.current = hidden;
+    setHideOnScroll(hidden);
+  }, []);
 
   // Get sorted year list (newest first)
   const sortedYears = Object.keys(seasons)
@@ -98,42 +107,45 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       
       // Never hide if the dropdown is expanded
       if (isExpanded) {
-        setHideOnScroll(false);
+        setSelectorHidden(false);
         lastScrollY.current = currentScrollY;
         return;
       }
 
-      // Hide when scrolling down significantly, show when scrolling up
+      // Hide when scrolling down significantly, show when scrolling up.
+      // The selector only changes its own paint state; changing its layout
+      // height here would shrink the scroll viewport at the bottom and cause
+      // the browser to emit a compensating scroll event that shows it again.
       if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-        setHideOnScroll(true);
+        setSelectorHidden(true);
       } else if (currentScrollY < lastScrollY.current) {
-        setHideOnScroll(false);
+        setSelectorHidden(false);
       }
       lastScrollY.current = currentScrollY;
     };
 
     contentDiv.addEventListener('scroll', handleScroll, { passive: true });
     return () => contentDiv.removeEventListener('scroll', handleScroll);
-  }, [isExpanded]);
+  }, [isExpanded, setSelectorHidden]);
 
   // When expanded, ensure we're visible
   useEffect(() => {
     if (isExpanded) {
-      setHideOnScroll(false);
+      setSelectorHidden(false);
     }
-  }, [isExpanded]);
+  }, [isExpanded, setSelectorHidden]);
 
   return (
     <>
       <div 
         ref={selectorRef}
-        className="bg-surface px-4 py-2 border-b border-border transition-all duration-300"
+        className="bg-surface px-4 py-2 border-b border-border transition-[transform,opacity] duration-300"
         style={{
           backgroundColor: 'rgba(147, 118, 95, 0.06)',
           transform: hideOnScroll ? 'translateY(-100%)' : 'translateY(0)',
           opacity: hideOnScroll ? 0 : 1,
-          maxHeight: hideOnScroll ? '0' : '500px',
           overflow: 'hidden',
+          pointerEvents: hideOnScroll ? 'none' : 'auto',
         }}
       >
         {hasSeasons ? (
@@ -144,7 +156,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
               <button
                 onClick={() => {
                   setIsExpanded(!isExpanded);
-                  setHideOnScroll(false); // Ensure it's visible when expanding
+                  setSelectorHidden(false); // Ensure it's visible when expanding
                 }}
                 className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
               >
