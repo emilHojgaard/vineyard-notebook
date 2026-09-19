@@ -153,12 +153,14 @@ export function LibraryView() {
         {library.sections.length === 0 && !addingSection ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No library sections yet</p>
-            <button
-              onClick={() => setAddingSection(true)}
-              className="text-burgundy font-semibold hover:underline"
-            >
-              + Add first section
-            </button>
+            {isEditMode && (
+              <button
+                onClick={() => setAddingSection(true)}
+                className="text-burgundy font-semibold hover:underline"
+              >
+                + Add first section
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
@@ -215,7 +217,7 @@ export function LibraryView() {
             ))}
 
             {/* Add section */}
-            {addingSection ? (
+            {isEditMode && (addingSection ? (
               <div className="bg-surface-2 border border-border rounded-lg p-4">
                 <input
                   type="text"
@@ -253,7 +255,7 @@ export function LibraryView() {
                 <Icon name="plus" size={14} />
                 Add Section
               </button>
-            )}
+            ))}
           </div>
         )}
       </div>

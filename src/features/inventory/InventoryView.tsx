@@ -149,7 +149,7 @@ export function InventoryView() {
         {inv.sections.length === 0 && !addingSection ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No inventory sections yet</p>
-            {!isArchived && (
+            {!isArchived && isEditMode && (
               <button
                 onClick={() => setAddingSection(true)}
                 className="text-burgundy font-semibold hover:underline"
@@ -333,7 +333,7 @@ export function InventoryView() {
             ))}
 
             {/* Add section */}
-            {!isArchived && (
+            {!isArchived && isEditMode && (
               <>
                 {addingSection ? (
                   <div className="bg-surface-2 border border-border rounded-lg p-4">
