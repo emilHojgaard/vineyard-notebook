@@ -99,12 +99,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     branchSelection: {},
     invFilter: 'all',
     calMonth: null,
-    locked: false,
+    locked: true,
     alertDays: 14,
     eventAlertDays: 7,
     treeFocus: null,
     focusedNodeId: null,
   });
+
+  // Start each authenticated session in view-only mode. This effect only runs
+  // when authentication changes, so project/season changes and ordinary renders
+  // preserve an explicit edit-mode toggle made during the current session.
+  useEffect(() => {
+    setAppState((prev) => (prev.locked ? prev : { ...prev, locked: true }));
+  }, [currentUser?.uid]);
 
   // Load user's projects
   useEffect(() => {
