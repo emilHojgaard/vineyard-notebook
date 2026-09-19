@@ -258,9 +258,8 @@ export function TimelineView() {
                   const isFocused = branch.id === focusedBranchId;
 
                   return (
-                    <button
+                    <div
                       key={branch.id}
-                      onClick={() => handleSelectBranch(node.id, branch.id)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-colors ${
                         isSelected || isFocused
                           ? 'bg-surface border-border'
@@ -275,34 +274,38 @@ export function TimelineView() {
                           : {}
                       }
                     >
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{
-                          backgroundColor: branchAccent,
-                          opacity: (isSelected || isFocused) ? 1 : 0.45,
-                        }}
-                      />
-                      <span
-                        className="text-xs font-semibold"
-                        style={{
-                          color: (isSelected || isFocused) ? branchAccent : 'var(--ink-faint)',
-                          fontWeight: (isSelected || isFocused) ? 700 : 600,
-                        }}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectBranch(node.id, branch.id)}
+                        className="flex flex-1 items-center gap-2 text-left"
                       >
-                        {branch.name}
-                      </span>
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{
+                            backgroundColor: branchAccent,
+                            opacity: (isSelected || isFocused) ? 1 : 0.45,
+                          }}
+                        />
+                        <span
+                          className="text-xs font-semibold"
+                          style={{
+                            color: (isSelected || isFocused) ? branchAccent : 'var(--ink-faint)',
+                            fontWeight: (isSelected || isFocused) ? 700 : 600,
+                          }}
+                        >
+                          {branch.name}
+                        </span>
+                      </button>
                       {!isLocked && !isArchived && (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteBranch({ node, branchId: branch.id });
-                          }}
+                          type="button"
+                          onClick={() => setConfirmDeleteBranch({ node, branchId: branch.id })}
                           className="w-5 h-5 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                         >
                           <Icon name="trash" size={11} />
                         </button>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
 
