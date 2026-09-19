@@ -22,6 +22,17 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const isEditMode = !appState.locked;
   const canDeleteProjects = currentUser?.uid === currentProject?.createdBy;
 
+  React.useEffect(() => {
+    if (!showUserMenu) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowUserMenu(false);
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showUserMenu]);
+
   const handleDeleteProject = async (projectId: string) => {
     try {
       // Delete all seasons for this project
@@ -151,24 +162,6 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
         {/* Right side controls */}
         <div className="flex items-center gap-2">
 
-          {/* Members button */}
-          <button
-            onClick={onMembersClick}
-            className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-            title="Members"
-          >
-            <Icon name="users" size={12} />
-          </button>
-
-          {/* Settings button */}
-          <button
-            onClick={onSettingsClick}
-            className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-            title="Settings"
-          >
-            <Icon name="settings" size={12} />
-          </button>
-
           {/* Lock/Unlock button */}
           <button
             onClick={toggleLock}
@@ -188,6 +181,9 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
               title={currentUser?.email || 'User'}
+              aria-label="Account menu"
+              aria-expanded={showUserMenu}
+              aria-haspopup="menu"
             >
               <Icon name="user" size={14} />
             </button>
@@ -198,7 +194,11 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowUserMenu(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden">
+                <div
+                  className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden"
+                  role="menu"
+                  aria-label="Account options"
+                >
                   <div className="px-4 py-3 border-b border-border">
                     <div className="text-sm font-semibold text-ink">
                       {currentUser?.displayName || 'User'}
@@ -209,6 +209,30 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                   </div>
                   <div className="py-1">
                     <button
+                      role="menuitem"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onMembersClick();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface transition-colors flex items-center gap-2"
+                    >
+                      <Icon name="users" size={14} />
+                      Member settings
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onSettingsClick();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface transition-colors flex items-center gap-2"
+                    >
+                      <Icon name="settings" size={14} />
+                      Alert settings
+                    </button>
+                    <div className="border-t border-border my-1" />
+                    <button
+                      role="menuitem"
                       onClick={() => {
                         logout();
                         setShowUserMenu(false);
