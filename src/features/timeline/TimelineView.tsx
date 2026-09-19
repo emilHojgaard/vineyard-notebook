@@ -23,6 +23,42 @@ export function TimelineView() {
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
 
+  // Auto-open phase modal when navigating from calendar
+  // MUST be before early return to satisfy React hooks rules
+  useEffect(() => {
+    if (!season || !appState.focusedNodeId) return;
+
+    // Helper function to find a node by ID
+    const findNodeById = (nodeId: string): Node | null => {
+      let found: Node | null = null;
+
+      const walk = (nodes: Node[]) => {
+        for (const node of nodes) {
+          if (node.id === nodeId) {
+            found = node;
+            return;
+          }
+          if (node.branches) {
+            for (const branch of node.branches) {
+              walk(branch.nodes);
+              if (found) return;
+            }
+          }
+        }
+      };
+
+      walk(season.root);
+      return found;
+    };
+
+    const node = findNodeById(appState.focusedNodeId);
+    if (node) {
+      setSelectedNode(node);
+    }
+    // Clear the focusedNodeId after handling it
+    updateAppState({ focusedNodeId: null });
+  }, [season, appState.focusedNodeId, updateAppState]);
+
   if (!season) {
     return (
       <div className="p-8 text-center flex items-center justify-center" style={{ minHeight: '400px' }}>
@@ -32,41 +68,6 @@ export function TimelineView() {
       </div>
     );
   }
-
-  // Helper function to find a node by ID
-  const findNodeById = (nodeId: string): Node | null => {
-    let found: Node | null = null;
-
-    const walk = (nodes: Node[]) => {
-      for (const node of nodes) {
-        if (node.id === nodeId) {
-          found = node;
-          return;
-        }
-        if (node.branches) {
-          for (const branch of node.branches) {
-            walk(branch.nodes);
-            if (found) return;
-          }
-        }
-      }
-    };
-
-    walk(season.root);
-    return found;
-  };
-
-  // Auto-open phase modal when navigating from calendar
-  useEffect(() => {
-    if (appState.focusedNodeId) {
-      const node = findNodeById(appState.focusedNodeId);
-      if (node) {
-        setSelectedNode(node);
-      }
-      // Clear the focusedNodeId after handling it
-      updateAppState({ focusedNodeId: null });
-    }
-  }, [appState.focusedNodeId]);
 
   const handleAddPhase = async () => {
     if (!newPhaseName.trim() || !addingPhaseContext) return;
