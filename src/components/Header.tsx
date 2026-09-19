@@ -20,6 +20,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
   const isEditMode = !appState.locked;
+  const canDeleteProjects = currentUser?.uid === currentProject?.createdBy;
 
   const handleDeleteProject = async (projectId: string) => {
     try {
@@ -66,79 +67,85 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   return (
     <>
       <div className="bg-burgundy text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-        {/* Project Name / Logo */}
-        <div className="text-xs font-bold tracking-widest uppercase flex-shrink-0">
-          {currentProject?.name || 'Vineyard Notebook'}
+        {/* Project name is deliberately plain while locked. In edit mode it is the
+            project-management entry point. */}
+        <div className="relative min-w-0">
+          {isEditMode ? (
+            <button
+              onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+              className="flex items-center gap-1 max-w-[190px] px-1 py-1 rounded hover:bg-white/10 transition-colors text-xs font-bold tracking-widest uppercase"
+              title="Manage projects"
+              aria-expanded={showProjectDropdown}
+              aria-haspopup="menu"
+            >
+              <span className="truncate">{currentProject?.name || 'Vineyard Notebook'}</span>
+              <Icon name="chevronDown" size={10} />
+            </button>
+          ) : (
+            <div className="text-xs font-bold tracking-widest uppercase truncate max-w-[210px]">
+              {currentProject?.name || 'Vineyard Notebook'}
+            </div>
+          )}
+
+          {isEditMode && showProjectDropdown && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowProjectDropdown(false)}
+              />
+              <div className="absolute left-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
+                <div className="py-1">
+                  {projects.map((project) => (
+                    <div key={project.id} className="flex items-center group">
+                      <button
+                        onClick={() => {
+                          selectProject(project.id);
+                          setShowProjectDropdown(false);
+                        }}
+                        className={`flex-1 px-4 py-2 text-left text-sm hover:bg-surface transition-colors ${
+                          currentProject?.id === project.id
+                            ? 'bg-surface text-burgundy font-semibold'
+                            : 'text-ink'
+                        }`}
+                        role="menuitem"
+                      >
+                        {project.name}
+                      </button>
+                      {canDeleteProjects && projects.length > 1 && (
+                        <button
+                          onClick={() => {
+                            setConfirmDeleteProject(project.id);
+                            setShowProjectDropdown(false);
+                          }}
+                          className="px-2 py-2 text-status-need hover:bg-surface transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete project"
+                          aria-label={`Delete ${project.name}`}
+                        >
+                          <Icon name="trash" size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="border-t border-border my-1" />
+                  <button
+                    onClick={() => {
+                      setShowNewProject(true);
+                      setShowProjectDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-burgundy font-semibold hover:bg-surface transition-colors flex items-center gap-2"
+                    role="menuitem"
+                  >
+                    <Icon name="plus" size={12} />
+                    Create New Project
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right side controls */}
         <div className="flex items-center gap-2">
-          {/* Project Selector (only visible in edit mode) */}
-          {isEditMode && (
-            <div className="relative">
-              <button
-                onClick={() => setShowProjectDropdown(!showProjectDropdown)}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-white/10 border border-white/30 hover:bg-white/20 transition-colors text-xs"
-                title="Manage projects"
-              >
-                <Icon name="folder" size={12} />
-                <Icon name="chevronDown" size={10} />
-              </button>
-              
-              {showProjectDropdown && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowProjectDropdown(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden">
-                    <div className="py-1">
-                      {projects.map((project) => (
-                        <div key={project.id} className="flex items-center group">
-                          <button
-                            onClick={() => {
-                              selectProject(project.id);
-                              setShowProjectDropdown(false);
-                            }}
-                            className={`flex-1 px-4 py-2 text-left text-sm hover:bg-surface transition-colors ${
-                              currentProject?.id === project.id
-                                ? 'bg-surface text-burgundy font-semibold'
-                                : 'text-ink'
-                            }`}
-                          >
-                            {project.name}
-                          </button>
-                          {projects.length > 1 && (
-                            <button
-                              onClick={() => {
-                                setConfirmDeleteProject(project.id);
-                                setShowProjectDropdown(false);
-                              }}
-                              className="px-2 py-2 text-status-need hover:bg-surface transition-colors opacity-0 group-hover:opacity-100"
-                              title="Delete project"
-                            >
-                              <Icon name="trash" size={12} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <div className="border-t border-border my-1" />
-                      <button
-                        onClick={() => {
-                          setShowNewProject(true);
-                          setShowProjectDropdown(false);
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-burgundy font-semibold hover:bg-surface transition-colors flex items-center gap-2"
-                      >
-                        <Icon name="plus" size={12} />
-                        Create New Project
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
 
           {/* Members button */}
           <button
