@@ -77,8 +77,22 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
 
   return (
     <>
-      <div className="bg-burgundy text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-        {/* Project name is deliberately plain while locked. In edit mode it is the
+      <div className="bg-burgundy text-white px-4 py-3 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center flex-shrink-0">
+        {/* Lock/edit control stays on the left. */}
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            onClick={toggleLock}
+            className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors flex-shrink-0 ${
+              appState.locked
+                ? 'bg-white/25 border-white/50'
+                : 'bg-white/10 border-white/30 hover:bg-white/20'
+            }`}
+            title={appState.locked ? 'Locked - Click to edit' : 'Unlocked - Click to lock'}
+          >
+            <Icon name={appState.locked ? 'lock' : 'unlock'} size={12} />
+          </button>
+
+          {/* Project name is deliberately plain while locked. In edit mode it is the
             project-management entry point. */}
         <div className="relative min-w-0">
           {isEditMode ? (
@@ -157,24 +171,16 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
               </div>
             </>
           )}
+          </div>
+        </div>
+
+        {/* Centered independently of the left and right control widths. */}
+        <div className="min-w-0 max-w-[45vw] sm:max-w-[40vw] text-center text-xs font-bold tracking-widest uppercase truncate">
+          {currentProject?.name || 'Vineyard Notebook'}
         </div>
 
         {/* Right side controls */}
-        <div className="flex items-center gap-2">
-
-          {/* Lock/Unlock button */}
-          <button
-            onClick={toggleLock}
-            className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
-              appState.locked
-                ? 'bg-white/25 border-white/50'
-                : 'bg-white/10 border-white/30 hover:bg-white/20'
-            }`}
-            title={appState.locked ? 'Locked - Click to edit' : 'Unlocked - Click to lock'}
-          >
-            <Icon name={appState.locked ? 'lock' : 'unlock'} size={12} />
-          </button>
-
+        <div className="min-w-0 justify-self-end flex items-center gap-2">
           {/* User Menu */}
           <div className="relative">
             <button
