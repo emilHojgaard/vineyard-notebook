@@ -103,6 +103,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     alertDays: 14,
     eventAlertDays: 7,
     treeFocus: null,
+    focusedNodeId: null,
   });
 
   // Load user's projects

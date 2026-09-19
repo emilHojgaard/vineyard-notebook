@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus } from '../../lib/utils';
@@ -32,6 +32,41 @@ export function TimelineView() {
       </div>
     );
   }
+
+  // Helper function to find a node by ID
+  const findNodeById = (nodeId: string): Node | null => {
+    let found: Node | null = null;
+
+    const walk = (nodes: Node[]) => {
+      for (const node of nodes) {
+        if (node.id === nodeId) {
+          found = node;
+          return;
+        }
+        if (node.branches) {
+          for (const branch of node.branches) {
+            walk(branch.nodes);
+            if (found) return;
+          }
+        }
+      }
+    };
+
+    walk(season.root);
+    return found;
+  };
+
+  // Auto-open phase modal when navigating from calendar
+  useEffect(() => {
+    if (appState.focusedNodeId) {
+      const node = findNodeById(appState.focusedNodeId);
+      if (node) {
+        setSelectedNode(node);
+      }
+      // Clear the focusedNodeId after handling it
+      updateAppState({ focusedNodeId: null });
+    }
+  }, [appState.focusedNodeId]);
 
   const handleAddPhase = async () => {
     if (!newPhaseName.trim() || !addingPhaseContext) return;

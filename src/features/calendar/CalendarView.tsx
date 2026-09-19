@@ -337,11 +337,10 @@ export function CalendarView() {
         date={selectedDay?.date || ''}
         events={selectedDay?.events || []}
         onUpdate={() => {
-          // Events will automatically update due to useMemo dependency on season
-          // Just refresh the selected day events to reflect changes
+          // Re-fetch events for this day from allEvents
           if (selectedDay) {
             const updatedEvents = allEvents.filter((e) => e.date === selectedDay.date);
-            setSelectedDay({ ...selectedDay, events: updatedEvents });
+            setSelectedDay({ date: selectedDay.date, events: updatedEvents });
           }
         }}
         isArchived={season?.status !== 'current'}

@@ -92,6 +92,7 @@ export interface AppState {
   alertDays: number;
   eventAlertDays: number;
   treeFocus: string | null; // branch id
+  focusedNodeId: string | null; // node to focus when navigating to timeline/tree
 }
 
 // Project & User types for Firebase
