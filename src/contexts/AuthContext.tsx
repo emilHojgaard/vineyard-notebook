@@ -16,8 +16,9 @@ import {
   getDocs,
   query,
   where,
-  updateDoc,
   deleteDoc,
+  runTransaction,
+  Timestamp,
 } from 'firebase/firestore';
 
 interface PendingInvitation {
@@ -118,18 +119,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const invitation = pendingInvitations.find(inv => inv.id === invitationId);
     if (!invitation) return;
 
-    // Add user to project members
+    // Add user to project members and record when they joined. A transaction
+    // avoids dropping a concurrent membership change.
     const projectRef = doc(db, 'projects', invitation.projectId);
-    const projectDoc = await getDoc(projectRef);
-    
-    if (projectDoc.exists()) {
-      const currentMembers = projectDoc.data().members || [];
-      if (!currentMembers.includes(currentUser.uid)) {
-        await updateDoc(projectRef, {
-          members: [...currentMembers, currentUser.uid],
-        });
-      }
-    }
+    await runTransaction(db, async (transaction) => {
+      const projectDoc = await transaction.get(projectRef);
+      if (!projectDoc.exists()) return;
+
+      const projectData = projectDoc.data();
+      const currentMembers = (projectData.members || []) as string[];
+      if (currentMembers.includes(currentUser.uid)) return;
+
+      transaction.update(projectRef, {
+        members: [...currentMembers, currentUser.uid],
+        memberAddedAt: {
+          ...(projectData.memberAddedAt || {}),
+          [currentUser.uid]: Timestamp.now(),
+        },
+      });
+    });
 
     // Delete the invitation
     await deleteDoc(doc(db, 'invitations', invitationId));

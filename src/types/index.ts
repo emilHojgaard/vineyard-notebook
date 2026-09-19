@@ -102,6 +102,8 @@ export interface Project {
   members: string[]; // user IDs
   createdBy: string; // user ID
   createdAt: Date;
+  // Optional for backwards compatibility with projects created before membership ages were stored.
+  memberAddedAt?: Record<string, Date>;
 }
 
 export interface User {
@@ -115,6 +117,7 @@ export interface Member {
   email: string;
   displayName: string;
   role: 'owner' | 'member';
+  addedAt?: Date;
 }
 
 export interface Invitation {
