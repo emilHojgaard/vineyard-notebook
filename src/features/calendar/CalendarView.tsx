@@ -21,10 +21,8 @@ export function CalendarView() {
   const { seasons, appState, updateAppState } = useData();
   const season = seasons[appState.year];
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<{
-    date: string;
-    events: CalendarEvent[];
-  } | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [eventsRevision, setEventsRevision] = useState(0);
 
   // Get the season year for calendar display
   const seasonYear = season ? parseInt(season.title) : new Date().getFullYear();
@@ -93,7 +91,7 @@ export function CalendarView() {
 
     walkWithColor(season.root, TRUNK_COLOR);
     return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  }, [season]);
+  }, [season, eventsRevision]);
 
   // Update calendar month when season changes (smart start date logic)
   useEffect(() => {
@@ -269,7 +267,7 @@ export function CalendarView() {
             {calendarDays.map((dayData, idx) => (
               <button
                 key={idx}
-                onClick={() => dayData.day !== null && setSelectedDay({ date: dayData.date, events: dayData.events })}
+                onClick={() => dayData.day !== null && setSelectedDay(dayData.date)}
                 disabled={dayData.day === null}
                 className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
                   dayData.day === null
@@ -334,15 +332,9 @@ export function CalendarView() {
       <DayEventsModal
         isOpen={selectedDay !== null}
         onClose={() => setSelectedDay(null)}
-        date={selectedDay?.date || ''}
-        events={selectedDay?.events || []}
-        onUpdate={() => {
-          // Re-fetch events for this day from allEvents
-          if (selectedDay) {
-            const updatedEvents = allEvents.filter((e) => e.date === selectedDay.date);
-            setSelectedDay({ date: selectedDay.date, events: updatedEvents });
-          }
-        }}
+        date={selectedDay || ''}
+        events={selectedDay ? allEvents.filter((event) => event.date === selectedDay) : []}
+        onUpdate={() => setEventsRevision((revision) => revision + 1)}
         isArchived={season?.status !== 'current'}
       />
 

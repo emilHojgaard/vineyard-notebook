@@ -5,6 +5,7 @@ import { Icon } from '../../components/Icon';
 import type { Node, Event } from '../../types';
 import { fmtDate, uid } from '../../lib/utils';
 import { useData } from '../../contexts/DataContext';
+import { PhaseModal } from '../timeline/PhaseModal';
 
 interface CalendarEvent {
   id: string;
@@ -33,7 +34,7 @@ export function DayEventsModal({
   onUpdate,
   isArchived,
 }: DayEventsModalProps) {
-  const { seasons, appState, updateSeason, updateAppState } = useData();
+  const { seasons, appState, updateSeason } = useData();
   const season = seasons[appState.year];
 
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<{
@@ -44,6 +45,7 @@ export function DayEventsModal({
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const [newEventName, setNewEventName] = useState('');
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const [phaseModalNodeId, setPhaseModalNodeId] = useState<string | null>(null);
 
   if (!season) return null;
 
@@ -149,11 +151,12 @@ export function DayEventsModal({
   };
 
   const allPhases = collectPhasesWithBranchContext();
+  const phaseModalNode = phaseModalNodeId ? findNode(phaseModalNodeId) : null;
 
   return (
     <>
       <Modal
-        isOpen={isOpen}
+        isOpen={isOpen && !phaseModalNode}
         onClose={onClose}
         title={fmtDate(date)}
         maxWidth="560px"
@@ -246,13 +249,9 @@ export function DayEventsModal({
                             />
                           </button>
                           <button
-                            onClick={() => {
-                              // Navigate to timeline and focus on this phase
-                              updateAppState({ tab: 'timeline', focusedNodeId: event.nodeId });
-                              onClose();
-                            }}
+                            onClick={() => setPhaseModalNodeId(event.nodeId)}
                             className="px-3 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft hover:text-burgundy flex items-center"
-                            title="Go to phase in Timeline"
+                            title="Open phase details"
                           >
                             <Icon name="chevronright" size={14} />
                           </button>
@@ -313,13 +312,9 @@ export function DayEventsModal({
                           <div className="text-xs text-ink-soft">{event.title}</div>
                         </div>
                         <button
-                          onClick={() => {
-                            // Navigate to timeline and focus on this phase
-                            updateAppState({ tab: 'timeline', focusedNodeId: event.nodeId });
-                            onClose();
-                          }}
+                          onClick={() => setPhaseModalNodeId(event.nodeId)}
                           className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
-                          title="Go to phase in Timeline"
+                          title="Open phase details"
                         >
                           <Icon name="chevronright" size={14} />
                         </button>
@@ -385,6 +380,20 @@ export function DayEventsModal({
           </div>
         )}
       </Modal>
+
+      {phaseModalNode && (
+        <PhaseModal
+          node={phaseModalNode}
+          isOpen={isOpen}
+          onClose={() => setPhaseModalNodeId(null)}
+          onUpdate={() => {
+            updateSeason(appState.year, season);
+            onUpdate();
+          }}
+          isLocked={appState.locked}
+          isArchived={isArchived}
+        />
+      )}
 
       <ConfirmDialog
         isOpen={confirmDeleteEvent !== null}
