@@ -205,18 +205,11 @@ export function TreeView() {
     };
   }, [centeringKey]);
 
-  // Native listeners are used for wheel and touchmove so preventDefault can
-  // stop browser zoom/navigation without disabling ordinary page scrolling elsewhere.
+  // Handle only multi-touch gestures here. Wheel events remain native so PC
+  // users can scroll and pan the tree normally.
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      if (event.deltaY === 0) return;
-      event.preventDefault();
-      const factor = Math.pow(KEYBOARD_ZOOM_STEP, -event.deltaY / 100);
-      zoomAt(zoomRef.current * factor, { x: event.clientX, y: event.clientY });
-    };
 
     const getTouchDistance = (touches: TouchList) => {
       const first = touches[0];
@@ -270,13 +263,11 @@ export function TreeView() {
       if (event.touches.length < 2) pinchRef.current = null;
     };
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
     container.addEventListener('touchstart', handleTouchStart, { passive: false });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd);
     container.addEventListener('touchcancel', handleTouchEnd);
     return () => {
-      container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
