@@ -16,7 +16,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [creating, setCreating] = useState(false);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [hideOnScroll, setHideOnScroll] = useState(false);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  const lastScrollY = useRef(0);
   const selectorRef = useRef<HTMLDivElement>(null);
 
   // Get sorted year list (newest first)
@@ -99,22 +99,22 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       // Never hide if the dropdown is expanded
       if (isExpanded) {
         setHideOnScroll(false);
-        setLastScrollY(currentScrollY);
+        lastScrollY.current = currentScrollY;
         return;
       }
 
       // Hide when scrolling down significantly, show when scrolling up
-      if (currentScrollY > lastScrollY && currentScrollY > 50) {
+      if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
         setHideOnScroll(true);
-      } else if (currentScrollY < lastScrollY) {
+      } else if (currentScrollY < lastScrollY.current) {
         setHideOnScroll(false);
       }
-      setLastScrollY(currentScrollY);
+      lastScrollY.current = currentScrollY;
     };
 
     contentDiv.addEventListener('scroll', handleScroll, { passive: true });
     return () => contentDiv.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY, isExpanded]);
+  }, [isExpanded]);
 
   // When expanded, ensure we're visible
   useEffect(() => {
