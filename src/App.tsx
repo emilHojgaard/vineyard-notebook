@@ -1,5 +1,5 @@
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { LoginPage } from './features/auth/LoginPage';
@@ -14,6 +14,40 @@ const TreeView = lazy(() => import('./features/tree/TreeView'));
 const CalendarView = lazy(() => import('./features/calendar/CalendarView'));
 const InventoryView = lazy(() => import('./features/inventory/InventoryView'));
 const LibraryView = lazy(() => import('./features/library/LibraryView'));
+
+function InvitationNotifications() {
+  const { invitationNotifications, dismissInvitationNotification } = useAuth();
+
+  useEffect(() => {
+    const timers = invitationNotifications.map((notification) =>
+      window.setTimeout(() => dismissInvitationNotification(notification.id), 5000)
+    );
+    return () => timers.forEach(window.clearTimeout);
+  }, [invitationNotifications, dismissInvitationNotification]);
+
+  if (invitationNotifications.length === 0) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-[80] space-y-2" role="status" aria-live="polite">
+      {invitationNotifications.map((notification) => (
+        <div
+          key={notification.id}
+          className="flex items-center gap-3 rounded-lg bg-burgundy px-4 py-3 text-sm font-semibold text-white shadow-lg"
+        >
+          <span>{notification.message}</span>
+          <button
+            type="button"
+            onClick={() => dismissInvitationNotification(notification.id)}
+            className="text-white/80 hover:text-white"
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function AppContent() {
   const { currentUser } = useAuth();
@@ -67,6 +101,7 @@ function App() {
       <DataProvider>
         <AppContent />
         <InvitationPrompt />
+        <InvitationNotifications />
       </DataProvider>
     </AuthProvider>
   );

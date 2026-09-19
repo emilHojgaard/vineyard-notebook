@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   type User as FirebaseUser,
   createUserWithEmailAndPassword,
@@ -28,10 +28,17 @@ interface PendingInvitation {
   invitedBy: string;
 }
 
+export interface InvitationNotification {
+  id: string;
+  message: string;
+}
+
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   loading: boolean;
   pendingInvitations: PendingInvitation[];
+  invitationNotifications: InvitationNotification[];
+  dismissInvitationNotification: (notificationId: string) => void;
   signup: (email: string, password: string, displayName: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -53,6 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationNotifications, setInvitationNotifications] = useState<InvitationNotification[]>([]);
+  const notifiedInvitationIds = useRef(new Set<string>());
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -127,6 +136,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Remove from local state
     setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+
+    // An invitation can only be accepted once, but guard the notification as
+    // well so auth/session reruns cannot show duplicate messages.
+    if (!notifiedInvitationIds.current.has(invitation.id)) {
+      notifiedInvitationIds.current.add(invitation.id);
+      setInvitationNotifications(prev => [
+        ...prev,
+        {
+          id: invitation.id,
+          message: `You've been added to ${invitation.projectName}`,
+        },
+      ]);
+    }
+  };
+
+  const dismissInvitationNotification = (notificationId: string) => {
+    setInvitationNotifications(prev => prev.filter(notification => notification.id !== notificationId));
   };
 
   const declineInvitation = async (invitationId: string) => {
@@ -166,6 +192,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentUser,
     loading,
     pendingInvitations,
+    invitationNotifications,
+    dismissInvitationNotification,
     signup,
     login,
     logout,
