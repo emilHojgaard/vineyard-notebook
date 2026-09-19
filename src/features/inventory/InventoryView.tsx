@@ -1,22 +1,139 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useData } from '../../contexts/DataContext';
-import type { InventoryItem, InventorySection } from '../../types';
-import { invStatus, uid } from '../../lib/utils';
+import type { InventoryItem, InventorySection, Node } from '../../types';
+import { invStatus, uid, walkNodes } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
+interface InventoryDraft extends InventoryItem {
+  phaseIds: string[];
+}
+
+interface PhaseOption {
+  id: string;
+  name: string;
+  branchPath: string[];
+}
+
 export function InventoryView() {
-  const { inventory, appState, updateInventory, seasons, updateAppState } = useData();
+  const {
+    inventory,
+    appState,
+    updateInventory,
+    seasons,
+    updateSeason,
+    updateAppState,
+    currentProject,
+  } = useData();
   const inv = inventory[appState.year];
   const isEditMode = !appState.locked;
+  const season = seasons[appState.year];
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);
-  const [editingItem, setEditingItem] = useState<{ sectionId: string; item: InventoryItem } | null>(null);
+  // Only one item is rendered in edit mode, while drafts remain keyed by item ID.
+  // This lets switching items preserve an unsaved draft without sharing edit state.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, InventoryDraft>>({});
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'section' | 'item'; id: string; sectionId?: string } | null>(null);
 
   const isArchived = false; // Inventory not year-locked in mockup
   const hasSeasons = Object.keys(seasons).length > 0;
+
+  // Do not carry drafts or an edit target across seasons or projects. Inventory IDs
+  // are only meaningful inside their current project's season data.
+  useEffect(() => {
+    setEditingItemId(null);
+    setDrafts({});
+  }, [currentProject?.id, appState.year]);
+
+  const phaseOptions: PhaseOption[] = [];
+  const collectPhaseOptions = (nodes: Node[], branchPath: string[] = []) => {
+    nodes.forEach((node) => {
+      phaseOptions.push({ id: node.id, name: node.name, branchPath });
+      if (node.branches) {
+        node.branches.forEach((branch) =>
+          collectPhaseOptions(branch.nodes, [...branchPath, branch.name])
+        );
+      }
+    });
+  };
+  if (season) collectPhaseOptions(season.root);
+
+  const phaseIdsForItem = (itemId: string): string[] => {
+    if (!season) return [];
+    const linked: string[] = [];
+    walkNodes(season.root, (node) => {
+      if ((node.invIds || []).includes(itemId)) linked.push(node.id);
+    });
+    return linked;
+  };
+
+  const startEditingItem = (item: InventoryItem) => {
+    setEditingItemId(item.id);
+    setDrafts((previous) => ({
+      ...previous,
+      [item.id]: previous[item.id] || {
+        ...item,
+        phaseIds: phaseIdsForItem(item.id),
+      },
+    }));
+  };
+
+  const updateDraft = (itemId: string, updates: Partial<InventoryDraft>) => {
+    setDrafts((previous) => {
+      const draft = previous[itemId];
+      if (!draft) return previous;
+      return { ...previous, [itemId]: { ...draft, ...updates } };
+    });
+  };
+
+  const handleCancelEdit = (itemId: string) => {
+    setDrafts((previous) => {
+      const next = { ...previous };
+      delete next[itemId];
+      return next;
+    });
+    if (editingItemId === itemId) setEditingItemId(null);
+  };
+
+  const handleSaveItem = async (itemId: string) => {
+    const draft = drafts[itemId];
+    if (!draft) return;
+
+    const updatedInv = JSON.parse(JSON.stringify(inv));
+    const section = updatedInv.sections.find((s: InventorySection) =>
+      s.items.some((item: InventoryItem) => item.id === itemId)
+    );
+    const item = section?.items.find((candidate: InventoryItem) => candidate.id === itemId);
+    if (!item) return;
+
+    const { phaseIds, ...itemFields } = draft;
+    Object.assign(item, itemFields);
+    const validPhaseIds = new Set(phaseOptions.map((phase) => phase.id));
+    const selectedPhaseIds = phaseIds.filter((phaseId) => validPhaseIds.has(phaseId));
+
+    // Inventory links are stored on the current season's tree, matching the
+    // timeline/tree data model. Rebuild this item's references so deselection,
+    // no links, and multiple links all persist without touching other items.
+    const seasonUpdate = season ? JSON.parse(JSON.stringify(season)) : null;
+    if (seasonUpdate) {
+      walkNodes(seasonUpdate.root, (node) => {
+        node.invIds = (node.invIds || []).filter((id) => id !== itemId);
+        if (selectedPhaseIds.includes(node.id)) node.invIds.push(itemId);
+      });
+    }
+
+    await updateInventory(appState.year, updatedInv);
+    if (seasonUpdate) await updateSeason(appState.year, seasonUpdate);
+
+    setDrafts((previous) => {
+      const next = { ...previous };
+      delete next[itemId];
+      return next;
+    });
+    if (editingItemId === itemId) setEditingItemId(null);
+  };
 
   if (!hasSeasons) {
     return (
@@ -97,29 +214,38 @@ export function InventoryView() {
     };
 
     section.items.push(newItem);
-    setEditingItem({ sectionId, item: newItem });
+    setEditingItemId(newItem.id);
+    setDrafts((previous) => ({
+      ...previous,
+      [newItem.id]: { ...newItem, phaseIds: [] },
+    }));
     updateInventory(appState.year, updatedInv);
   };
 
-  const handleUpdateItem = (sectionId: string, itemId: string, updates: Partial<InventoryItem>) => {
+  const handleDeleteItem = async (sectionId: string, itemId: string) => {
     const updatedInv = JSON.parse(JSON.stringify(inv));
-    const section = updatedInv.sections.find((s) => s.id === sectionId);
+    const section = updatedInv.sections.find((s: InventorySection) => s.id === sectionId);
     if (!section) return;
 
-    const item = section.items.find((i) => i.id === itemId);
-    if (!item) return;
+    section.items = section.items.filter((item: InventoryItem) => item.id !== itemId);
+    await updateInventory(appState.year, updatedInv);
 
-    Object.assign(item, updates);
-    updateInventory(appState.year, updatedInv);
-  };
+    // Remove deleted item references from the current season as well, so a
+    // later project/season switch can never expose a dangling cross-link.
+    if (season) {
+      const updatedSeason = JSON.parse(JSON.stringify(season));
+      walkNodes(updatedSeason.root, (node) => {
+        node.invIds = (node.invIds || []).filter((id) => id !== itemId);
+      });
+      await updateSeason(appState.year, updatedSeason);
+    }
 
-  const handleDeleteItem = (sectionId: string, itemId: string) => {
-    const updatedInv = JSON.parse(JSON.stringify(inv));
-    const section = updatedInv.sections.find((s) => s.id === sectionId);
-    if (!section) return;
-
-    section.items = section.items.filter((i) => i.id !== itemId);
-    updateInventory(appState.year, updatedInv);
+    setDrafts((previous) => {
+      const next = { ...previous };
+      delete next[itemId];
+      return next;
+    });
+    if (editingItemId === itemId) setEditingItemId(null);
     setConfirmDelete(null);
   };
 
@@ -182,7 +308,11 @@ export function InventoryView() {
                   <div className="space-y-2 mb-3">
                     {section.items.map((item) => {
                       const status = invStatus(item);
-                      const isEditing = editingItem?.item.id === item.id;
+                      const isEditing = editingItemId === item.id;
+                      const draft = drafts[item.id] || {
+                        ...item,
+                        phaseIds: phaseIdsForItem(item.id),
+                      };
 
                       return (
                         <div
@@ -193,10 +323,8 @@ export function InventoryView() {
                             <div className="space-y-2">
                               <input
                                 type="text"
-                                value={item.name}
-                                onChange={(e) =>
-                                  handleUpdateItem(section.id, item.id, { name: e.target.value })
-                                }
+                                value={draft.name}
+                                onChange={(e) => updateDraft(item.id, { name: e.target.value })}
                                 className="w-full px-3 py-2 text-sm font-semibold border border-border rounded-md bg-surface text-ink"
                               />
                               <div className="grid grid-cols-2 gap-2">
@@ -206,9 +334,9 @@ export function InventoryView() {
                                   </label>
                                   <input
                                     type="number"
-                                    value={item.haveQty}
+                                    value={draft.haveQty}
                                     onChange={(e) =>
-                                      handleUpdateItem(section.id, item.id, {
+                                      updateDraft(item.id, {
                                         haveQty: Math.max(0, parseInt(e.target.value) || 0),
                                       })
                                     }
@@ -221,9 +349,9 @@ export function InventoryView() {
                                   </label>
                                   <input
                                     type="number"
-                                    value={item.neededQty}
+                                    value={draft.neededQty}
                                     onChange={(e) =>
-                                      handleUpdateItem(section.id, item.id, {
+                                      updateDraft(item.id, {
                                         neededQty: Math.max(1, parseInt(e.target.value) || 1),
                                       })
                                     }
@@ -238,10 +366,8 @@ export function InventoryView() {
                                   </label>
                                   <input
                                     type="text"
-                                    value={item.unit}
-                                    onChange={(e) =>
-                                      handleUpdateItem(section.id, item.id, { unit: e.target.value })
-                                    }
+                                    value={draft.unit}
+                                    onChange={(e) => updateDraft(item.id, { unit: e.target.value })}
                                     placeholder="e.g. × 5L"
                                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink"
                                   />
@@ -252,9 +378,9 @@ export function InventoryView() {
                                   </label>
                                   <input
                                     type="number"
-                                    value={item.price ?? ''}
+                                    value={draft.price ?? ''}
                                     onChange={(e) =>
-                                      handleUpdateItem(section.id, item.id, {
+                                      updateDraft(item.id, {
                                         price: e.target.value ? parseFloat(e.target.value) : null,
                                       })
                                     }
@@ -263,12 +389,52 @@ export function InventoryView() {
                                   />
                                 </div>
                               </div>
+                              <div>
+                                <label className="text-xs text-ink-faint uppercase tracking-wide block mb-1">
+                                  Phases using this item
+                                </label>
+                                {phaseOptions.length === 0 ? (
+                                  <p className="text-xs text-ink-faint italic">No phases in this season.</p>
+                                ) : (
+                                  <div className="max-h-40 overflow-y-auto border border-border rounded-md bg-surface p-2 space-y-1">
+                                    {phaseOptions.map((phase) => (
+                                      <label key={phase.id} className="flex items-start gap-2 p-1 text-sm text-ink cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={draft.phaseIds.includes(phase.id)}
+                                          onChange={(e) => {
+                                            const nextPhaseIds = e.target.checked
+                                              ? [...draft.phaseIds, phase.id]
+                                              : draft.phaseIds.filter((id) => id !== phase.id);
+                                            updateDraft(item.id, { phaseIds: nextPhaseIds });
+                                          }}
+                                          className="mt-0.5 accent-burgundy"
+                                        />
+                                        <span>
+                                          {phase.name}
+                                          {phase.branchPath.length > 0 && (
+                                            <span className="block text-xs text-ink-faint">
+                                              {phase.branchPath.join(' / ')}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                               <div className="flex gap-2 mt-2">
                                 <button
-                                  onClick={() => setEditingItem(null)}
+                                  onClick={() => void handleSaveItem(item.id)}
                                   className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors"
                                 >
                                   Done
+                                </button>
+                                <button
+                                  onClick={() => handleCancelEdit(item.id)}
+                                  className="px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+                                >
+                                  Cancel
                                 </button>
                                 {isEditMode && (
                                   <button
@@ -284,7 +450,7 @@ export function InventoryView() {
                             </div>
                           ) : (
                             <div
-                              onClick={() => setEditingItem({ sectionId: section.id, item })}
+                              onClick={() => startEditingItem(item)}
                               className="cursor-pointer"
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -302,14 +468,26 @@ export function InventoryView() {
                                     </div>
                                   )}
                                 </div>
-                                <div
-                                  className="px-2 py-1 rounded text-xs font-semibold uppercase tracking-wide"
-                                  style={{
-                                    backgroundColor: `color-mix(in srgb, ${statusColors[status]} 15%, transparent)`,
-                                    color: statusColors[status],
-                                  }}
-                                >
-                                  {statusLabels[status]}
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="px-2 py-1 rounded text-xs font-semibold uppercase tracking-wide"
+                                    style={{
+                                      backgroundColor: `color-mix(in srgb, ${statusColors[status]} 15%, transparent)`,
+                                      color: statusColors[status],
+                                    }}
+                                  >
+                                    {statusLabels[status]}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      startEditingItem(item);
+                                    }}
+                                    className="px-2 py-1 text-xs font-semibold text-burgundy hover:underline"
+                                  >
+                                    Edit
+                                  </button>
                                 </div>
                               </div>
                             </div>
