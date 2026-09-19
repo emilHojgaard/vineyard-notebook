@@ -36,8 +36,8 @@ export function AppShell({ children }: AppShellProps) {
               onMembersClick={() => setShowMembers(!showMembers)}
             />
             
-            {/* Season Selector - hidden in library view */}
-            {appState.tab !== 'library' && (
+            {/* Season Selector - hidden in library and inventory views */}
+            {appState.tab !== 'library' && appState.tab !== 'inventory' && (
               <SeasonSelector showAddButton={!appState.locked} />
             )}
 

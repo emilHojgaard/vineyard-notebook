@@ -9,7 +9,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 
 export function LibraryView() {
-  const { library, updateLibrary, currentProject } = useData();
+  const { library, updateLibrary, currentProject, appState } = useData();
+  const isEditMode = !appState.locked;
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);
@@ -163,14 +164,14 @@ export function LibraryView() {
           <div className="space-y-6">
             {library.sections.map((section) => (
               <div key={section.id} className="bg-surface border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-base font-bold text-ink">{section.name}</h3>
-                  <button
+                <div className="relative flex items-center justify-center mb-3">
+                  <h3 className="text-base font-bold text-ink text-center">{section.name}</h3>
+                  {isEditMode && <button
                     onClick={() => setConfirmDelete({ type: 'section', id: section.id })}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                    className="absolute right-0 w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                   >
                     <Icon name="trash" size={14} />
-                  </button>
+                  </button>}
                 </div>
 
                 {section.items.length === 0 ? (
@@ -198,12 +199,12 @@ export function LibraryView() {
                 )}
 
                 {/* Add item buttons */}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap justify-center gap-2">
                   {(['note', 'pdf', 'video', 'photo'] as LibraryItemType[]).map((type) => (
                     <button
                       key={type}
                       onClick={() => handleAddItem(section.id, type)}
-                      className="flex items-center gap-1.5 px-3 py-2 border border-border rounded-md text-xs font-semibold text-ink-soft hover:text-burgundy hover:border-burgundy transition-colors capitalize"
+                      className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-md text-xs font-semibold text-ink-soft hover:text-burgundy hover:border-burgundy transition-colors capitalize"
                     >
                       <Icon name={getItemIcon(type) as any} size={13} />
                       {type}
@@ -322,19 +323,21 @@ export function LibraryView() {
               >
                 Edit
               </button>
-              <button
-                onClick={() => {
-                  const section = library.sections.find((s) =>
-                    s.items.some((i) => i.id === selectedItem.id)
-                  );
-                  if (section) {
-                    setConfirmDelete({ type: 'item', id: selectedItem.id, sectionId: section.id });
-                  }
-                }}
-                className="px-4 py-2 bg-status-need/10 border border-status-need/30 text-status-need rounded-md font-semibold hover:bg-status-need/20 transition-colors"
-              >
-                Delete
-              </button>
+              {isEditMode && (
+                <button
+                  onClick={() => {
+                    const section = library.sections.find((s) =>
+                      s.items.some((i) => i.id === selectedItem.id)
+                    );
+                    if (section) {
+                      setConfirmDelete({ type: 'item', id: selectedItem.id, sectionId: section.id });
+                    }
+                  }}
+                  className="px-4 py-2 bg-status-need/10 border border-status-need/30 text-status-need rounded-md font-semibold hover:bg-status-need/20 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </Modal>
@@ -461,18 +464,20 @@ export function LibraryView() {
               >
                 Done
               </button>
-              <button
-                onClick={() =>
-                  setConfirmDelete({
-                    type: 'item',
-                    id: currentEditingItem.id,
-                    sectionId: editingItem.sectionId,
-                  })
-                }
-                className="px-4 py-2 bg-status-need/10 border border-status-need/30 text-status-need rounded-md font-semibold hover:bg-status-need/20 transition-colors"
-              >
-                Delete
-              </button>
+              {isEditMode && (
+                <button
+                  onClick={() =>
+                    setConfirmDelete({
+                      type: 'item',
+                      id: currentEditingItem.id,
+                      sectionId: editingItem.sectionId,
+                    })
+                  }
+                  className="px-4 py-2 bg-status-need/10 border border-status-need/30 text-status-need rounded-md font-semibold hover:bg-status-need/20 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </Modal>

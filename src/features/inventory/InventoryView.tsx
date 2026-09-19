@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 export function InventoryView() {
   const { inventory, appState, updateInventory, seasons, updateAppState } = useData();
   const inv = inventory[appState.year];
+  const isEditMode = !appState.locked;
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);
@@ -161,12 +162,12 @@ export function InventoryView() {
           <div className="space-y-6">
             {inv.sections.map((section) => (
               <div key={section.id} className="bg-surface border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-base font-bold text-ink">{section.name}</h3>
-                  {!isArchived && (
+                <div className="relative flex items-center justify-center mb-3">
+                  <h3 className="text-base font-bold text-ink text-center">{section.name}</h3>
+                  {isEditMode && !isArchived && (
                     <button
                       onClick={() => setConfirmDelete({ type: 'section', id: section.id })}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                      className="absolute right-0 w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                     >
                       <Icon name="trash" size={14} />
                     </button>
@@ -269,14 +270,16 @@ export function InventoryView() {
                                 >
                                   Done
                                 </button>
-                                <button
-                                  onClick={() =>
-                                    setConfirmDelete({ type: 'item', id: item.id, sectionId: section.id })
-                                  }
-                                  className="px-3 py-2 bg-surface border border-border text-status-need rounded-md text-sm font-semibold hover:bg-status-need/10 transition-colors"
-                                >
-                                  Delete
-                                </button>
+                                {isEditMode && (
+                                  <button
+                                    onClick={() =>
+                                      setConfirmDelete({ type: 'item', id: item.id, sectionId: section.id })
+                                    }
+                                    className="px-3 py-2 bg-surface border border-border text-status-need rounded-md text-sm font-semibold hover:bg-status-need/10 transition-colors"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -320,7 +323,7 @@ export function InventoryView() {
                 {!isArchived && (
                   <button
                     onClick={() => handleAddItem(section.id)}
-                    className="w-full px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+                    className="mx-auto px-3 py-1.5 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
                   >
                     <Icon name="plus" size={14} />
                     Add Item
