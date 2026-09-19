@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useLayoutEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
@@ -35,6 +35,26 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 40;
 const COL_GAP = 80;
 const ROW_GAP = 70;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2.5;
+const KEYBOARD_ZOOM_STEP = 1.1;
+
+interface ZoomAnchor {
+  x: number;
+  y: number;
+}
+
+interface PendingScroll {
+  left: number;
+  top: number;
+}
+
+interface PinchState {
+  initialDistance: number;
+  initialZoom: number;
+  contentX: number;
+  contentY: number;
+}
 
 export function TreeView() {
   const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
@@ -46,7 +66,11 @@ export function TreeView() {
   const [branchingNode, setBranchingNode] = useState<Node | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
+  const [zoom, setZoom] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef(zoom);
+  const pendingScrollRef = useRef<PendingScroll | null>(null);
+  const pinchRef = useRef<PinchState | null>(null);
   const treeContentRef = useRef<HTMLDivElement>(null);
   const userHasScrolledRef = useRef(false);
   const suppressScrollRef = useRef(false);
@@ -59,9 +83,52 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  // A structure key changes for a new project, season, or tree structure, but not
-  // for edits to a phase's fields. This prevents a data update from resetting
-  // a position the user has already chosen.
+  const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+
+  // Apply a zoom while keeping the point under the anchor in the same place.
+  // The scaled wrapper below keeps native overflow scrolling as the pan model.
+  const zoomAt = useCallback((value: number, anchor?: ZoomAnchor, content?: ZoomAnchor) => {
+    const container = scrollContainerRef.current;
+    const currentZoom = zoomRef.current;
+    const nextZoom = clampZoom(value);
+    if (!container || nextZoom === currentZoom) return;
+
+    const rect = container.getBoundingClientRect();
+    const { left: insetX, top: insetY } = getScrollInsets(container);
+    const anchorX = (anchor?.x ?? rect.left + rect.width / 2) - rect.left - insetX;
+    const anchorY = (anchor?.y ?? rect.top + rect.height / 2) - rect.top - insetY;
+    const contentX = content?.x ?? (container.scrollLeft + anchorX) / currentZoom;
+    const contentY = content?.y ?? (container.scrollTop + anchorY) / currentZoom;
+
+    pendingScrollRef.current = {
+      left: contentX * nextZoom - anchorX,
+      top: contentY * nextZoom - anchorY,
+    };
+    userHasScrolledRef.current = true;
+    zoomRef.current = nextZoom;
+    setZoom(nextZoom);
+  }, []);
+
+  // Apply scroll adjustments after the scaled wrapper has been laid out.
+  useLayoutEffect(() => {
+    const pendingScroll = pendingScrollRef.current;
+    const container = scrollContainerRef.current;
+    if (!pendingScroll || !container) return;
+
+    container.scrollLeft = pendingScroll.left;
+    container.scrollTop = pendingScroll.top;
+    pendingScrollRef.current = null;
+  }, [zoom]);
+
+  // A different season starts at the same initial zoom as the existing centered view.
+  useEffect(() => {
+    zoomRef.current = 1;
+    pendingScrollRef.current = null;
+    setZoom(1);
+  }, [appState.year]);
+
+  // Center only when the project, season, or tree structure changes. Field edits
+  // and user panning must not reset the user's position.
   const treeStructureKey = useMemo(
     () => season ? getTreeStructureKey(season.root) : null,
     [season]
@@ -70,11 +137,6 @@ export function TreeView() {
     ? `${currentProject.id}:${appState.year}:${treeStructureKey}`
     : null;
 
-  // Center after layout has settled. The previous implementation used the
-  // calculated layout width and one animation frame, which could run before
-  // the scroll container's final dimensions were available. Measuring the
-  // rendered tree against the rendered viewport also accounts for padding,
-  // margins, and the browser's actual scroll range.
   useLayoutEffect(() => {
     if (!centeringKey) return;
 
@@ -83,7 +145,6 @@ export function TreeView() {
     if (!container || !treeContent) return;
 
     userHasScrolledRef.current = false;
-
     let disposed = false;
     let frame = 0;
     let secondFrame = 0;
@@ -91,15 +152,11 @@ export function TreeView() {
 
     const centerTree = () => {
       if (disposed || userHasScrolledRef.current) return;
-
       const containerRect = container.getBoundingClientRect();
       const treeRect = treeContent.getBoundingClientRect();
       const containerWidth = container.clientWidth;
       const treeWidth = treeRect.width;
       const scrollWidth = container.scrollWidth;
-
-      // If CSS/layout has not settled yet, ResizeObserver will schedule a
-      // retry once usable dimensions are available.
       if (containerWidth <= 0 || treeWidth <= 0 || scrollWidth <= 0) return;
 
       const maxScrollLeft = Math.max(0, scrollWidth - container.clientWidth);
@@ -110,9 +167,6 @@ export function TreeView() {
 
       suppressScrollRef.current = true;
       container.scrollLeft = scrollLeft;
-
-      // Ignore the scroll event caused by the positioning above, but allow a
-      // user gesture immediately after centering to take ownership.
       releaseFrame = requestAnimationFrame(() => {
         suppressScrollRef.current = false;
       });
@@ -122,28 +176,19 @@ export function TreeView() {
       cancelAnimationFrame(frame);
       cancelAnimationFrame(secondFrame);
       frame = requestAnimationFrame(() => {
-        // A second frame lets flex sizing, fonts, and scrollbars settle before
-        // the dimensions used for centering are read.
         secondFrame = requestAnimationFrame(centerTree);
       });
     };
 
     const handleScroll = () => {
-      if (!suppressScrollRef.current) {
-        userHasScrolledRef.current = true;
-      }
+      if (!suppressScrollRef.current) userHasScrolledRef.current = true;
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(() => {
-        // Re-center a new tree, and keep an untouched tree centered if its
-        // responsive container changes size. Never move a tree after the user
-        // has scrolled/panned it.
-        if (!userHasScrolledRef.current) {
-          scheduleCentering();
-        }
+        if (!userHasScrolledRef.current) scheduleCentering();
       });
     resizeObserver?.observe(container);
     resizeObserver?.observe(treeContent);
@@ -159,6 +204,102 @@ export function TreeView() {
       container.removeEventListener('scroll', handleScroll);
     };
   }, [centeringKey]);
+
+  // Native listeners are used for wheel and touchmove so preventDefault can
+  // stop browser zoom/navigation without disabling ordinary page scrolling elsewhere.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      const factor = Math.pow(KEYBOARD_ZOOM_STEP, -event.deltaY / 100);
+      zoomAt(zoomRef.current * factor, { x: event.clientX, y: event.clientY });
+    };
+
+    const getTouchDistance = (touches: TouchList) => {
+      const first = touches[0];
+      const second = touches[1];
+      return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+    };
+
+    const getTouchCenter = (touches: TouchList): ZoomAnchor => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length < 2) return;
+      const center = getTouchCenter(event.touches);
+      const rect = container.getBoundingClientRect();
+      const { left: insetX, top: insetY } = getScrollInsets(container);
+      const currentZoom = zoomRef.current;
+      pinchRef.current = {
+        initialDistance: getTouchDistance(event.touches),
+        initialZoom: currentZoom,
+        contentX: (container.scrollLeft + center.x - rect.left - insetX) / currentZoom,
+        contentY: (container.scrollTop + center.y - rect.top - insetY) / currentZoom,
+      };
+      event.preventDefault();
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const pinch = pinchRef.current;
+      if (!pinch || event.touches.length < 2) return;
+      event.preventDefault();
+
+      const center = getTouchCenter(event.touches);
+      const nextZoom = clampZoom(
+        pinch.initialZoom * (getTouchDistance(event.touches) / pinch.initialDistance),
+      );
+      const rect = container.getBoundingClientRect();
+      const { left: insetX, top: insetY } = getScrollInsets(container);
+      const anchorX = center.x - rect.left - insetX;
+      const anchorY = center.y - rect.top - insetY;
+      pendingScrollRef.current = {
+        left: pinch.contentX * nextZoom - anchorX,
+        top: pinch.contentY * nextZoom - anchorY,
+      };
+      userHasScrolledRef.current = true;
+      zoomRef.current = nextZoom;
+      setZoom(nextZoom);
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) pinchRef.current = null;
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [zoomAt]);
+
+  // Ctrl/Cmd +/- is scoped to the mounted TreeView, but text fields retain
+  // their normal editing behavior (and browser zoom is suppressed otherwise).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((!event.ctrlKey && !event.metaKey) || isTextInput(event.target) || !scrollContainerRef.current) return;
+      const isZoomIn = event.key === '+' || event.key === '=';
+      const isZoomOut = event.key === '-' || event.key === '_';
+      if (!isZoomIn && !isZoomOut) return;
+
+      event.preventDefault();
+      zoomAt(zoomRef.current * (isZoomIn ? KEYBOARD_ZOOM_STEP : 1 / KEYBOARD_ZOOM_STEP));
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomAt]);
 
   if (!season) {
     return (
@@ -296,16 +437,29 @@ export function TreeView() {
       </div>
 
       {/* Tree canvas */}
-      <div ref={scrollContainerRef} className="overflow-auto px-4 pb-8">
+      <div
+        ref={scrollContainerRef}
+        className="overflow-auto px-4 pb-8"
+        style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+      >
         <div
           ref={treeContentRef}
-          key={appState.year}
           className="relative mx-auto"
           style={{
-            width: layout.width,
-            height: layout.height,
+            width: layout.width * zoom,
+            height: layout.height * zoom,
           }}
         >
+          <div
+            key={appState.year}
+            className="relative"
+            style={{
+              width: layout.width,
+              height: layout.height,
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top left',
+            }}
+          >
           {/* Edges (SVG paths) */}
           <svg
             key={appState.year}
@@ -460,6 +614,7 @@ export function TreeView() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
 
@@ -488,9 +643,7 @@ export function TreeView() {
 
       {/* Add phase modal */}
       {addingPhase && (
-        <div role="dialog" aria-modal="true" onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAddingPhase(null); setNewPhaseName(''); }
-        }} className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">
               Add Phase{addingPhase.branchId ? ' to Branch' : ''}
@@ -533,9 +686,7 @@ export function TreeView() {
 
       {/* Branch creation modal */}
       {branchingNode && (
-        <div role="dialog" aria-modal="true" onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setBranchingNode(null); setNewBranchName(''); }
-        }} className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
             <p className="text-sm text-ink-soft mb-4">
@@ -771,6 +922,20 @@ function getTreeStructureKey(nodes: Node[]): string {
     ).join('|') || '';
     return `${node.id}{${branches}}`;
   }).join(',');
+}
+
+function getScrollInsets(element: HTMLElement): { left: number; top: number } {
+  const styles = window.getComputedStyle(element);
+  return {
+    left: element.clientLeft + (Number.parseFloat(styles.paddingLeft) || 0),
+    top: element.clientTop + (Number.parseFloat(styles.paddingTop) || 0),
+  };
+}
+
+function isTextInput(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(
+    target.closest('input, textarea, select, [contenteditable]'),
+  );
 }
 
 function findNodeById(nodes: Node[], id: string): Node | null {
