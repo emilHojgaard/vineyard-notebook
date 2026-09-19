@@ -82,11 +82,15 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
               <Icon name="chevronDown" size={10} />
             </button>
           ) : (
-            <div className="text-xs font-bold tracking-widest uppercase truncate max-w-[210px]">
+            <div
+              className="text-xs font-bold tracking-widest uppercase truncate max-w-[210px]"
+              title="Enable edit mode to switch, add, or manage projects"
+              aria-label="Project. Enable edit mode to switch, add, or manage projects"
+              tabIndex={0}
+            >
               {currentProject?.name || 'Vineyard Notebook'}
             </div>
           )}
-
           {isEditMode && showProjectDropdown && (
             <>
               <div

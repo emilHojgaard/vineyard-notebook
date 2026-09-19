@@ -187,7 +187,14 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                   <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
                 </button>
               ) : (
-                <span className="px-3 py-1.5 text-sm font-semibold text-ink">{appState.year}</span>
+                <span
+                  className="px-3 py-1.5 text-sm font-semibold text-ink"
+                  title="Enable edit mode to manage seasons"
+                  aria-label={`Season ${appState.year}. Enable edit mode to manage seasons`}
+                  tabIndex={0}
+                >
+                  {appState.year}
+                </span>
               )}
             </div>
 
