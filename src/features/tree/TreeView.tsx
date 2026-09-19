@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
@@ -37,7 +37,7 @@ const COL_GAP = 80;
 const ROW_GAP = 70;
 
 export function TreeView() {
-  const { seasons, appState, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
+  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
@@ -47,6 +47,9 @@ export function TreeView() {
   const [newBranchName, setNewBranchName] = useState('');
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{ node: Node; branchId: string } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const treeContentRef = useRef<HTMLDivElement>(null);
+  const userHasScrolledRef = useRef(false);
+  const suppressScrollRef = useRef(false);
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
@@ -56,25 +59,106 @@ export function TreeView() {
     return buildTreeLayout(season.root);
   }, [season]);
 
-  // Center the tree view on initial load and when layout or season changes
-  useEffect(() => {
-    if (!scrollContainerRef.current || !layout) return;
-    
-    // Use requestAnimationFrame to ensure DOM is fully rendered
-    requestAnimationFrame(() => {
-      if (!scrollContainerRef.current || !layout) return;
-      
-      const container = scrollContainerRef.current;
+  // A structure key changes for a new project, season, or tree structure, but not
+  // for edits to a phase's fields. This prevents a data update from resetting
+  // a position the user has already chosen.
+  const treeStructureKey = useMemo(
+    () => season ? getTreeStructureKey(season.root) : null,
+    [season]
+  );
+  const centeringKey = currentProject && treeStructureKey !== null
+    ? `${currentProject.id}:${appState.year}:${treeStructureKey}`
+    : null;
+
+  // Center after layout has settled. The previous implementation used the
+  // calculated layout width and one animation frame, which could run before
+  // the scroll container's final dimensions were available. Measuring the
+  // rendered tree against the rendered viewport also accounts for padding,
+  // margins, and the browser's actual scroll range.
+  useLayoutEffect(() => {
+    if (!centeringKey) return;
+
+    const container = scrollContainerRef.current;
+    const treeContent = treeContentRef.current;
+    if (!container || !treeContent) return;
+
+    userHasScrolledRef.current = false;
+
+    let disposed = false;
+    let frame = 0;
+    let secondFrame = 0;
+    let releaseFrame = 0;
+
+    const centerTree = () => {
+      if (disposed || userHasScrolledRef.current) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const treeRect = treeContent.getBoundingClientRect();
       const containerWidth = container.clientWidth;
-      const contentWidth = layout.width;
-      
-      // Only center if content is wider than container
-      if (contentWidth > containerWidth) {
-        const scrollLeft = (contentWidth - containerWidth) / 2;
-        container.scrollLeft = scrollLeft;
+      const treeWidth = treeRect.width;
+      const scrollWidth = container.scrollWidth;
+
+      // If CSS/layout has not settled yet, ResizeObserver will schedule a
+      // retry once usable dimensions are available.
+      if (containerWidth <= 0 || treeWidth <= 0 || scrollWidth <= 0) return;
+
+      const maxScrollLeft = Math.max(0, scrollWidth - container.clientWidth);
+      const treeCenter = treeRect.left + treeWidth / 2;
+      const viewportCenter = containerRect.left + containerWidth / 2;
+      const centeredScrollLeft = container.scrollLeft + treeCenter - viewportCenter;
+      const scrollLeft = Math.min(maxScrollLeft, Math.max(0, centeredScrollLeft));
+
+      suppressScrollRef.current = true;
+      container.scrollLeft = scrollLeft;
+
+      // Ignore the scroll event caused by the positioning above, but allow a
+      // user gesture immediately after centering to take ownership.
+      releaseFrame = requestAnimationFrame(() => {
+        suppressScrollRef.current = false;
+      });
+    };
+
+    const scheduleCentering = () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(secondFrame);
+      frame = requestAnimationFrame(() => {
+        // A second frame lets flex sizing, fonts, and scrollbars settle before
+        // the dimensions used for centering are read.
+        secondFrame = requestAnimationFrame(centerTree);
+      });
+    };
+
+    const handleScroll = () => {
+      if (!suppressScrollRef.current) {
+        userHasScrolledRef.current = true;
       }
-    });
-  }, [layout, appState.year]);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+        // Re-center a new tree, and keep an untouched tree centered if its
+        // responsive container changes size. Never move a tree after the user
+        // has scrolled/panned it.
+        if (!userHasScrolledRef.current) {
+          scheduleCentering();
+        }
+      });
+    resizeObserver?.observe(container);
+    resizeObserver?.observe(treeContent);
+    scheduleCentering();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(secondFrame);
+      cancelAnimationFrame(releaseFrame);
+      suppressScrollRef.current = false;
+      resizeObserver?.disconnect();
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [centeringKey]);
 
   if (!season) {
     return (
@@ -214,6 +298,7 @@ export function TreeView() {
       {/* Tree canvas */}
       <div ref={scrollContainerRef} className="overflow-auto px-4 pb-8">
         <div
+          ref={treeContentRef}
           key={appState.year}
           className="relative mx-auto"
           style={{
@@ -677,6 +762,15 @@ function buildTreeLayout(root: Node[]): TreeLayout {
 
 function getBranchColor(parentColor: string, idx: number): string {
   return branchColor(parentColor, idx);
+}
+
+function getTreeStructureKey(nodes: Node[]): string {
+  return nodes.map((node) => {
+    const branches = node.branches?.map((branch) =>
+      `${branch.id}[${getTreeStructureKey(branch.nodes)}]`
+    ).join('|') || '';
+    return `${node.id}{${branches}}`;
+  }).join(',');
 }
 
 function findNodeById(nodes: Node[], id: string): Node | null {
