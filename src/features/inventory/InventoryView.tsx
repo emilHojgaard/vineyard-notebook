@@ -14,7 +14,9 @@ import {
   type InventoryItemIdentity,
 } from './inventoryEditing';
 
-interface InventoryDraft extends InventoryItem {
+interface InventoryDraft extends Omit<InventoryItem, 'haveQty' | 'neededQty'> {
+  haveQty: string;
+  neededQty: string;
   phaseIds: string[];
 }
 
@@ -90,6 +92,8 @@ export function InventoryView() {
     setEditingState((previous) =>
       beginInventoryItemEdit(previous, itemKey, () => ({
         ...item,
+        haveQty: String(item.haveQty),
+        neededQty: String(item.neededQty),
         phaseIds: phaseIdsForItem(item.id),
       })),
     );
@@ -123,7 +127,11 @@ export function InventoryView() {
     if (!item || item.id !== identity.itemId) return;
 
     const { phaseIds, ...itemFields } = draft;
-    Object.assign(item, itemFields);
+    Object.assign(item, {
+      ...itemFields,
+      haveQty: Math.max(0, parseInt(itemFields.haveQty, 10) || 0),
+      neededQty: Math.max(1, parseInt(itemFields.neededQty, 10) || 1),
+    });
     const validPhaseIds = new Set(phaseOptions.map((phase) => phase.id));
     const selectedPhaseIds = phaseIds.filter((phaseId) => validPhaseIds.has(phaseId));
 
@@ -268,6 +276,8 @@ export function InventoryView() {
     setEditingState((previous) =>
       beginInventoryItemEdit(previous, inventoryItemKey(identity), () => ({
         ...newItem,
+        haveQty: String(newItem.haveQty),
+        neededQty: String(newItem.neededQty),
         phaseIds: [],
       })),
     );
@@ -371,6 +381,8 @@ export function InventoryView() {
                       const isEditing = isInventoryItemEditing(editingState, itemKey);
                       const draft = drafts[itemKey] || {
                         ...item,
+                        haveQty: String(item.haveQty),
+                        neededQty: String(item.neededQty),
                         phaseIds: phaseIdsForItem(item.id),
                       };
 
@@ -398,10 +410,9 @@ export function InventoryView() {
                                     type="number"
                                     value={draft.haveQty}
                                     onChange={(e) =>
-                                      updateDraft(itemKey, {
-                                        haveQty: Math.max(0, parseInt(e.target.value) || 0),
-                                      })
+                                      updateDraft(itemKey, { haveQty: e.target.value })
                                     }
+                                    min="0"
                                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink num"
                                   />
                                 </div>
@@ -413,10 +424,9 @@ export function InventoryView() {
                                     type="number"
                                     value={draft.neededQty}
                                     onChange={(e) =>
-                                      updateDraft(itemKey, {
-                                        neededQty: Math.max(1, parseInt(e.target.value) || 1),
-                                      })
+                                      updateDraft(itemKey, { neededQty: e.target.value })
                                     }
+                                    min="1"
                                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink num"
                                   />
                                 </div>
@@ -545,19 +555,6 @@ export function InventoryView() {
                                   >
                                     {statusLabels[status]}
                                   </div>
-                                  <button
-                                    type="button"
-                                    aria-label={`Edit ${item.name}`}
-                                    onClick={(event) => {
-                                      // The item summary is also clickable; keep this
-                                      // action from bubbling into any parent handler.
-                                      event.stopPropagation();
-                                      startEditingItem(identity, item);
-                                    }}
-                                    className="px-2 py-1 text-xs font-semibold text-burgundy hover:underline"
-                                  >
-                                    Edit
-                                  </button>
                                 </div>
                               </div>
                             </div>
