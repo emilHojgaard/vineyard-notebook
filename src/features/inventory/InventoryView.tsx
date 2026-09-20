@@ -339,7 +339,9 @@ export function InventoryView() {
                       return (
                         <div
                           key={item.id}
-                          className="bg-parchment border border-border rounded-md p-3"
+                          className={`relative bg-parchment border border-border rounded-md p-3 ${
+                            isEditing ? 'z-10' : 'z-0'
+                          }`}
                         >
                           {isEditing ? (
                             <div className="space-y-2">
