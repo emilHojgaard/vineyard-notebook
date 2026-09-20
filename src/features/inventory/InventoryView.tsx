@@ -4,6 +4,12 @@ import type { InventoryItem, InventorySection, Node } from '../../types';
 import { invStatus, uid, walkNodes } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import {
+  beginInventoryItemEdit,
+  discardInventoryItemDraft,
+  isInventoryItemEditing,
+  type InventoryEditingState,
+} from './inventoryEditing';
 
 interface InventoryDraft extends InventoryItem {
   phaseIds: string[];
@@ -33,8 +39,11 @@ export function InventoryView() {
   const [addingSection, setAddingSection] = useState(false);
   // Only one item is rendered in edit mode, while drafts remain keyed by item ID.
   // This lets switching items preserve an unsaved draft without sharing edit state.
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, InventoryDraft>>({});
+  const [editingState, setEditingState] = useState<InventoryEditingState<InventoryDraft>>({
+    editingItemId: null,
+    drafts: {},
+  });
+  const { drafts } = editingState;
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'section' | 'item'; id: string; sectionId?: string } | null>(null);
 
   const isArchived = false; // Inventory not year-locked in mockup
@@ -43,8 +52,7 @@ export function InventoryView() {
   // Do not carry drafts or an edit target across seasons or projects. Inventory IDs
   // are only meaningful inside their current project's season data.
   useEffect(() => {
-    setEditingItemId(null);
-    setDrafts({});
+    setEditingState({ editingItemId: null, drafts: {} });
   }, [currentProject?.id, appState.year]);
 
   const phaseOptions: PhaseOption[] = [];
@@ -70,31 +78,27 @@ export function InventoryView() {
   };
 
   const startEditingItem = (item: InventoryItem) => {
-    setEditingItemId(item.id);
-    setDrafts((previous) => ({
-      ...previous,
-      [item.id]: previous[item.id] || {
+    setEditingState((previous) =>
+      beginInventoryItemEdit(previous, item.id, () => ({
         ...item,
         phaseIds: phaseIdsForItem(item.id),
-      },
-    }));
+      })),
+    );
   };
 
   const updateDraft = (itemId: string, updates: Partial<InventoryDraft>) => {
-    setDrafts((previous) => {
-      const draft = previous[itemId];
+    setEditingState((previous) => {
+      const draft = previous.drafts[itemId];
       if (!draft) return previous;
-      return { ...previous, [itemId]: { ...draft, ...updates } };
+      return {
+        ...previous,
+        drafts: { ...previous.drafts, [itemId]: { ...draft, ...updates } },
+      };
     });
   };
 
   const handleCancelEdit = (itemId: string) => {
-    setDrafts((previous) => {
-      const next = { ...previous };
-      delete next[itemId];
-      return next;
-    });
-    if (editingItemId === itemId) setEditingItemId(null);
+    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
   };
 
   const handleSaveItem = async (itemId: string) => {
@@ -127,12 +131,7 @@ export function InventoryView() {
     await updateInventory(appState.year, updatedInv);
     if (seasonUpdate) await updateSeason(appState.year, seasonUpdate);
 
-    setDrafts((previous) => {
-      const next = { ...previous };
-      delete next[itemId];
-      return next;
-    });
-    if (editingItemId === itemId) setEditingItemId(null);
+    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
   };
 
   if (!hasSeasons) {
@@ -177,7 +176,7 @@ export function InventoryView() {
   }
 
   const handleAddSection = () => {
-    if (!addingSectionName.trim()) return;
+    if (!isEditMode || !addingSectionName.trim()) return;
 
     const newSection: InventorySection = {
       id: uid('sec'),
@@ -193,13 +192,41 @@ export function InventoryView() {
   };
 
   const handleDeleteSection = (sectionId: string) => {
+    if (!isEditMode) return;
+
+    const section = inv.sections.find((candidate) => candidate.id === sectionId);
+    if (!section) return;
+
+    const itemIds = new Set(section.items.map((item) => item.id));
     const updatedInv = JSON.parse(JSON.stringify(inv));
-    updatedInv.sections = updatedInv.sections.filter((s) => s.id !== sectionId);
+    updatedInv.sections = updatedInv.sections.filter((s: InventorySection) => s.id !== sectionId);
     updateInventory(appState.year, updatedInv);
+
+    // A section deletion also removes its item references from phases.
+    if (season && itemIds.size > 0) {
+      const updatedSeason = JSON.parse(JSON.stringify(season));
+      walkNodes(updatedSeason.root, (node) => {
+        node.invIds = (node.invIds || []).filter((id) => !itemIds.has(id));
+      });
+      void updateSeason(appState.year, updatedSeason);
+    }
+
+    setEditingState((previous) => {
+      const drafts = { ...previous.drafts };
+      itemIds.forEach((itemId) => delete drafts[itemId]);
+      return {
+        editingItemId: previous.editingItemId && itemIds.has(previous.editingItemId)
+          ? null
+          : previous.editingItemId,
+        drafts,
+      };
+    });
     setConfirmDelete(null);
   };
 
   const handleAddItem = (sectionId: string) => {
+    if (!isEditMode) return;
+
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -214,15 +241,15 @@ export function InventoryView() {
     };
 
     section.items.push(newItem);
-    setEditingItemId(newItem.id);
-    setDrafts((previous) => ({
-      ...previous,
-      [newItem.id]: { ...newItem, phaseIds: [] },
-    }));
+    setEditingState((previous) =>
+      beginInventoryItemEdit(previous, newItem.id, () => ({ ...newItem, phaseIds: [] })),
+    );
     updateInventory(appState.year, updatedInv);
   };
 
   const handleDeleteItem = async (sectionId: string, itemId: string) => {
+    if (!isEditMode) return;
+
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s: InventorySection) => s.id === sectionId);
     if (!section) return;
@@ -240,12 +267,7 @@ export function InventoryView() {
       await updateSeason(appState.year, updatedSeason);
     }
 
-    setDrafts((previous) => {
-      const next = { ...previous };
-      delete next[itemId];
-      return next;
-    });
-    if (editingItemId === itemId) setEditingItemId(null);
+    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
     setConfirmDelete(null);
   };
 
@@ -288,12 +310,12 @@ export function InventoryView() {
           <div className="space-y-6">
             {inv.sections.map((section) => (
               <div key={section.id} className="bg-surface border border-border rounded-lg p-4">
-                <div className="relative flex items-center justify-center mb-3">
-                  <h3 className="text-base font-bold text-ink text-center">{section.name}</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-bold text-ink">{section.name}</h3>
                   {isEditMode && !isArchived && (
                     <button
                       onClick={() => setConfirmDelete({ type: 'section', id: section.id })}
-                      className="absolute right-0 w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                     >
                       <Icon name="trash" size={14} />
                     </button>
@@ -308,7 +330,7 @@ export function InventoryView() {
                   <div className="space-y-2 mb-3">
                     {section.items.map((item) => {
                       const status = invStatus(item);
-                      const isEditing = editingItemId === item.id;
+                      const isEditing = isInventoryItemEditing(editingState, item.id);
                       const draft = drafts[item.id] || {
                         ...item,
                         phaseIds: phaseIdsForItem(item.id),
@@ -480,7 +502,10 @@ export function InventoryView() {
                                   </div>
                                   <button
                                     type="button"
+                                    aria-label={`Edit ${item.name}`}
                                     onClick={(event) => {
+                                      // The item summary is also clickable; keep this
+                                      // action from bubbling into any parent handler.
                                       event.stopPropagation();
                                       startEditingItem(item);
                                     }}
@@ -498,10 +523,10 @@ export function InventoryView() {
                   </div>
                 )}
 
-                {!isArchived && (
+                {!isArchived && isEditMode && (
                   <button
                     onClick={() => handleAddItem(section.id)}
-                    className="mx-auto px-3 py-1.5 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+                    className="w-full px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
                   >
                     <Icon name="plus" size={14} />
                     Add Item
