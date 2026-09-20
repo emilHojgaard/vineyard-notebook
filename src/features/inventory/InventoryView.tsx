@@ -8,7 +8,10 @@ import {
   beginInventoryItemEdit,
   discardInventoryItemDraft,
   isInventoryItemEditing,
+  inventoryItemKey,
+  updateInventoryItemPhaseLinks,
   type InventoryEditingState,
+  type InventoryItemIdentity,
 } from './inventoryEditing';
 
 interface InventoryDraft extends InventoryItem {
@@ -37,22 +40,27 @@ export function InventoryView() {
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);
-  // Only one item is rendered in edit mode, while drafts remain keyed by item ID.
+  // Only one item is rendered in edit mode, while drafts remain keyed by row identity.
   // This lets switching items preserve an unsaved draft without sharing edit state.
   const [editingState, setEditingState] = useState<InventoryEditingState<InventoryDraft>>({
-    editingItemId: null,
+    editingItemKey: null,
     drafts: {},
   });
   const { drafts } = editingState;
-  const [confirmDelete, setConfirmDelete] = useState<{ type: 'section' | 'item'; id: string; sectionId?: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: 'section' | 'item';
+    id: string;
+    sectionId?: string;
+    itemIndex?: number;
+  } | null>(null);
 
   const isArchived = false; // Inventory not year-locked in mockup
   const hasSeasons = Object.keys(seasons).length > 0;
 
-  // Do not carry drafts or an edit target across seasons or projects. Inventory IDs
-  // are only meaningful inside their current project's season data.
+  // Do not carry drafts or an edit target across seasons or projects. Inventory row
+  // identities are only meaningful inside their current project's season data.
   useEffect(() => {
-    setEditingState({ editingItemId: null, drafts: {} });
+    setEditingState({ editingItemKey: null, drafts: {} });
   }, [currentProject?.id, appState.year]);
 
   const phaseOptions: PhaseOption[] = [];
@@ -77,40 +85,42 @@ export function InventoryView() {
     return linked;
   };
 
-  const startEditingItem = (item: InventoryItem) => {
+  const startEditingItem = (identity: InventoryItemIdentity, item: InventoryItem) => {
+    const itemKey = inventoryItemKey(identity);
     setEditingState((previous) =>
-      beginInventoryItemEdit(previous, item.id, () => ({
+      beginInventoryItemEdit(previous, itemKey, () => ({
         ...item,
         phaseIds: phaseIdsForItem(item.id),
       })),
     );
   };
 
-  const updateDraft = (itemId: string, updates: Partial<InventoryDraft>) => {
+  const updateDraft = (itemKey: string, updates: Partial<InventoryDraft>) => {
     setEditingState((previous) => {
-      const draft = previous.drafts[itemId];
+      const draft = previous.drafts[itemKey];
       if (!draft) return previous;
       return {
         ...previous,
-        drafts: { ...previous.drafts, [itemId]: { ...draft, ...updates } },
+        drafts: { ...previous.drafts, [itemKey]: { ...draft, ...updates } },
       };
     });
   };
 
-  const handleCancelEdit = (itemId: string) => {
-    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
+  const handleCancelEdit = (itemKey: string) => {
+    setEditingState((previous) => discardInventoryItemDraft(previous, itemKey));
   };
 
-  const handleSaveItem = async (itemId: string) => {
-    const draft = drafts[itemId];
+  const handleSaveItem = async (identity: InventoryItemIdentity) => {
+    const itemKey = inventoryItemKey(identity);
+    const draft = drafts[itemKey];
     if (!draft) return;
 
     const updatedInv = JSON.parse(JSON.stringify(inv));
-    const section = updatedInv.sections.find((s: InventorySection) =>
-      s.items.some((item: InventoryItem) => item.id === itemId)
+    const section = updatedInv.sections.find(
+      (candidate: InventorySection) => candidate.id === identity.sectionId,
     );
-    const item = section?.items.find((candidate: InventoryItem) => candidate.id === itemId);
-    if (!item) return;
+    const item = section?.items[identity.itemIndex] as InventoryItem | undefined;
+    if (!item || item.id !== identity.itemId) return;
 
     const { phaseIds, ...itemFields } = draft;
     Object.assign(item, itemFields);
@@ -122,16 +132,13 @@ export function InventoryView() {
     // no links, and multiple links all persist without touching other items.
     const seasonUpdate = season ? JSON.parse(JSON.stringify(season)) : null;
     if (seasonUpdate) {
-      walkNodes(seasonUpdate.root, (node) => {
-        node.invIds = (node.invIds || []).filter((id) => id !== itemId);
-        if (selectedPhaseIds.includes(node.id)) node.invIds.push(itemId);
-      });
+      updateInventoryItemPhaseLinks(seasonUpdate.root, identity.itemId, selectedPhaseIds);
     }
 
     await updateInventory(appState.year, updatedInv);
     if (seasonUpdate) await updateSeason(appState.year, seasonUpdate);
 
-    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
+    setEditingState((previous) => discardInventoryItemDraft(previous, itemKey));
   };
 
   if (!hasSeasons) {
@@ -212,12 +219,14 @@ export function InventoryView() {
     }
 
     setEditingState((previous) => {
-      const drafts = { ...previous.drafts };
-      itemIds.forEach((itemId) => delete drafts[itemId]);
+      const sectionPrefix = `${sectionId}:`;
+      const drafts = Object.fromEntries(
+        Object.entries(previous.drafts).filter(([key]) => !key.startsWith(sectionPrefix)),
+      );
       return {
-        editingItemId: previous.editingItemId && itemIds.has(previous.editingItemId)
+        editingItemKey: previous.editingItemKey?.startsWith(sectionPrefix)
           ? null
-          : previous.editingItemId,
+          : previous.editingItemKey,
         drafts,
       };
     });
@@ -231,8 +240,18 @@ export function InventoryView() {
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
+    // uid() is process-local and resets after a reload. Avoid reusing an ID
+    // already present in this season, otherwise separate rows can share links.
+    const existingItemIds = new Set(
+      updatedInv.sections.flatMap((candidate: InventorySection) =>
+        candidate.items.map((item: InventoryItem) => item.id),
+      ),
+    );
+    let newItemId = uid('inv');
+    while (existingItemIds.has(newItemId)) newItemId = uid('inv');
+
     const newItem: InventoryItem = {
-      id: uid('inv'),
+      id: newItemId,
       name: 'New Item',
       haveQty: 0,
       neededQty: 1,
@@ -241,20 +260,30 @@ export function InventoryView() {
     };
 
     section.items.push(newItem);
+    const identity: InventoryItemIdentity = {
+      sectionId,
+      itemId: newItem.id,
+      itemIndex: section.items.length - 1,
+    };
     setEditingState((previous) =>
-      beginInventoryItemEdit(previous, newItem.id, () => ({ ...newItem, phaseIds: [] })),
+      beginInventoryItemEdit(previous, inventoryItemKey(identity), () => ({
+        ...newItem,
+        phaseIds: [],
+      })),
     );
     updateInventory(appState.year, updatedInv);
   };
 
-  const handleDeleteItem = async (sectionId: string, itemId: string) => {
+  const handleDeleteItem = async (sectionId: string, itemId: string, itemIndex: number) => {
     if (!isEditMode) return;
 
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s: InventorySection) => s.id === sectionId);
     if (!section) return;
 
-    section.items = section.items.filter((item: InventoryItem) => item.id !== itemId);
+    section.items = section.items.filter(
+      (item: InventoryItem, index: number) => index !== itemIndex || item.id !== itemId,
+    );
     await updateInventory(appState.year, updatedInv);
 
     // Remove deleted item references from the current season as well, so a
@@ -267,7 +296,10 @@ export function InventoryView() {
       await updateSeason(appState.year, updatedSeason);
     }
 
-    setEditingState((previous) => discardInventoryItemDraft(previous, itemId));
+    setEditingState((previous) => discardInventoryItemDraft(
+      previous,
+      inventoryItemKey({ sectionId, itemId, itemIndex }),
+    ));
     setConfirmDelete(null);
   };
 
@@ -328,17 +360,23 @@ export function InventoryView() {
                   </div>
                 ) : (
                   <div className="space-y-2 mb-3">
-                    {section.items.map((item) => {
+                    {section.items.map((item, itemIndex) => {
+                      const identity: InventoryItemIdentity = {
+                        sectionId: section.id,
+                        itemId: item.id,
+                        itemIndex,
+                      };
+                      const itemKey = inventoryItemKey(identity);
                       const status = invStatus(item);
-                      const isEditing = isInventoryItemEditing(editingState, item.id);
-                      const draft = drafts[item.id] || {
+                      const isEditing = isInventoryItemEditing(editingState, itemKey);
+                      const draft = drafts[itemKey] || {
                         ...item,
                         phaseIds: phaseIdsForItem(item.id),
                       };
 
                       return (
                         <div
-                          key={item.id}
+                          key={itemKey}
                           className={`relative bg-parchment border border-border rounded-md p-3 ${
                             isEditing ? 'z-10' : 'z-0'
                           }`}
@@ -348,7 +386,7 @@ export function InventoryView() {
                               <input
                                 type="text"
                                 value={draft.name}
-                                onChange={(e) => updateDraft(item.id, { name: e.target.value })}
+                                onChange={(e) => updateDraft(itemKey, { name: e.target.value })}
                                 className="w-full px-3 py-2 text-sm font-semibold border border-border rounded-md bg-surface text-ink"
                               />
                               <div className="grid grid-cols-2 gap-2">
@@ -360,7 +398,7 @@ export function InventoryView() {
                                     type="number"
                                     value={draft.haveQty}
                                     onChange={(e) =>
-                                      updateDraft(item.id, {
+                                      updateDraft(itemKey, {
                                         haveQty: Math.max(0, parseInt(e.target.value) || 0),
                                       })
                                     }
@@ -375,7 +413,7 @@ export function InventoryView() {
                                     type="number"
                                     value={draft.neededQty}
                                     onChange={(e) =>
-                                      updateDraft(item.id, {
+                                      updateDraft(itemKey, {
                                         neededQty: Math.max(1, parseInt(e.target.value) || 1),
                                       })
                                     }
@@ -391,7 +429,7 @@ export function InventoryView() {
                                   <input
                                     type="text"
                                     value={draft.unit}
-                                    onChange={(e) => updateDraft(item.id, { unit: e.target.value })}
+                                    onChange={(e) => updateDraft(itemKey, { unit: e.target.value })}
                                     placeholder="e.g. × 5L"
                                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink"
                                   />
@@ -404,7 +442,7 @@ export function InventoryView() {
                                     type="number"
                                     value={draft.price ?? ''}
                                     onChange={(e) =>
-                                      updateDraft(item.id, {
+                                      updateDraft(itemKey, {
                                         price: e.target.value ? parseFloat(e.target.value) : null,
                                       })
                                     }
@@ -430,7 +468,7 @@ export function InventoryView() {
                                             const nextPhaseIds = e.target.checked
                                               ? [...draft.phaseIds, phase.id]
                                               : draft.phaseIds.filter((id) => id !== phase.id);
-                                            updateDraft(item.id, { phaseIds: nextPhaseIds });
+                                            updateDraft(itemKey, { phaseIds: nextPhaseIds });
                                           }}
                                           className="mt-0.5 accent-burgundy"
                                         />
@@ -449,13 +487,13 @@ export function InventoryView() {
                               </div>
                               <div className="flex gap-2 mt-2">
                                 <button
-                                  onClick={() => void handleSaveItem(item.id)}
+                                  onClick={() => void handleSaveItem(identity)}
                                   className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors"
                                 >
-                                  Done
+                                  Save
                                 </button>
                                 <button
-                                  onClick={() => handleCancelEdit(item.id)}
+                                  onClick={() => handleCancelEdit(itemKey)}
                                   className="px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
                                 >
                                   Cancel
@@ -463,7 +501,12 @@ export function InventoryView() {
                                 {isEditMode && (
                                   <button
                                     onClick={() =>
-                                      setConfirmDelete({ type: 'item', id: item.id, sectionId: section.id })
+                                      setConfirmDelete({
+                                        type: 'item',
+                                        id: item.id,
+                                        sectionId: section.id,
+                                        itemIndex,
+                                      })
                                     }
                                     className="px-3 py-2 bg-surface border border-border text-status-need rounded-md text-sm font-semibold hover:bg-status-need/10 transition-colors"
                                   >
@@ -474,7 +517,7 @@ export function InventoryView() {
                             </div>
                           ) : (
                             <div
-                              onClick={() => startEditingItem(item)}
+                              onClick={() => startEditingItem(identity, item)}
                               className="cursor-pointer"
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -509,7 +552,7 @@ export function InventoryView() {
                                       // The item summary is also clickable; keep this
                                       // action from bubbling into any parent handler.
                                       event.stopPropagation();
-                                      startEditingItem(item);
+                                      startEditingItem(identity, item);
                                     }}
                                     className="px-2 py-1 text-xs font-semibold text-burgundy hover:underline"
                                   >
@@ -607,7 +650,11 @@ export function InventoryView() {
         confirmText="Delete"
         onConfirm={() => {
           if (confirmDelete?.type === 'item' && confirmDelete.sectionId) {
-            handleDeleteItem(confirmDelete.sectionId, confirmDelete.id);
+            handleDeleteItem(
+              confirmDelete.sectionId,
+              confirmDelete.id,
+              confirmDelete.itemIndex ?? 0,
+            );
           }
         }}
         onCancel={() => setConfirmDelete(null)}
