@@ -242,8 +242,6 @@ export function InventoryView() {
   };
 
   const handleAddItem = (sectionId: string) => {
-    if (!isEditMode) return;
-
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -565,10 +563,10 @@ export function InventoryView() {
                   </div>
                 )}
 
-                {!isArchived && isEditMode && (
+                {!isArchived && (
                   <button
                     onClick={() => handleAddItem(section.id)}
-                    className="w-full px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
+                    className="w-fit mx-auto px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
                   >
                     <Icon name="plus" size={14} />
                     Add Item
