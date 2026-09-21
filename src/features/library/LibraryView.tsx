@@ -5,12 +5,14 @@ import { uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 
 export function LibraryView() {
   const { library, updateLibrary, currentProject, appState } = useData();
-  const isEditMode = !appState.locked;
+  const { canEditContent } = useSeasonPermissions();
+  const isEditMode = canEditContent;
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);

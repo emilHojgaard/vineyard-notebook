@@ -6,6 +6,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { ProjectSetup } from './features/auth/ProjectSetup';
 import { AppShell } from './components/AppShell';
 import { LoadingSpinner } from './components/LoadingSpinner';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { InvitationPrompt } from './components/InvitationPrompt';
 
 // Lazy load main feature views for better performance
@@ -97,13 +98,15 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
       <DataProvider>
         <AppContent />
         <InvitationPrompt />
         <InvitationNotifications />
       </DataProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

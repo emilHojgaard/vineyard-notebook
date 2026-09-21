@@ -4,6 +4,7 @@ import type { InventoryItem, InventorySection, Node } from '../../types';
 import { invStatus, uid, walkNodes } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
 import {
   beginInventoryItemEdit,
   discardInventoryItemDraft,
@@ -37,7 +38,8 @@ export function InventoryView() {
     currentProject,
   } = useData();
   const inv = inventory[appState.year];
-  const isEditMode = !appState.locked;
+  const { isArchived, canEditContent } = useSeasonPermissions();
+  const isEditMode = canEditContent;
   const season = seasons[appState.year];
 
   const [addingSectionName, setAddingSectionName] = useState('');
@@ -56,7 +58,6 @@ export function InventoryView() {
     itemIndex?: number;
   } | null>(null);
 
-  const isArchived = season?.status !== 'current';
   const hasSeasons = Object.keys(seasons).length > 0;
 
   // Do not carry drafts or an edit target across seasons or projects. Inventory row
