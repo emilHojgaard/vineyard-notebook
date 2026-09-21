@@ -5,6 +5,7 @@ import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../l
 import { Icon } from '../../components/Icon';
 import { generateICS, downloadICS } from '../../lib/calendar-export';
 import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
+import { notifyError } from '../../lib/notifications';
 import { DayEventsModal } from './DayEventsModal';
 
 interface CalendarEvent {
@@ -314,7 +315,7 @@ export function CalendarView() {
             if (icsContent) {
               downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
             } else {
-              alert('No events to export or error generating calendar file.');
+              notifyError('No events to export or error generating calendar file.');
             }
           }}
           disabled={allEvents.length === 0}

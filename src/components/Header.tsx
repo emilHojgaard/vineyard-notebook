@@ -6,6 +6,7 @@ import { ProjectSetup } from '../features/auth/ProjectSetup';
 import { ConfirmDialog } from './ConfirmDialog';
 import { doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { notifyError } from '../lib/notifications';
 
 interface HeaderProps {
   onSettingsClick: () => void;
@@ -55,7 +56,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
       }
     } catch (error) {
       console.error('Failed to delete project:', error);
-      alert('Failed to delete project. Please try again.');
+      notifyError('Failed to delete project. Please try again.');
     }
     setConfirmDeleteProject(null);
   };

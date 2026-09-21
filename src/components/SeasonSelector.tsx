@@ -3,6 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
 import { getSeasonCompletionBlockReason } from '../lib/utils';
+import { notifyError } from '../lib/notifications';
 
 interface SeasonSelectorProps {
   showAddButton?: boolean; // Whether to show the "+" button (based on edit mode)
@@ -69,7 +70,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       setIsExpanded(false); // Auto-collapse after creation
     } catch (error) {
       console.error('Failed to create season:', error);
-      alert('Failed to create season. Please try again.');
+      notifyError('Failed to create season. Please try again.');
     } finally {
       setCreating(false);
     }
@@ -83,7 +84,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       setIsExpanded(false); // Auto-collapse after deletion
     } catch (error) {
       console.error('Failed to delete season:', error);
-      alert('Failed to delete season. Please try again.');
+      notifyError('Failed to delete season. Please try again.');
     }
   };
 
@@ -400,7 +401,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
           try {
             await completeSeason(confirmCompleteSeason);
           } catch (error) {
-            alert(error instanceof Error ? error.message : 'Unable to complete season.');
+            notifyError(error instanceof Error ? error.message : 'Unable to complete season.');
           }
         }}
         onCancel={() => setConfirmCompleteSeason(null)}

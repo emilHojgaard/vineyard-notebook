@@ -5,6 +5,7 @@ import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { notifyError } from '../../lib/notifications';
 
 export function TimelineView() {
   const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
@@ -90,7 +91,7 @@ export function TimelineView() {
       setConfirmDeletePhase(null);
     } catch (error) {
       console.error('Failed to delete phase:', error);
-      alert('Failed to delete phase. Please try again.');
+      notifyError('Failed to delete phase. Please try again.');
     }
   };
 
