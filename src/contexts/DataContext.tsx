@@ -29,6 +29,7 @@ import type {
 } from '../types';
 import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason } from '../lib/utils';
 import { validateTree } from '../lib/tree';
+import { deleteNodeFromTree } from '../lib/tree-operations';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -539,99 +540,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Delete a phase from the tree
+  // Delete a phase from the tree. The pure operation is tested independently
+  // so structural edits cannot silently discard branches.
   const deletePhase = async (year: number, phaseId: string) => {
     if (!currentProject) return;
     const season = seasons[year];
     if (!season) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
-
-    // Helper to find a node and its parent
-    const findNodeAndParent = (
-      nodes: PhaseNode[],
-      targetId: string,
-      parent: PhaseNode | null = null
-    ): { node: PhaseNode; parent: PhaseNode | null; parentNodes: PhaseNode[]; nodeIndex: number } | null => {
-      for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].id === targetId) {
-          return { node: nodes[i], parent, parentNodes: nodes, nodeIndex: i };
-        }
-        if (nodes[i].branches) {
-          for (const branch of nodes[i].branches) {
-            const result = findNodeAndParent(branch.nodes, targetId, nodes[i]);
-            if (result) return result;
-          }
-        }
-      }
-      return null;
-    };
-
-    // Find the phase to delete
-    const found = findNodeAndParent(updatedSeason.root, phaseId);
-    if (!found) return;
-
-    const { node, parent, parentNodes, nodeIndex } = found;
-
-    // If the node has branches, promote them to the parent
-    if (node.branches && node.branches.length > 0) {
-      if (parent) {
-        // If parent has branches, add to them
-        if (parent.branches) {
-          parent.branches.push(...node.branches);
-        } else {
-          // Parent doesn't have branches yet - transfer deleted node's branches to parent
-          parent.branches = node.branches;
-        }
-      } else {
-        // A root phase has no parent that can carry its branch labels. The old
-        // implementation silently discarded branches when this was the first
-        // root phase. Refuse that destructive operation until the model has a
-        // first-class root branch container instead.
-        if (nodeIndex === 0) {
-          throw new Error('Cannot delete the first root phase while it has branches; remove or move its branches first.');
-        }
-
-        const prevNode = parentNodes[nodeIndex - 1];
-        if (prevNode.branches) {
-          prevNode.branches.push(...node.branches);
-        } else {
-          prevNode.branches = node.branches;
-        }
-      }
-    }
-
-    // Remove the node from its parent array
-    parentNodes.splice(nodeIndex, 1);
-
-    // If parent now has only 1 branch, collapse it
-    if (parent && parent.branches && parent.branches.length === 1) {
-      // Find parent's parent to splice nodes
-      const findParentArray = (nodes: PhaseNode[], targetId: string): PhaseNode[] | null => {
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].id === targetId) return nodes;
-          if (nodes[i].branches) {
-            for (const branch of nodes[i].branches) {
-              const result = findParentArray(branch.nodes, targetId);
-              if (result) return result;
-            }
-          }
-        }
-        return null;
-      };
-
-      const parentArray = findParentArray(updatedSeason.root, parent.id);
-      if (parentArray) {
-        const parentIdx = parentArray.findIndex((n) => n.id === parent.id);
-        if (parentIdx !== -1) {
-          const remainingBranch = parent.branches[0];
-          // Splice remaining branch nodes after parent
-          parentArray.splice(parentIdx + 1, 0, ...remainingBranch.nodes);
-          parent.branches = null;
-        }
-      }
-    }
-
+    deleteNodeFromTree(updatedSeason.root, phaseId);
     await updateSeason(year, updatedSeason);
   };
 
