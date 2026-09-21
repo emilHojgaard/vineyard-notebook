@@ -100,7 +100,8 @@ export interface Project {
   id: string;
   name: string;
   members: string[]; // user IDs
-  createdBy: string; // user ID
+  owners?: string[]; // user IDs; createdBy remains the original owner for compatibility
+  createdBy: string; // original owner user ID
   createdAt: Date;
   // Optional for backwards compatibility with projects created before membership ages were stored.
   memberAddedAt?: Record<string, Date>;

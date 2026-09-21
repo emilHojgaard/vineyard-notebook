@@ -154,28 +154,36 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
           )}
         </div>
 
-        {/* Settings, members, and account controls stay on the right. */}
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <button onClick={onMembersClick} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title="Members" aria-label="Members">
-            <Icon name="users" size={12} />
+        {/* Keep secondary actions together in one touch-friendly menu. */}
+        <div className="relative ml-auto">
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
+            title="More options"
+            aria-label="More options"
+            aria-haspopup="menu"
+            aria-expanded={showUserMenu}
+          >
+            <Icon name="more" size={17} />
           </button>
-          <button onClick={onSettingsClick} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title="Settings" aria-label="Settings">
-            <Icon name="settings" size={12} />
-          </button>
-          <div className="relative">
-            <button onClick={() => setShowUserMenu(!showUserMenu)} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title={currentUser?.email || 'User'} aria-label="Account menu" aria-expanded={showUserMenu}>
-              <Icon name="user" size={14} />
-            </button>
-            {showUserMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-border"><div className="text-sm font-semibold text-ink">{currentUser?.displayName || 'User'}</div><div className="text-xs text-ink-soft truncate">{currentUser?.email}</div></div>
-                  <button onClick={() => { logout(); setShowUserMenu(false); }} className="w-full px-4 py-2 text-left text-sm text-status-need font-semibold hover:bg-surface transition-colors">Sign Out</button>
+          {showUserMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
+                <div className="px-4 py-3 border-b border-border">
+                  <div className="text-sm font-semibold text-ink">{currentUser?.displayName || 'User'}</div>
+                  <div className="text-xs text-ink-soft truncate">{currentUser?.email}</div>
                 </div>
-              </>
-            )}
-          </div>
+                <button onClick={() => { onMembersClick(); setShowUserMenu(false); }} className="w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface transition-colors flex items-center gap-2" role="menuitem">
+                  <Icon name="users" size={14} /> Members
+                </button>
+                <button onClick={() => { onSettingsClick(); setShowUserMenu(false); }} className="w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface transition-colors flex items-center gap-2" role="menuitem">
+                  <Icon name="settings" size={14} /> Settings
+                </button>
+                <button onClick={() => { logout(); setShowUserMenu(false); }} className="w-full px-4 py-2 text-left text-sm text-status-need font-semibold hover:bg-surface transition-colors" role="menuitem">Sign Out</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
