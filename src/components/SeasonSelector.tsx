@@ -8,7 +8,7 @@ interface SeasonSelectorProps {
 }
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
-  const { seasons, appState, updateAppState, createSeason, deleteSeason, currentProject } = useData();
+  const { seasons, appState, updateAppState, createSeason, completeSeason, deleteSeason, currentProject } = useData();
   const canManageSeasons = showAddButton && !appState.locked;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -225,6 +225,20 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                           <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
                         )}
                       </button>
+                      {canManageSeasons && seasons[year]?.status === 'current' && (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Complete the ${year} season? It will become read-only.`)) {
+                              await completeSeason(year);
+                            }
+                          }}
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-have hover:bg-status-have/10 transition-colors"
+                          title="Complete season"
+                        >
+                          <Icon name="check" size={12} />
+                        </button>
+                      )}
                       {canManageSeasons && (
                         <button
                           onClick={(e) => {

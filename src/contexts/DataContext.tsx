@@ -50,6 +50,7 @@ interface DataContextType {
   createProject: (name: string) => Promise<string>;
   selectProject: (projectId: string) => void;
   createSeason: (year: number) => Promise<void>;
+  completeSeason: (year: number) => Promise<void>;
   deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
   addPhase: (year: number, name: string, options?: { parentNodeId?: string; branchId?: string; afterNodeId?: string }) => Promise<void>;
@@ -757,6 +758,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const completeSeason = async (year: number) => {
+    if (!currentProject) return;
+    const season = seasons[year];
+    if (!season || season.status !== 'current') return;
+    await updateSeason(year, { ...season, status: 'completed' });
+  };
+
   const deleteSeason = async (year: number) => {
     if (!currentProject) return;
     
@@ -973,6 +981,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createProject,
     selectProject,
     createSeason,
+    completeSeason,
     deleteSeason,
     updateSeason,
     addPhase,
