@@ -1,9 +1,41 @@
-import type { Node } from '../types';
+import type { Branch, Node } from '../types';
 
 /**
  * Deletes a node while preserving descendants and the branching invariant.
  * The supplied root is mutated; callers should clone it before invoking this.
  */
+export function addBranchToTree(root: Node[], parentNodeId: string, branch: Branch): void {
+  const found = findNode(root, parentNodeId);
+  if (!found) return;
+
+  if (found.node.branches) {
+    found.node.branches.push(branch);
+    return;
+  }
+
+  const followingNodes = found.siblings.splice(found.index + 1);
+  found.node.branches = [{
+    id: `original-${found.node.id}`,
+    name: 'Original',
+    nodes: followingNodes,
+  }, branch];
+}
+
+export function deleteBranchFromTree(root: Node[], parentNodeId: string, branchId: string): void {
+  const found = findNode(root, parentNodeId);
+  if (!found?.node.branches) return;
+
+  const index = found.node.branches.findIndex(branch => branch.id === branchId);
+  if (index === -1) return;
+  found.node.branches.splice(index, 1);
+
+  if (found.node.branches.length === 1) {
+    const remaining = found.node.branches[0];
+    found.siblings.splice(found.index + 1, 0, ...remaining.nodes);
+    found.node.branches = null;
+  }
+}
+
 export function deleteNodeFromTree(root: Node[], nodeId: string): void {
   const found = findNode(root, nodeId);
   if (!found) return;
