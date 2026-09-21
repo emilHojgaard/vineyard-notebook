@@ -56,7 +56,7 @@ export function InventoryView() {
     itemIndex?: number;
   } | null>(null);
 
-  const isArchived = false; // Inventory not year-locked in mockup
+  const isArchived = season?.status !== 'current';
   const hasSeasons = Object.keys(seasons).length > 0;
 
   // Do not carry drafts or an edit target across seasons or projects. Inventory row
@@ -115,6 +115,7 @@ export function InventoryView() {
   };
 
   const handleSaveItem = async (identity: InventoryItemIdentity) => {
+    if (isArchived || !isEditMode) return;
     const itemKey = inventoryItemKey(identity);
     const draft = drafts[itemKey];
     if (!draft) return;
@@ -191,7 +192,7 @@ export function InventoryView() {
   }
 
   const handleAddSection = () => {
-    if (!isEditMode || !addingSectionName.trim()) return;
+    if (isArchived || !isEditMode || !addingSectionName.trim()) return;
 
     const newSection: InventorySection = {
       id: uid('sec'),
@@ -207,7 +208,7 @@ export function InventoryView() {
   };
 
   const handleDeleteSection = (sectionId: string) => {
-    if (!isEditMode) return;
+    if (isArchived || !isEditMode) return;
 
     const section = inv.sections.find((candidate) => candidate.id === sectionId);
     if (!section) return;
@@ -242,6 +243,7 @@ export function InventoryView() {
   };
 
   const handleAddItem = (sectionId: string) => {
+    if (isArchived || !isEditMode) return;
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -283,7 +285,7 @@ export function InventoryView() {
   };
 
   const handleDeleteItem = async (sectionId: string, itemId: string, itemIndex: number) => {
-    if (!isEditMode) return;
+    if (isArchived || !isEditMode) return;
 
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s: InventorySection) => s.id === sectionId);
@@ -334,6 +336,11 @@ export function InventoryView() {
       </div>
 
       <div className="p-4">
+        {isArchived && (
+          <div className="mb-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-soft">
+            This inventory belongs to an archived season and is read-only.
+          </div>
+        )}
         {inv.sections.length === 0 && !addingSection ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No inventory sections yet</p>

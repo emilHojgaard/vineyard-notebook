@@ -796,6 +796,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateInventory = async (year: number, inv: Inventory) => {
     if (!currentProject) return;
+    const season = seasons[year];
+    if (season && season.status !== 'current') {
+      throw new Error('Archived season inventory is read-only');
+    }
     await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
       projectId: currentProject.id,
       sections: inv.sections,
