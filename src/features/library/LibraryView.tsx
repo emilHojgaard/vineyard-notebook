@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
+import { notifyError } from '../../lib/notifications';
 
 export function LibraryView() {
   const { library, updateLibrary, currentProject, appState } = useData();
@@ -111,7 +112,7 @@ export function LibraryView() {
       handleUpdateItem(sectionId, itemId, { [fieldType]: url });
     } catch (error) {
       console.error('File upload failed:', error);
-      alert('Failed to upload file. Please try again.');
+      notifyError('Failed to upload file. Please try again.');
     }
     setUploading(false);
   };

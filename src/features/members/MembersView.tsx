@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Member } from '../../types';
+import { notifyError } from '../../lib/notifications';
 
 export function MembersView() {
   const { currentProject, members, inviteMember, removeMember, promoteMemberToOwner, pendingInvitations, cancelInvitation } = useData();
@@ -69,7 +70,7 @@ export function MembersView() {
       await promoteMemberToOwner(member.id);
     } catch (error) {
       console.error('Failed to promote member:', error);
-      alert('Failed to promote member. Please try again.');
+      notifyError('Failed to promote member. Please try again.');
     }
   };
 
@@ -81,7 +82,7 @@ export function MembersView() {
       setConfirmRemove(null);
     } catch (error) {
       console.error('Failed to remove member:', error);
-      alert('Failed to remove member. Please try again.');
+      notifyError('Failed to remove member. Please try again.');
     }
   };
 
@@ -91,7 +92,7 @@ export function MembersView() {
       setConfirmCancelInvite(null);
     } catch (error) {
       console.error('Failed to cancel invitation:', error);
-      alert('Failed to cancel invitation. Please try again.');
+      notifyError('Failed to cancel invitation. Please try again.');
     }
   };
 

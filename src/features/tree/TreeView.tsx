@@ -5,6 +5,7 @@ import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { notifyError } from '../../lib/notifications';
 
 interface LayoutNode {
   node: Node;
@@ -374,7 +375,7 @@ export function TreeView() {
       setConfirmDeletePhase(null);
     } catch (error) {
       console.error('Failed to delete phase:', error);
-      alert('Failed to delete phase. Please try again.');
+      notifyError('Failed to delete phase. Please try again.');
     }
   };
 

@@ -30,6 +30,7 @@ import type {
 import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById } from '../lib/utils';
 import { validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
+import { inventoryDocument, libraryDocument } from '../lib/firestore-repositories';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -385,7 +386,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
     
     // Create inventory with default sections for this year
-    await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
+    await setDoc(inventoryDocument(currentProject.id, year), {
       projectId: currentProject.id,
       sections: [
         { id: 'inv1', name: 'Equipment', items: [] },
@@ -645,7 +646,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (season && season.status !== 'current') {
       throw new Error('Archived season inventory is read-only');
     }
-    await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
+    await setDoc(inventoryDocument(currentProject.id, year), {
       projectId: currentProject.id,
       sections: inv.sections,
     });
@@ -653,7 +654,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateLibrary = async (lib: Library) => {
     if (!currentProject) return;
-    await setDoc(doc(db, 'library', currentProject.id), lib);
+    await setDoc(libraryDocument(currentProject.id), lib);
   };
 
   const updateAppState = (state: Partial<AppState>) => {

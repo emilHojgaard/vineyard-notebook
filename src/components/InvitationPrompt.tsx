@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { notifyError } from '../lib/notifications';
 import { Icon } from './Icon';
 import { useModalKeyboard } from './useModalKeyboard';
 
@@ -19,7 +20,7 @@ export function InvitationPrompt() {
       await acceptInvitation(invitationId);
     } catch (error) {
       console.error('Failed to accept invitation:', error);
-      alert('Failed to accept invitation. Please try again.');
+      notifyError('Failed to accept invitation. Please try again.');
     } finally {
       setProcessing(null);
     }
@@ -31,7 +32,7 @@ export function InvitationPrompt() {
       await declineInvitation(invitationId);
     } catch (error) {
       console.error('Failed to decline invitation:', error);
-      alert('Failed to decline invitation. Please try again.');
+      notifyError('Failed to decline invitation. Please try again.');
     } finally {
       setProcessing(null);
     }
