@@ -11,6 +11,8 @@ import {
   where,
   Timestamp,
   writeBatch,
+  runTransaction,
+  updateDoc,
 } from 'firebase/firestore';
 import { db, functions } from '../lib/firebase';
 import { useAuth } from './AuthContext';
