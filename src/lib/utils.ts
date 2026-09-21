@@ -67,7 +67,7 @@ export function getSeasonCompletionBlockReason(season: Season, now = new Date())
     return `Season ${season.title} cannot be archived until ${seasonYear + 1}.`;
   }
 
-  const today = todayISO();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   let reason: string | null = null;
   walkNodes(season.root, (node) => {
     if (reason) return;

@@ -486,8 +486,17 @@ export function TreeView() {
 
             return (
               <div key={layoutNode.node.id}>
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open phase ${layoutNode.node.name}`}
                   onClick={() => setSelectedNode(layoutNode.node)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedNode(layoutNode.node);
+                    }
+                  }}
                   className={`absolute flex items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
                     status === 'done' ? 'opacity-60' : ''
                   } ${isDim ? 'opacity-25' : ''}`}
@@ -541,7 +550,7 @@ export function TreeView() {
                       </button>
                     </>
                   )}
-                </button>
+                </div>
               </div>
             );
           })}
