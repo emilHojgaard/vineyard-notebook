@@ -19,6 +19,9 @@ test.before(async () => {
     firestore: {
       rules: fs.readFileSync('firestore.rules', 'utf8'),
     },
+    storage: {
+      rules: fs.readFileSync('storage.rules', 'utf8'),
+    },
   });
 
   await seedTestData();
@@ -26,6 +29,7 @@ test.before(async () => {
 
 async function seedTestData() {
   await testEnv.clearFirestore();
+  await testEnv.clearStorage();
   await testEnv.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
     await setDoc(doc(db, 'projects', projectId), {
@@ -78,6 +82,17 @@ test('only owners can change membership and owners can promote members', async (
   await assertSucceeds(updateDoc(doc(ownerDb, 'projects', projectId), {
     owners: ['owner-1', 'member-1'],
   }));
+});
+
+test('project members can access project storage but outsiders cannot', async () => {
+  const memberStorage = testEnv.authenticatedContext('member-1').storage();
+  const outsiderStorage = testEnv.authenticatedContext('outsider-1').storage();
+  const memberFile = memberStorage.ref('projects/demo-vineyard/photos/member.txt');
+  const outsiderFile = outsiderStorage.ref('projects/demo-vineyard/photos/outsider.txt');
+
+  await assertSucceeds(memberFile.putString('member data'));
+  await assertFails(outsiderFile.putString('outsider data'));
+  await assertSucceeds(memberFile.getDownloadURL());
 });
 
 test('only owners can create invitations and invited email can read its invitation', async () => {

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test tests/inventory-editing.test.ts",
-    "test:rules": "npx firebase emulators:exec --project demo-vineyard --only firestore \"node --test tests/firestore.rules.test.js\"",
+    "test:rules": "npx firebase emulators:exec --project demo-vineyard --only firestore,storage \"node --test tests/firestore.rules.test.js\"",
     "preview": "vite preview"
   },
   "dependencies": {
