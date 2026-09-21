@@ -1,4 +1,4 @@
-import type { Node, PhaseStatus, InventoryItem, InventoryStatus } from '../types';
+import type { Node, PhaseStatus, InventoryItem, InventoryStatus, Season } from '../types';
 
 // Date utilities
 export function parseDate(s: string): Date {
@@ -57,6 +57,34 @@ export function syncStatuses(nodes: Node[]): void {
       n.branches.forEach(b => syncStatuses(b.nodes));
     }
   });
+}
+
+// A season may only be completed after its calendar year has ended and all
+// dated activity is in the past. Undated phases are treated as unfinished.
+export function getSeasonCompletionBlockReason(season: Season, now = new Date()): string | null {
+  const seasonYear = Number.parseInt(season.title, 10);
+  if (Number.isFinite(seasonYear) && now.getFullYear() <= seasonYear) {
+    return `Season ${season.title} cannot be archived until ${seasonYear + 1}.`;
+  }
+
+  const today = todayISO();
+  let reason: string | null = null;
+  walkNodes(season.root, (node) => {
+    if (reason) return;
+    if (!node.end || node.end >= today) {
+      reason = node.end
+        ? `Phase “${node.name}” is active or scheduled for today/future.`
+        : `Phase “${node.name}” has no completed end date.`;
+      return;
+    }
+    const upcomingEvent = node.events.find((event) => !event.date || event.date >= today);
+    if (upcomingEvent) {
+      reason = upcomingEvent.date
+        ? `Check “${upcomingEvent.name}” is scheduled for today/future.`
+        : `Check “${upcomingEvent.name}” has no completed date.`;
+    }
+  });
+  return reason;
 }
 
 // Inventory status

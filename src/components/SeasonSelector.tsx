@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
+import { getSeasonCompletionBlockReason } from '../lib/utils';
 
 interface SeasonSelectorProps {
   showAddButton?: boolean; // Whether to show the "+" button (based on edit mode)
 }
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
-  const { seasons, appState, updateAppState, createSeason, deleteSeason, currentProject } = useData();
+  const { seasons, appState, updateAppState, createSeason, completeSeason, deleteSeason, currentProject } = useData();
   const canManageSeasons = showAddButton && !appState.locked;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -16,6 +17,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
+  const [confirmCompleteSeason, setConfirmCompleteSeason] = useState<number | null>(null);
   const [hideOnScroll, setHideOnScroll] = useState(false);
   const lastScrollY = useRef(0);
   const hideOnScrollRef = useRef(false);
@@ -225,6 +227,23 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                           <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
                         )}
                       </button>
+                      {canManageSeasons && seasons[year]?.status === 'current' && (() => {
+                        const blockReason = getSeasonCompletionBlockReason(seasons[year]);
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!blockReason) setConfirmCompleteSeason(year);
+                            }}
+                            disabled={Boolean(blockReason)}
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-have hover:bg-status-have/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={blockReason || 'Complete season'}
+                            aria-label={blockReason || `Complete season ${year}`}
+                          >
+                            <Icon name="check" size={12} />
+                          </button>
+                        );
+                      })()}
                       {canManageSeasons && (
                         <button
                           onClick={(e) => {
@@ -367,6 +386,24 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
           setShowDuplicateConfirm(false);
           setSelectedYear(new Date().getFullYear());
         }}
+        isDanger={false}
+      />
+
+      {/* Complete season confirmation */}
+      <ConfirmDialog
+        isOpen={canManageSeasons && confirmCompleteSeason !== null}
+        title="Complete Season"
+        message={`Complete season ${confirmCompleteSeason}? It will become read-only and can no longer be edited.`}
+        confirmText="Complete Season"
+        onConfirm={async () => {
+          if (confirmCompleteSeason === null) return;
+          try {
+            await completeSeason(confirmCompleteSeason);
+          } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to complete season.');
+          }
+        }}
+        onCancel={() => setConfirmCompleteSeason(null)}
         isDanger={false}
       />
 

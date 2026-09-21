@@ -27,8 +27,9 @@ import type {
   Node as PhaseNode,
   Branch,
 } from '../types';
-import { syncStatuses, createDefaultPhases, uid } from '../lib/utils';
+import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById } from '../lib/utils';
 import { validateTree } from '../lib/tree';
+import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -50,6 +51,7 @@ interface DataContextType {
   createProject: (name: string) => Promise<string>;
   selectProject: (projectId: string) => void;
   createSeason: (year: number) => Promise<void>;
+  completeSeason: (year: number) => Promise<void>;
   deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
   addPhase: (year: number, name: string, options?: { parentNodeId?: string; branchId?: string; afterNodeId?: string }) => Promise<void>;
@@ -538,223 +540,66 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Delete a phase from the tree
+  // Delete a phase from the tree. The pure operation is tested independently
+  // so structural edits cannot silently discard branches.
   const deletePhase = async (year: number, phaseId: string) => {
     if (!currentProject) return;
     const season = seasons[year];
     if (!season) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
-
-    // Helper to find a node and its parent
-    const findNodeAndParent = (
-      nodes: PhaseNode[],
-      targetId: string,
-      parent: PhaseNode | null = null
-    ): { node: PhaseNode; parent: PhaseNode | null; parentNodes: PhaseNode[]; nodeIndex: number } | null => {
-      for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].id === targetId) {
-          return { node: nodes[i], parent, parentNodes: nodes, nodeIndex: i };
-        }
-        if (nodes[i].branches) {
-          for (const branch of nodes[i].branches) {
-            const result = findNodeAndParent(branch.nodes, targetId, nodes[i]);
-            if (result) return result;
-          }
-        }
-      }
-      return null;
-    };
-
-    // Find the phase to delete
-    const found = findNodeAndParent(updatedSeason.root, phaseId);
-    if (!found) return;
-
-    const { node, parent, parentNodes, nodeIndex } = found;
-
-    // If the node has branches, promote them to the parent
-    if (node.branches && node.branches.length > 0) {
-      if (parent) {
-        // If parent has branches, add to them
-        if (parent.branches) {
-          parent.branches.push(...node.branches);
-        } else {
-          // Parent doesn't have branches yet - transfer deleted node's branches to parent
-          parent.branches = node.branches;
-        }
-      } else {
-        // A root phase has no parent that can carry its branch labels. The old
-        // implementation silently discarded branches when this was the first
-        // root phase. Refuse that destructive operation until the model has a
-        // first-class root branch container instead.
-        if (nodeIndex === 0) {
-          throw new Error('Cannot delete the first root phase while it has branches; remove or move its branches first.');
-        }
-
-        const prevNode = parentNodes[nodeIndex - 1];
-        if (prevNode.branches) {
-          prevNode.branches.push(...node.branches);
-        } else {
-          prevNode.branches = node.branches;
-        }
-      }
-    }
-
-    // Remove the node from its parent array
-    parentNodes.splice(nodeIndex, 1);
-
-    // If parent now has only 1 branch, collapse it
-    if (parent && parent.branches && parent.branches.length === 1) {
-      // Find parent's parent to splice nodes
-      const findParentArray = (nodes: PhaseNode[], targetId: string): PhaseNode[] | null => {
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].id === targetId) return nodes;
-          if (nodes[i].branches) {
-            for (const branch of nodes[i].branches) {
-              const result = findParentArray(branch.nodes, targetId);
-              if (result) return result;
-            }
-          }
-        }
-        return null;
-      };
-
-      const parentArray = findParentArray(updatedSeason.root, parent.id);
-      if (parentArray) {
-        const parentIdx = parentArray.findIndex((n) => n.id === parent.id);
-        if (parentIdx !== -1) {
-          const remainingBranch = parent.branches[0];
-          // Splice remaining branch nodes after parent
-          parentArray.splice(parentIdx + 1, 0, ...remainingBranch.nodes);
-          parent.branches = null;
-        }
-      }
-    }
-
+    deleteNodeFromTree(updatedSeason.root, phaseId);
     await updateSeason(year, updatedSeason);
   };
 
-  // Add a new branch to a phase
-  const addBranch = async (
-    year: number,
-    parentNodeId: string,
-    branchName: string
-  ) => {
+  // Add a new branch to a phase. Structural manipulation lives in a pure,
+  // tested operation; this layer only prepares inherited phase data and saves.
+  const addBranch = async (year: number, parentNodeId: string, branchName: string) => {
     if (!currentProject) return;
     const season = seasons[year];
     if (!season) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
+    const parent = findNodeById(updatedSeason.root, parentNodeId);
+    if (!parent) return;
 
-    const found = findAndUpdateNode(
-      updatedSeason.root,
-      parentNodeId,
-      (node, parentNodes, nodeIndex) => {
-        // If node doesn't have branches yet, create initial split
-        if (!node.branches) {
-          // Move any phases after this node into "Original" branch
-          const afterNodes = parentNodes.splice(nodeIndex + 1);
-          const originalBranch: Branch = {
-            id: uid('b'),
-            name: 'Original',
-            nodes: afterNodes,
-          };
+    const defaultPhases = createDefaultPhases();
+    const parentPhaseIndex = defaultPhases.findIndex((phase) => phase.name === parent.name);
+    const newBranchNodes = parentPhaseIndex === -1
+      ? []
+      : defaultPhases.slice(parentPhaseIndex).map((phase) => ({
+          ...JSON.parse(JSON.stringify(phase)),
+          id: uid('n'),
+          notes: [],
+          events: [],
+        }));
 
-          // Create new branch with phase inheritance
-          const defaultPhases = createDefaultPhases();
-          const parentPhaseIndex = defaultPhases.findIndex((p) => p.name === node.name);
-
-          let newBranchNodes: PhaseNode[] = [];
-          if (parentPhaseIndex !== -1) {
-            // Copy the parent phase and all phases after it from defaults
-            newBranchNodes = defaultPhases.slice(parentPhaseIndex).map((phase) => ({
-              ...JSON.parse(JSON.stringify(phase)),
-              id: uid('n'),
-              notes: [],
-              events: [],
-            }));
-          }
-
-          const newBranch: Branch = {
-            id: uid('b'),
-            name: branchName.trim(),
-            nodes: newBranchNodes,
-          };
-
-          // Set branches on the node (always 2+ branches)
-          node.branches = [originalBranch, newBranch];
-        } else {
-          // Node already has branches, just add a new one with phase inheritance
-          const defaultPhases = createDefaultPhases();
-          const parentPhaseIndex = defaultPhases.findIndex((p) => p.name === node.name);
-
-          let newBranchNodes: PhaseNode[] = [];
-          if (parentPhaseIndex !== -1) {
-            // Copy the parent phase and all phases after it from defaults
-            newBranchNodes = defaultPhases.slice(parentPhaseIndex).map((phase) => ({
-              ...JSON.parse(JSON.stringify(phase)),
-              id: uid('n'),
-              notes: [],
-              events: [],
-            }));
-          }
-
-          const newBranch: Branch = {
-            id: uid('b'),
-            name: branchName.trim(),
-            nodes: newBranchNodes,
-          };
-          node.branches.push(newBranch);
-        }
-
-        return true;
-      }
-    );
-
-    if (found) {
-      await updateSeason(year, updatedSeason);
-    }
+    addBranchToTree(updatedSeason.root, parentNodeId, {
+      id: uid('b'),
+      name: branchName.trim(),
+      nodes: newBranchNodes,
+    });
+    await updateSeason(year, updatedSeason);
   };
 
-  // Delete a branch from a phase
-  const deleteBranch = async (
-    year: number,
-    parentNodeId: string,
-    branchId: string
-  ) => {
+  // Delete a branch and collapse a one-branch point through the tested tree operation.
+  const deleteBranch = async (year: number, parentNodeId: string, branchId: string) => {
     if (!currentProject) return;
     const season = seasons[year];
     if (!season) return;
 
     const updatedSeason = JSON.parse(JSON.stringify(season));
+    deleteBranchFromTree(updatedSeason.root, parentNodeId, branchId);
+    await updateSeason(year, updatedSeason);
+  };
 
-    const found = findAndUpdateNode(
-      updatedSeason.root,
-      parentNodeId,
-      (node, parentNodes, nodeIndex) => {
-        if (!node.branches) return false;
-
-        const branchIndex = node.branches.findIndex((b: Branch) => b.id === branchId);
-        if (branchIndex === -1) return false;
-
-        // Remove the branch
-        node.branches.splice(branchIndex, 1);
-
-        // If only one branch remains, collapse back to parent
-        if (node.branches.length === 1) {
-          const remaining = node.branches[0];
-          // Splice the remaining branch's nodes back after this node
-          parentNodes.splice(nodeIndex + 1, 0, ...remaining.nodes);
-          node.branches = null;
-        }
-
-        return true;
-      }
-    );
-
-    if (found) {
-      await updateSeason(year, updatedSeason);
-    }
+  const completeSeason = async (year: number) => {
+    if (!currentProject) return;
+    const season = seasons[year];
+    if (!season || season.status !== 'current') return;
+    const blockReason = getSeasonCompletionBlockReason(season);
+    if (blockReason) throw new Error(blockReason);
+    await updateSeason(year, { ...season, status: 'completed' });
   };
 
   const deleteSeason = async (year: number) => {
@@ -796,6 +641,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateInventory = async (year: number, inv: Inventory) => {
     if (!currentProject) return;
+    const season = seasons[year];
+    if (season && season.status !== 'current') {
+      throw new Error('Archived season inventory is read-only');
+    }
     await setDoc(doc(db, 'inventory', `${currentProject.id}_${year}`), {
       projectId: currentProject.id,
       sections: inv.sections,
@@ -969,6 +818,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     createProject,
     selectProject,
     createSeason,
+    completeSeason,
     deleteSeason,
     updateSeason,
     addPhase,
