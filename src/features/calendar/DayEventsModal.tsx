@@ -5,6 +5,7 @@ import { Icon } from '../../components/Icon';
 import type { Node, Event } from '../../types';
 import { fmtDate, uid } from '../../lib/utils';
 import { useData } from '../../contexts/DataContext';
+import { PhaseModal } from '../timeline/PhaseModal';
 
 interface CalendarEvent {
   id: string;
@@ -44,6 +45,7 @@ export function DayEventsModal({
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const [newEventName, setNewEventName] = useState('');
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const [phaseModalNodeId, setPhaseModalNodeId] = useState<string | null>(null);
 
   if (!season) return null;
 
@@ -149,11 +151,12 @@ export function DayEventsModal({
   };
 
   const allPhases = collectPhasesWithBranchContext();
+  const phaseModalNode = phaseModalNodeId ? findNode(phaseModalNodeId) : null;
 
   return (
     <>
       <Modal
-        isOpen={isOpen}
+        isOpen={isOpen && !phaseModalNode}
         onClose={onClose}
         title={fmtDate(date)}
         maxWidth="560px"
@@ -220,30 +223,39 @@ export function DayEventsModal({
                         key={event.id}
                         className="bg-surface border border-border rounded-md overflow-hidden"
                       >
-                        <button
-                          onClick={() =>
-                            setExpandedPhase(isExpanded ? null : event.nodeId)
-                          }
-                          className="w-full flex items-center gap-3 px-3 py-3 hover:bg-surface-2 transition-colors text-left"
-                        >
-                          <div
-                            className="w-1 h-8 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: event.color }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-ink">
-                              {event.title}
+                        <div className="flex items-stretch">
+                          <button
+                            onClick={() =>
+                              setExpandedPhase(isExpanded ? null : event.nodeId)
+                            }
+                            className="flex-1 flex items-center gap-3 px-3 py-3 hover:bg-surface-2 transition-colors text-left"
+                          >
+                            <div
+                              className="w-1 h-8 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: event.color }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-ink">
+                                {event.title}
+                              </div>
+                              <div className="text-xs text-ink-soft">
+                                {isStart ? 'Phase starts' : 'Phase ends'}
+                              </div>
                             </div>
-                            <div className="text-xs text-ink-soft">
-                              {isStart ? 'Phase starts' : 'Phase ends'}
-                            </div>
-                          </div>
-                          <Icon
-                            name={isExpanded ? 'chevronUp' : 'chevronDown'}
-                            size={16}
-                            className="text-ink-soft"
-                          />
-                        </button>
+                            <Icon
+                              name={isExpanded ? 'chevronUp' : 'chevronDown'}
+                              size={16}
+                              className="text-ink-soft"
+                            />
+                          </button>
+                          <button
+                            onClick={() => setPhaseModalNodeId(event.nodeId)}
+                            className="px-3 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft hover:text-burgundy flex items-center"
+                            title="Open phase details"
+                          >
+                            <Icon name="chevronright" size={14} />
+                          </button>
+                        </div>
                         {isExpanded && node && (
                           <div className="px-3 pb-3 space-y-3 border-t border-border bg-surface-2">
                             {/* Phase details */}
@@ -299,6 +311,13 @@ export function DayEventsModal({
                           </div>
                           <div className="text-xs text-ink-soft">{event.title}</div>
                         </div>
+                        <button
+                          onClick={() => setPhaseModalNodeId(event.nodeId)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                          title="Open phase details"
+                        >
+                          <Icon name="chevronright" size={14} />
+                        </button>
                         {!isArchived && (
                           <button
                             onClick={() =>
@@ -361,6 +380,20 @@ export function DayEventsModal({
           </div>
         )}
       </Modal>
+
+      {phaseModalNode && (
+        <PhaseModal
+          node={phaseModalNode}
+          isOpen={isOpen}
+          onClose={() => setPhaseModalNodeId(null)}
+          onUpdate={() => {
+            updateSeason(appState.year, season);
+            onUpdate();
+          }}
+          isLocked={appState.locked}
+          isArchived={isArchived}
+        />
+      )}
 
       <ConfirmDialog
         isOpen={confirmDeleteEvent !== null}

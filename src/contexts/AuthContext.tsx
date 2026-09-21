@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   type User as FirebaseUser,
   createUserWithEmailAndPassword,
@@ -16,8 +16,9 @@ import {
   getDocs,
   query,
   where,
-  updateDoc,
   deleteDoc,
+  runTransaction,
+  Timestamp,
 } from 'firebase/firestore';
 
 interface PendingInvitation {
@@ -28,10 +29,17 @@ interface PendingInvitation {
   invitedBy: string;
 }
 
+export interface InvitationNotification {
+  id: string;
+  message: string;
+}
+
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   loading: boolean;
   pendingInvitations: PendingInvitation[];
+  invitationNotifications: InvitationNotification[];
+  dismissInvitationNotification: (notificationId: string) => void;
   signup: (email: string, password: string, displayName: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -53,6 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationNotifications, setInvitationNotifications] = useState<InvitationNotification[]>([]);
+  const notifiedInvitationIds = useRef(new Set<string>());
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -109,24 +119,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const invitation = pendingInvitations.find(inv => inv.id === invitationId);
     if (!invitation) return;
 
-    // Add user to project members
+    // Add user to project members and record when they joined. A transaction
+    // avoids dropping a concurrent membership change.
     const projectRef = doc(db, 'projects', invitation.projectId);
-    const projectDoc = await getDoc(projectRef);
-    
-    if (projectDoc.exists()) {
-      const currentMembers = projectDoc.data().members || [];
-      if (!currentMembers.includes(currentUser.uid)) {
-        await updateDoc(projectRef, {
-          members: [...currentMembers, currentUser.uid],
-        });
-      }
-    }
+    await runTransaction(db, async (transaction) => {
+      const projectDoc = await transaction.get(projectRef);
+      if (!projectDoc.exists()) return;
+
+      const projectData = projectDoc.data();
+      const currentMembers = (projectData.members || []) as string[];
+      if (currentMembers.includes(currentUser.uid)) return;
+
+      transaction.update(projectRef, {
+        members: [...currentMembers, currentUser.uid],
+        memberAddedAt: {
+          ...(projectData.memberAddedAt || {}),
+          [currentUser.uid]: Timestamp.now(),
+        },
+      });
+    });
 
     // Delete the invitation
     await deleteDoc(doc(db, 'invitations', invitationId));
 
     // Remove from local state
     setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+
+    // An invitation can only be accepted once, but guard the notification as
+    // well so auth/session reruns cannot show duplicate messages.
+    if (!notifiedInvitationIds.current.has(invitation.id)) {
+      notifiedInvitationIds.current.add(invitation.id);
+      setInvitationNotifications(prev => [
+        ...prev,
+        {
+          id: invitation.id,
+          message: `You've been added to ${invitation.projectName}`,
+        },
+      ]);
+    }
+  };
+
+  const dismissInvitationNotification = (notificationId: string) => {
+    setInvitationNotifications(prev => prev.filter(notification => notification.id !== notificationId));
   };
 
   const declineInvitation = async (invitationId: string) => {
@@ -166,6 +200,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentUser,
     loading,
     pendingInvitations,
+    invitationNotifications,
+    dismissInvitationNotification,
     signup,
     login,
     logout,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus } from '../../lib/utils';
@@ -22,6 +22,42 @@ export function TimelineView() {
 
   const isLocked = appState.locked;
   const isArchived = season?.status !== 'current';
+
+  // Auto-open phase modal when navigating from calendar
+  // MUST be before early return to satisfy React hooks rules
+  useEffect(() => {
+    if (!season || !appState.focusedNodeId) return;
+
+    // Helper function to find a node by ID
+    const findNodeById = (nodeId: string): Node | null => {
+      let found: Node | null = null;
+
+      const walk = (nodes: Node[]) => {
+        for (const node of nodes) {
+          if (node.id === nodeId) {
+            found = node;
+            return;
+          }
+          if (node.branches) {
+            for (const branch of node.branches) {
+              walk(branch.nodes);
+              if (found) return;
+            }
+          }
+        }
+      };
+
+      walk(season.root);
+      return found;
+    };
+
+    const node = findNodeById(appState.focusedNodeId);
+    if (node) {
+      setSelectedNode(node);
+    }
+    // Clear the focusedNodeId after handling it
+    updateAppState({ focusedNodeId: null });
+  }, [season, appState.focusedNodeId, updateAppState]);
 
   if (!season) {
     return (
@@ -222,9 +258,8 @@ export function TimelineView() {
                   const isFocused = branch.id === focusedBranchId;
 
                   return (
-                    <button
+                    <div
                       key={branch.id}
-                      onClick={() => handleSelectBranch(node.id, branch.id)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-colors ${
                         isSelected || isFocused
                           ? 'bg-surface border-border'
@@ -239,34 +274,38 @@ export function TimelineView() {
                           : {}
                       }
                     >
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{
-                          backgroundColor: branchAccent,
-                          opacity: (isSelected || isFocused) ? 1 : 0.45,
-                        }}
-                      />
-                      <span
-                        className="text-xs font-semibold"
-                        style={{
-                          color: (isSelected || isFocused) ? branchAccent : 'var(--ink-faint)',
-                          fontWeight: (isSelected || isFocused) ? 700 : 600,
-                        }}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectBranch(node.id, branch.id)}
+                        className="flex flex-1 items-center gap-2 text-left"
                       >
-                        {branch.name}
-                      </span>
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{
+                            backgroundColor: branchAccent,
+                            opacity: (isSelected || isFocused) ? 1 : 0.45,
+                          }}
+                        />
+                        <span
+                          className="text-xs font-semibold"
+                          style={{
+                            color: (isSelected || isFocused) ? branchAccent : 'var(--ink-faint)',
+                            fontWeight: (isSelected || isFocused) ? 700 : 600,
+                          }}
+                        >
+                          {branch.name}
+                        </span>
+                      </button>
                       {!isLocked && !isArchived && (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteBranch({ node, branchId: branch.id });
-                          }}
+                          type="button"
+                          onClick={() => setConfirmDeleteBranch({ node, branchId: branch.id })}
                           className="w-5 h-5 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                         >
                           <Icon name="trash" size={11} />
                         </button>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
 
@@ -402,7 +441,19 @@ export function TimelineView() {
 
       {/* Branch creation modal */}
       {branchingNode && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setBranchingNode(null);
+              setNewBranchName('');
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
             <p className="text-sm text-ink-soft mb-4">
@@ -470,7 +521,19 @@ export function TimelineView() {
 
       {/* Add phase modal - show when adding after a phase (afterNodeId) or adding first phase (no parent/branch) */}
       {addingPhase && addingPhaseContext && (addingPhaseContext.afterNodeId || (addingPhaseContext.parentNodeId === null && addingPhaseContext.branchId === null)) && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setAddingPhase(null);
+              setNewPhaseName('');
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <h3 className="text-base font-bold text-ink mb-3">
               Add Phase

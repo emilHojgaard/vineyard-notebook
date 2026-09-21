@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Icon } from './Icon';
+import { useModalKeyboard } from './useModalKeyboard';
 
 export function InvitationPrompt() {
   const { pendingInvitations, acceptInvitation, declineInvitation } = useAuth();
   const [processing, setProcessing] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const keyboard = useModalKeyboard(pendingInvitations.length > 0, () => {}, modalRef);
 
   if (pendingInvitations.length === 0) {
     return null;
@@ -36,14 +39,14 @@ export function InvitationPrompt() {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-      <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="invitations-title" onKeyDown={keyboard.onKeyDown} className="bg-parchment rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
         <div className="sticky top-0 bg-parchment border-b border-border p-4 rounded-t-xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center flex-shrink-0">
               <Icon name="user" size={20} color="var(--burgundy)" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-ink">Project Invitations</h3>
+              <h3 id="invitations-title" className="text-lg font-bold text-ink">Project Invitations</h3>
               <p className="text-xs text-ink-soft">
                 You have {pendingInvitations.length} pending invitation{pendingInvitations.length !== 1 ? 's' : ''}
               </p>

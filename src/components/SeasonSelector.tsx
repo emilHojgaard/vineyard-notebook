@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -9,6 +9,7 @@ interface SeasonSelectorProps {
 
 export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const { seasons, appState, updateAppState, createSeason, deleteSeason, currentProject } = useData();
+  const canManageSeasons = showAddButton && !appState.locked;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -16,8 +17,17 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const [creating, setCreating] = useState(false);
   const [confirmDeleteSeason, setConfirmDeleteSeason] = useState<number | null>(null);
   const [hideOnScroll, setHideOnScroll] = useState(false);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  const lastScrollY = useRef(0);
+  const hideOnScrollRef = useRef(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+
+  // Keep the visual state idempotent so repeated boundary scroll events do not
+  // schedule redundant renders or reverse an in-progress transition.
+  const setSelectorHidden = useCallback((hidden: boolean) => {
+    if (hideOnScrollRef.current === hidden) return;
+    hideOnScrollRef.current = hidden;
+    setHideOnScroll(hidden);
+  }, []);
 
   // Get sorted year list (newest first)
   const sortedYears = Object.keys(seasons)
@@ -78,10 +88,26 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   // Get sorted year list (newest first)
   const hasSeasons = sortedYears.length > 0;
 
-  // Close season selector when project changes
+  // Keep the selected year valid for the newly selected project once its seasons load.
+  useEffect(() => {
+    if (sortedYears.length > 0 && !seasons[appState.year]) {
+      updateAppState({ year: sortedYears[0] });
+    }
+  }, [currentProject, seasons, appState.year, sortedYears]);
+
+  // Close season selector when project changes or edit mode is disabled
   useEffect(() => {
     setIsExpanded(false);
-  }, [currentProject]);
+  }, [currentProject, canManageSeasons]);
+
+  // Never leave season-management dialogs open in read-only mode.
+  useEffect(() => {
+    if (!canManageSeasons) {
+      setIsCreating(false);
+      setShowDuplicateConfirm(false);
+      setConfirmDeleteSeason(null);
+    }
+  }, [canManageSeasons]);
 
   // Close season selector when page/tab changes
   useEffect(() => {
@@ -98,42 +124,50 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
       
       // Never hide if the dropdown is expanded
       if (isExpanded) {
-        setHideOnScroll(false);
-        setLastScrollY(currentScrollY);
+        setSelectorHidden(false);
+        lastScrollY.current = currentScrollY;
         return;
       }
 
-      // Hide when scrolling down significantly, show when scrolling up
-      if (currentScrollY > lastScrollY && currentScrollY > 50) {
-        setHideOnScroll(true);
-      } else if (currentScrollY < lastScrollY) {
-        setHideOnScroll(false);
+      // Hide when scrolling down significantly, show when scrolling up.
+      // The selector only changes its own paint state; changing its layout
+      // height here would shrink the scroll viewport at the bottom and cause
+      // the browser to emit a compensating scroll event that shows it again.
+      if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+        setSelectorHidden(true);
+      } else if (currentScrollY < lastScrollY.current) {
+        setSelectorHidden(false);
       }
-      setLastScrollY(currentScrollY);
+      lastScrollY.current = currentScrollY;
     };
 
     contentDiv.addEventListener('scroll', handleScroll, { passive: true });
     return () => contentDiv.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY, isExpanded]);
+  }, [isExpanded, setSelectorHidden]);
 
   // When expanded, ensure we're visible
   useEffect(() => {
     if (isExpanded) {
-      setHideOnScroll(false);
+      setSelectorHidden(false);
     }
-  }, [isExpanded]);
+  }, [isExpanded, setSelectorHidden]);
 
   return (
     <>
       <div 
         ref={selectorRef}
-        className="bg-surface px-4 py-2 border-b border-border transition-all duration-300"
+        className="bg-surface px-4 py-2 border-b border-border transition-[transform,opacity] duration-300"
         style={{
           backgroundColor: 'rgba(147, 118, 95, 0.06)',
           transform: hideOnScroll ? 'translateY(-100%)' : 'translateY(0)',
           opacity: hideOnScroll ? 0 : 1,
           maxHeight: hideOnScroll ? '0' : '500px',
+          // Remove the selector's padding and border along with its content so
+          // the collapsed state does not leave a gap above the page content.
+          padding: hideOnScroll ? 0 : undefined,
+          borderBottomWidth: hideOnScroll ? 0 : undefined,
           overflow: 'hidden',
+          pointerEvents: hideOnScroll ? 'none' : 'auto',
         }}
       >
         {hasSeasons ? (
@@ -141,23 +175,40 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
             {/* Season selector button */}
             <div className="flex items-center justify-center gap-2">
               <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
-              <button
-                onClick={() => {
-                  setIsExpanded(!isExpanded);
-                  setHideOnScroll(false); // Ensure it's visible when expanding
-                }}
-                className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
-              >
-                <span>{appState.year}</span>
-                <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
-              </button>
+              {canManageSeasons ? (
+                <button
+                  onClick={() => {
+                    setIsExpanded(!isExpanded);
+                    setSelectorHidden(false); // Ensure it's visible when expanding
+                  }}
+                  className="px-3 py-1.5 bg-parchment-2 text-ink border border-border rounded-md text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors flex items-center gap-2"
+                >
+                  <span>{appState.year}</span>
+                  <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={12} />
+                </button>
+              ) : (
+                <span
+                  className="px-3 py-1.5 text-sm font-semibold text-ink"
+                  title="Enable edit mode to manage seasons"
+                  aria-label={`Season ${appState.year}. Enable edit mode to manage seasons`}
+                  tabIndex={0}
+                >
+                  {appState.year}
+                </span>
+              )}
             </div>
 
-            {/* Expanded season list */}
-            {isExpanded && (
-              <div className="mt-2 bg-surface-2 border border-border rounded-md overflow-hidden">
-                {/* Season list */}
-                <div className="max-h-48 overflow-y-auto">
+            {/* Season list: keep the panel mounted so its layout footprint can animate to zero. */}
+            <div
+              className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+              }`}
+              aria-hidden={!isExpanded}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <div className="mt-2 bg-surface-2 border border-border rounded-md overflow-hidden">
+                  {/* Season list */}
+                  <div className="max-h-48 overflow-y-auto">
                   {sortedYears.map((year) => (
                     <div
                       key={year}
@@ -176,7 +227,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                           <span className="ml-2 text-xs text-ink-faint">(Archived)</span>
                         )}
                       </button>
-                      {showAddButton && (
+                      {canManageSeasons && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -190,20 +241,21 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                       )}
                     </div>
                   ))}
-                </div>
+                  </div>
 
-                {/* Add Season button (only shown when edit mode is ON) */}
-                {showAddButton && (
-                  <button
-                    onClick={handleAddSeasonClick}
-                    className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Icon name="plus" size={14} />
-                    <span>Add Season</span>
-                  </button>
-                )}
+                  {/* Add Season button (only shown when edit mode is ON) */}
+                  {canManageSeasons && (
+                    <button
+                      onClick={handleAddSeasonClick}
+                      className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Icon name="plus" size={14} />
+                      <span>Add Season</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
 
             {/* Archived indicator */}
             {seasons[appState.year]?.status !== 'current' && (
@@ -216,20 +268,36 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
         ) : (
           /* Empty state - no seasons exist */
           <div className="text-center">
-            <button
-              onClick={handleAddSeasonClick}
-              className="w-full px-4 py-2 bg-burgundy text-white font-semibold rounded-md text-sm hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
-            >
-              <Icon name="plus" size={14} />
-              <span>Create Season</span>
-            </button>
+            {canManageSeasons ? (
+              <button
+                onClick={handleAddSeasonClick}
+                className="w-full px-4 py-2 bg-burgundy text-white font-semibold rounded-md text-sm hover:bg-burgundy-deep transition-colors flex items-center justify-center gap-2"
+              >
+                <Icon name="plus" size={14} />
+                <span>Create Season</span>
+              </button>
+            ) : (
+              <span className="text-sm font-semibold text-ink">{appState.year}</span>
+            )}
           </div>
         )}
       </div>
 
       {/* Create season modal */}
-      {isCreating && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {canManageSeasons && isCreating && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsCreating(false);
+              setSelectedYear(new Date().getFullYear());
+            }
+          }}
+          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-ink">Add New Season</h3>
@@ -292,7 +360,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
       {/* Duplicate season confirmation */}
       <ConfirmDialog
-        isOpen={showDuplicateConfirm}
+        isOpen={canManageSeasons && showDuplicateConfirm}
         title="Season Already Exists"
         message={`A season for ${selectedYear} already exists. Are you sure you want to create another?`}
         confirmText="Create Anyway"
@@ -306,7 +374,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
       {/* Delete season confirmation */}
       <ConfirmDialog
-        isOpen={confirmDeleteSeason !== null}
+        isOpen={canManageSeasons && confirmDeleteSeason !== null}
         title="Delete Season"
         message={`Are you sure you want to delete season ${confirmDeleteSeason}? All phases, notes, and inventory for this season will be permanently removed.`}
         confirmText="Delete Season"

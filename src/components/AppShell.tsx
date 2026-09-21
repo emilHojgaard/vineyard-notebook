@@ -36,8 +36,8 @@ export function AppShell({ children }: AppShellProps) {
               onMembersClick={() => setShowMembers(!showMembers)}
             />
             
-            {/* Season Selector - hidden in library view */}
-            {appState.tab !== 'library' && (
+            {/* Season Selector - hidden in library and inventory views */}
+            {appState.tab !== 'library' && appState.tab !== 'inventory' && (
               <SeasonSelector showAddButton={!appState.locked} />
             )}
 
@@ -46,7 +46,7 @@ export function AppShell({ children }: AppShellProps) {
               <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-parchment rounded-xl max-w-sm w-full max-h-[85vh] overflow-y-auto shadow-phone">
                   <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-parchment z-10">
-                    <h3 className="text-lg font-semibold text-ink">Members</h3>
+                    <h3 className="text-lg font-semibold text-ink">Member settings</h3>
                     <button
                       onClick={() => setShowMembers(false)}
                       className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
@@ -64,7 +64,7 @@ export function AppShell({ children }: AppShellProps) {
               <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-parchment rounded-xl max-w-sm w-full p-6 shadow-phone">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-ink">Settings</h3>
+                    <h3 className="text-lg font-semibold text-ink">Alert settings</h3>
                     <button
                       onClick={() => setShowSettings(false)}
                       className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"

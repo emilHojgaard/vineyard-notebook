@@ -5,7 +5,6 @@ import {
   getDoc,
   getDocs,
   setDoc,
-  updateDoc,
   deleteDoc,
   onSnapshot,
   query,
@@ -102,11 +101,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     branchSelection: {},
     invFilter: 'all',
     calMonth: null,
-    locked: false,
+    locked: true,
     alertDays: 14,
     eventAlertDays: 7,
     treeFocus: null,
+    focusedNodeId: null,
   });
+
+  // Start each authenticated session in view-only mode. This effect only runs
+  // when authentication changes, so project/season changes and ordinary renders
+  // preserve an explicit edit-mode toggle made during the current session.
+  useEffect(() => {
+    setAppState((prev) => (prev.locked ? prev : { ...prev, locked: true }));
+  }, [currentUser?.uid]);
 
   // Load user's projects
   useEffect(() => {
@@ -131,15 +138,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       setProjects(loadedProjects);
 
-      // Auto-select first project if none selected
-      if (loadedProjects.length > 0 && !currentProject) {
-        setCurrentProject(loadedProjects[0]);
-      }
+      // Auto-select the first project if none is selected, and keep the selected
+      // project current when ownership or membership changes remotely.
+      setCurrentProject((selectedProject) => {
+        if (selectedProject) {
+          return loadedProjects.find((project) => project.id === selectedProject.id) || null;
+        }
+        return loadedProjects[0] || null;
+      });
       setLoading(false);
     });
 
     return unsubscribe;
   }, [currentUser]);
+
+  // Auto-adjust year when switching projects
+  useEffect(() => {
+    if (!currentProject) return;
+
+    // Get available years for this project (using the scoped accessor)
+    const availableYears = Object.keys(seasons).map(Number);
+
+    // If no seasons yet, wait for them to load
+    if (availableYears.length === 0) return;
+
+    // If current year doesn't exist in this project, switch to newest season
+    if (!seasons[appState.year]) {
+      const newestYear = Math.max(...availableYears);
+      setAppState((prev) => ({ ...prev, year: newestYear }));
+    }
+  }, [currentProject, seasons, appState.year]);
 
   // Load project data when project changes
   useEffect(() => {
@@ -229,17 +257,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const projectData = projectDoc.data();
     const memberIds = projectData.members || [];
+    const memberAddedAt = projectData.memberAddedAt || {};
+    const projectCreatedAt = projectData.createdAt?.toDate?.() || new Date(0);
 
     // Load user data for each member
-    const memberPromises = memberIds.map(async (uid: string) => {
+    const memberPromises = memberIds.map(async (uid: string, index: number) => {
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (!userDoc.exists()) return null;
       const userData = userDoc.data();
+      const addedAtValue = memberAddedAt[uid];
+      const addedAt = addedAtValue?.toDate?.() || (addedAtValue instanceof Date ? addedAtValue : new Date(projectCreatedAt.getTime() + index));
       return {
         id: uid,
         email: userData.email || '',
         displayName: userData.displayName || 'Unknown',
         role: (projectData.owners || [projectData.createdBy]).includes(uid) ? 'owner' : 'member',
+        addedAt,
       } as Member;
     });
 
@@ -252,6 +285,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const projectId = `proj_${Date.now()}`;
     const year = new Date().getFullYear();
+    const createdAt = Timestamp.now();
 
     // Ensure the profile exists before creating project data. The project batch
     // below then succeeds or fails as one unit.
@@ -272,7 +306,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       members: [currentUser.uid],
       owners: [currentUser.uid],
       createdBy: currentUser.uid,
-      createdAt: Timestamp.now(),
+      createdAt,
+      memberAddedAt: {
+        [currentUser.uid]: createdAt,
+      },
     });
 
     // Create initial season with default winemaking phases
@@ -311,6 +348,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       members: [currentUser.uid],
       createdBy: currentUser.uid,
       createdAt: new Date(),
+      memberAddedAt: {
+        [currentUser.uid]: new Date(),
+      },
     };
     setCurrentProject(newProject);
 
@@ -802,19 +842,70 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeMember = async (memberId: string) => {
-    if (!currentProject) return;
-    const projectRef = doc(db, 'projects', currentProject.id);
-    const projectDoc = await getDoc(projectRef);
-    if (!projectDoc.exists()) return;
+    if (!currentProject || !currentUser) return;
 
-    const currentMembers = projectDoc.data().members || [];
-    const updatedMembers = currentMembers.filter((id: string) => id !== memberId);
+    const projectId = currentProject.id;
+    const projectRef = doc(db, 'projects', projectId);
 
-    await updateDoc(projectRef, {
-      members: updatedMembers,
+    await runTransaction(db, async (transaction) => {
+      const projectDoc = await transaction.get(projectRef);
+      if (!projectDoc.exists()) return;
+
+      const projectData = projectDoc.data();
+      const currentMembers = (projectData.members || []) as string[];
+      if (!currentMembers.includes(memberId)) return;
+
+      // The owner is the only user who can manage membership. This mirrors the
+      // Members view and keeps a stale client from changing project ownership.
+      if (projectData.createdBy !== currentUser.uid) {
+        throw new Error('Only the project owner can remove members');
+      }
+
+      // Keep the existing product safeguard: a project must not be deleted or
+      // left without a member when its final member attempts to leave.
+      if (currentMembers.length <= 1) {
+        throw new Error('Cannot remove the final project member');
+      }
+
+      const updatedMembers = currentMembers.filter((id) => id !== memberId);
+      const existingAddedAt = projectData.memberAddedAt || {};
+      const projectCreatedAt = projectData.createdAt?.toDate?.() || new Date(0);
+      const memberAddedAt: Record<string, Timestamp> = {};
+
+      // Backfill legacy projects deterministically from their existing member
+      // order. New memberships always receive a real timestamp below.
+      currentMembers.forEach((id, index) => {
+        const value = existingAddedAt[id];
+        const date = value?.toDate?.() || (value instanceof Date ? value : new Date(projectCreatedAt.getTime() + index));
+        if (updatedMembers.includes(id)) {
+          memberAddedAt[id] = Timestamp.fromDate(date);
+        }
+      });
+
+      const update: Record<string, unknown> = {
+        members: updatedMembers,
+        memberAddedAt,
+      };
+
+      if (memberId === projectData.createdBy) {
+        // Membership age, with the member array as a stable tie-breaker for
+        // legacy records, determines who inherits the owner's permissions.
+        const newOwner = updatedMembers.reduce((oldest, candidate) => {
+          const oldestDate = memberAddedAt[oldest].toDate().getTime();
+          const candidateDate = memberAddedAt[candidate].toDate().getTime();
+          return candidateDate < oldestDate ? candidate : oldest;
+        }, updatedMembers[0]);
+        update.createdBy = newOwner;
+      }
+
+      transaction.update(projectRef, update);
     });
 
-    await loadMembers(currentProject.id);
+    // Once an owner leaves, Firestore rules correctly revoke their access;
+    // avoid a post-transaction read from the departing client.
+    if (memberId !== currentUser.uid) {
+      await loadMembers(projectId);
+    }
   };
 
   const promoteMemberToOwner = async (memberId: string) => {

@@ -92,6 +92,7 @@ export interface AppState {
   alertDays: number;
   eventAlertDays: number;
   treeFocus: string | null; // branch id
+  focusedNodeId: string | null; // node to focus when navigating to timeline/tree
 }
 
 // Project & User types for Firebase
@@ -102,6 +103,8 @@ export interface Project {
   owners?: string[]; // user IDs; createdBy remains the original owner for compatibility
   createdBy: string; // original owner user ID
   createdAt: Date;
+  // Optional for backwards compatibility with projects created before membership ages were stored.
+  memberAddedAt?: Record<string, Date>;
 }
 
 export interface User {
@@ -115,6 +118,7 @@ export interface Member {
   email: string;
   displayName: string;
   role: 'owner' | 'member';
+  addedAt?: Date;
 }
 
 export interface Invitation {

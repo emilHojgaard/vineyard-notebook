@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +19,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
+  const canDeleteProjects = currentUser?.uid === currentProject?.createdBy;
   const isEditMode = !appState.locked;
 
   const handleDeleteProject = async (projectId: string) => {
@@ -63,59 +64,69 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
     updateAppState({ locked: !appState.locked });
   };
 
+  useEffect(() => {
+    if (!showProjectDropdown && !showUserMenu) return;
+    const closeMenus = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowProjectDropdown(false);
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('keydown', closeMenus);
+    return () => document.removeEventListener('keydown', closeMenus);
+  }, [showProjectDropdown, showUserMenu]);
+
   return (
     <>
-      <div className="bg-burgundy text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-        {/* Project Name / Logo */}
-        <div className="text-xs font-bold tracking-widest uppercase flex-shrink-0">
-          {currentProject?.name || 'Vineyard Notebook'}
-        </div>
+      <div className="relative bg-burgundy text-white px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0">
+        {/* Lock control stays on the left. */}
+        <button
+          onClick={toggleLock}
+          className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors flex-shrink-0 ${
+            appState.locked
+              ? 'bg-white/25 border-white/50'
+              : 'bg-white/10 border-white/30 hover:bg-white/20'
+          }`}
+          title={appState.locked ? 'Locked - Click to edit' : 'Unlocked - Click to lock'}
+          aria-label={appState.locked ? 'Unlock editing' : 'Lock editing'}
+        >
+          <Icon name={appState.locked ? 'lock' : 'unlock'} size={12} />
+        </button>
 
-        {/* Right side controls */}
-        <div className="flex items-center gap-2">
-          {/* Project Selector (only visible in edit mode) */}
-          {isEditMode && (
+        {/* The single project-name presentation is centered in both modes. */}
+        <div className="absolute left-1/2 -translate-x-1/2 max-w-[45%] sm:max-w-[55%]">
+          {isEditMode ? (
             <div className="relative">
               <button
                 onClick={() => setShowProjectDropdown(!showProjectDropdown)}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-white/10 border border-white/30 hover:bg-white/20 transition-colors text-xs"
+                className="flex items-center gap-1 max-w-full px-2 py-1 rounded hover:bg-white/10 transition-colors text-xs font-bold tracking-widest uppercase"
                 title="Manage projects"
+                aria-haspopup="menu"
+                aria-expanded={showProjectDropdown}
               >
-                <Icon name="folder" size={12} />
+                <span className="truncate">{currentProject?.name || 'Vineyard Notebook'}</span>
                 <Icon name="chevronDown" size={10} />
               </button>
-              
               {showProjectDropdown && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowProjectDropdown(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden">
+                  <div className="fixed inset-0 z-40" onClick={() => setShowProjectDropdown(false)} />
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
                     <div className="py-1">
                       {projects.map((project) => (
                         <div key={project.id} className="flex items-center group">
                           <button
-                            onClick={() => {
-                              selectProject(project.id);
-                              setShowProjectDropdown(false);
-                            }}
-                            className={`flex-1 px-4 py-2 text-left text-sm hover:bg-surface transition-colors ${
-                              currentProject?.id === project.id
-                                ? 'bg-surface text-burgundy font-semibold'
-                                : 'text-ink'
-                            }`}
+                            onClick={() => { selectProject(project.id); setShowProjectDropdown(false); }}
+                            className={`flex-1 min-w-0 px-4 py-2 text-left text-sm truncate hover:bg-surface transition-colors ${currentProject?.id === project.id ? 'bg-surface text-burgundy font-semibold' : 'text-ink'}`}
+                            role="menuitem"
                           >
                             {project.name}
                           </button>
-                          {projects.length > 1 && (
+                          {canDeleteProjects && projects.length > 1 && (
                             <button
-                              onClick={() => {
-                                setConfirmDeleteProject(project.id);
-                                setShowProjectDropdown(false);
-                              }}
-                              className="px-2 py-2 text-status-need hover:bg-surface transition-colors opacity-0 group-hover:opacity-100"
+                              onClick={() => { setConfirmDeleteProject(project.id); setShowProjectDropdown(false); }}
+                              className="px-2 py-2 text-status-need hover:bg-surface transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
                               title="Delete project"
+                              aria-label={`Delete ${project.name}`}
                             >
                               <Icon name="trash" size={12} />
                             </button>
@@ -124,11 +135,9 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                       ))}
                       <div className="border-t border-border my-1" />
                       <button
-                        onClick={() => {
-                          setShowNewProject(true);
-                          setShowProjectDropdown(false);
-                        }}
+                        onClick={() => { setShowNewProject(true); setShowProjectDropdown(false); }}
                         className="w-full px-4 py-2 text-left text-sm text-burgundy font-semibold hover:bg-surface transition-colors flex items-center gap-2"
+                        role="menuitem"
                       >
                         <Icon name="plus" size={12} />
                         Create New Project
@@ -138,75 +147,31 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                 </>
               )}
             </div>
+          ) : (
+            <div className="truncate text-xs font-bold tracking-widest uppercase" title={currentProject?.name || 'Vineyard Notebook'}>
+              {currentProject?.name || 'Vineyard Notebook'}
+            </div>
           )}
+        </div>
 
-          {/* Members button */}
-          <button
-            onClick={onMembersClick}
-            className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-            title="Members"
-          >
+        {/* Settings, members, and account controls stay on the right. */}
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <button onClick={onMembersClick} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title="Members" aria-label="Members">
             <Icon name="users" size={12} />
           </button>
-
-          {/* Settings button */}
-          <button
-            onClick={onSettingsClick}
-            className="w-6 h-6 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-            title="Settings"
-          >
+          <button onClick={onSettingsClick} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title="Settings" aria-label="Settings">
             <Icon name="settings" size={12} />
           </button>
-
-          {/* Lock/Unlock button */}
-          <button
-            onClick={toggleLock}
-            className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
-              appState.locked
-                ? 'bg-white/25 border-white/50'
-                : 'bg-white/10 border-white/30 hover:bg-white/20'
-            }`}
-            title={appState.locked ? 'Locked - Click to edit' : 'Unlocked - Click to lock'}
-          >
-            <Icon name={appState.locked ? 'lock' : 'unlock'} size={12} />
-          </button>
-
-          {/* User Menu */}
           <div className="relative">
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
-              title={currentUser?.email || 'User'}
-            >
+            <button onClick={() => setShowUserMenu(!showUserMenu)} className="w-7 h-7 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors" title={currentUser?.email || 'User'} aria-label="Account menu" aria-expanded={showUserMenu}>
               <Icon name="user" size={14} />
             </button>
-
             {showUserMenu && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowUserMenu(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
                 <div className="absolute right-0 top-full mt-1 w-56 bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-border">
-                    <div className="text-sm font-semibold text-ink">
-                      {currentUser?.displayName || 'User'}
-                    </div>
-                    <div className="text-xs text-ink-soft truncate">
-                      {currentUser?.email}
-                    </div>
-                  </div>
-                  <div className="py-1">
-                    <button
-                      onClick={() => {
-                        logout();
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-status-need font-semibold hover:bg-surface transition-colors"
-                    >
-                      Sign Out
-                    </button>
-                  </div>
+                  <div className="px-4 py-3 border-b border-border"><div className="text-sm font-semibold text-ink">{currentUser?.displayName || 'User'}</div><div className="text-xs text-ink-soft truncate">{currentUser?.email}</div></div>
+                  <button onClick={() => { logout(); setShowUserMenu(false); }} className="w-full px-4 py-2 text-left text-sm text-status-need font-semibold hover:bg-surface transition-colors">Sign Out</button>
                 </div>
               </>
             )}
