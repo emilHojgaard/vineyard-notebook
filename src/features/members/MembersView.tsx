@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { Member } from '../../types';
 
 export function MembersView() {
-  const { currentProject, members, inviteMember, removeMember, pendingInvitations, cancelInvitation } = useData();
+  const { currentProject, members, inviteMember, removeMember, promoteMemberToOwner, pendingInvitations, cancelInvitation } = useData();
   const { currentUser } = useAuth();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -59,6 +59,17 @@ export function MembersView() {
       setShowInviteModal(false);
     } catch (error: any) {
       setInviteError(error.message || 'Failed to send invitation');
+    }
+  };
+
+  const handlePromote = async (member: Member) => {
+    if (!canManageMembers || member.role === 'owner') return;
+    if (!window.confirm(`Promote ${member.displayName} to owner? Owners can manage project membership.`)) return;
+    try {
+      await promoteMemberToOwner(member.id);
+    } catch (error) {
+      console.error('Failed to promote member:', error);
+      alert('Failed to promote member. Please try again.');
     }
   };
 
@@ -139,15 +150,26 @@ export function MembersView() {
                   {member.email}
                 </div>
               </div>
-              {canRemoveMember(member) && (
-                <button
-                  onClick={() => setConfirmRemove(member)}
-                  className="ml-2 p-1.5 text-status-need hover:bg-status-need hover:text-white rounded transition-colors"
-                  title="Remove member"
-                >
-                  <Icon name="trash" size={14} />
-                </button>
-              )}
+              <div className="ml-2 flex items-center gap-1">
+                {canManageMembers && member.role !== 'owner' && (
+                  <button
+                    onClick={() => handlePromote(member)}
+                    className="px-2 py-1 text-xs text-burgundy hover:bg-burgundy hover:text-white rounded transition-colors"
+                    title="Promote to owner"
+                  >
+                    Make owner
+                  </button>
+                )}
+                {canRemoveMember(member) && (
+                  <button
+                    onClick={() => setConfirmRemove(member)}
+                    className="p-1.5 text-status-need hover:bg-status-need hover:text-white rounded transition-colors"
+                    title="Remove member"
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

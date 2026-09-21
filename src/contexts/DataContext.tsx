@@ -11,6 +11,7 @@ import {
   query,
   where,
   Timestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, functions } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -26,6 +27,7 @@ import type {
   Branch,
 } from '../types';
 import { syncStatuses, createDefaultPhases, uid } from '../lib/utils';
+import { validateTree } from '../lib/tree';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -59,6 +61,7 @@ interface DataContextType {
   updateAppState: (state: Partial<AppState>) => void;
   inviteMember: (email: string) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
+  promoteMemberToOwner: (memberId: string) => Promise<void>;
   cancelInvitation: (invitationId: string) => Promise<void>;
   generateCalendarToken: () => Promise<string>;
   revokeCalendarToken: (token: string) => Promise<void>;
@@ -236,7 +239,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: uid,
         email: userData.email || '',
         displayName: userData.displayName || 'Unknown',
-        role: uid === projectData.createdBy ? 'owner' : 'member',
+        role: (projectData.owners || [projectData.createdBy]).includes(uid) ? 'owner' : 'member',
       } as Member;
     });
 
@@ -250,10 +253,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const projectId = `proj_${Date.now()}`;
     const year = new Date().getFullYear();
 
-    // Create project
-    await setDoc(doc(db, 'projects', projectId), {
+    // Ensure the profile exists before creating project data. The project batch
+    // below then succeeds or fails as one unit.
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+      await setDoc(userDocRef, {
+        email: currentUser.email,
+        displayName: currentUser.displayName || 'User',
+      });
+    }
+
+    // Create initial project data as one atomic batch. This prevents a partially
+    // initialized project if a season, inventory, or library write fails.
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'projects', projectId), {
       name,
       members: [currentUser.uid],
+      owners: [currentUser.uid],
       createdBy: currentUser.uid,
       createdAt: Timestamp.now(),
     });
@@ -268,13 +285,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Sync statuses for the default phases
     syncStatuses(initialSeason.root);
 
-    await setDoc(doc(db, 'seasons', `${projectId}_${year}`), {
+    batch.set(doc(db, 'seasons', `${projectId}_${year}`), {
       ...initialSeason,
       projectId,
     });
 
     // Create inventory with default sections
-    await setDoc(doc(db, 'inventory', `${projectId}_${year}`), {
+    batch.set(doc(db, 'inventory', `${projectId}_${year}`), {
       projectId,
       sections: [
         { id: 'inv1', name: 'Equipment', items: [] },
@@ -284,19 +301,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Create library with empty sections
-    await setDoc(doc(db, 'library', projectId), {
-      sections: [],
-    });
-
-    // Create user document if it doesn't exist
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists()) {
-      await setDoc(userDocRef, {
-        email: currentUser.email,
-        displayName: currentUser.displayName || 'User',
-      });
-    }
+    batch.set(doc(db, 'library', projectId), { sections: [] });
+    await batch.commit();
 
     // Immediately set as current project (don't wait for snapshot)
     const newProject: Project = {
@@ -347,6 +353,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateSeason = async (year: number, season: Season) => {
     if (!currentProject) return;
+    const validation = validateTree(season.root);
+    if (!validation.valid) {
+      throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
+    }
     syncStatuses(season.root);
     await setDoc(doc(db, 'seasons', `${currentProject.id}_${year}`), {
       ...season,
@@ -531,18 +541,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           parent.branches = node.branches;
         }
       } else {
-        // Node is in root - need to find the previous sibling to receive branches
-        // If there's a previous sibling in the array, give it the branches
-        if (nodeIndex > 0) {
-          const prevNode = parentNodes[nodeIndex - 1];
-          if (prevNode.branches) {
-            prevNode.branches.push(...node.branches);
-          } else {
-            prevNode.branches = node.branches;
-          }
+        // A root phase has no parent that can carry its branch labels. The old
+        // implementation silently discarded branches when this was the first
+        // root phase. Refuse that destructive operation until the model has a
+        // first-class root branch container instead.
+        if (nodeIndex === 0) {
+          throw new Error('Cannot delete the first root phase while it has branches; remove or move its branches first.');
         }
-        // If no previous sibling, branches are lost (rare edge case)
-        // This happens when deleting the FIRST trunk phase that has branches
+
+        const prevNode = parentNodes[nodeIndex - 1];
+        if (prevNode.branches) {
+          prevNode.branches.push(...node.branches);
+        } else {
+          prevNode.branches = node.branches;
+        }
       }
     }
 
@@ -805,6 +817,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await loadMembers(currentProject.id);
   };
 
+  const promoteMemberToOwner = async (memberId: string) => {
+    if (!currentProject || !currentUser) throw new Error('Not authenticated');
+    const projectRef = doc(db, 'projects', currentProject.id);
+    const projectDoc = await getDoc(projectRef);
+    if (!projectDoc.exists()) throw new Error('Project not found');
+
+    const data = projectDoc.data();
+    const owners = Array.from(new Set([...(data.owners || [data.createdBy]), memberId]));
+    if (!(data.members || []).includes(memberId)) {
+      throw new Error('Only project members can become owners');
+    }
+    await updateDoc(projectRef, { owners });
+    await loadMembers(currentProject.id);
+  };
+
   const cancelInvitation = async (invitationId: string) => {
     await deleteDoc(doc(db, 'invitations', invitationId));
   };
@@ -861,6 +888,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateAppState,
     inviteMember,
     removeMember,
+    promoteMemberToOwner,
     cancelInvitation,
     generateCalendarToken,
     revokeCalendarToken,
