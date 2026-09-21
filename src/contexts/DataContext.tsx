@@ -27,7 +27,7 @@ import type {
   Node as PhaseNode,
   Branch,
 } from '../types';
-import { syncStatuses, createDefaultPhases, uid } from '../lib/utils';
+import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason } from '../lib/utils';
 import { validateTree } from '../lib/tree';
 
 interface DataContextType {
@@ -762,6 +762,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!currentProject) return;
     const season = seasons[year];
     if (!season || season.status !== 'current') return;
+    const blockReason = getSeasonCompletionBlockReason(season);
+    if (blockReason) throw new Error(blockReason);
     await updateSeason(year, { ...season, status: 'completed' });
   };
 
