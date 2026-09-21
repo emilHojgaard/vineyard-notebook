@@ -5,9 +5,8 @@ import {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
-  withSecurityRulesDisabled,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 const projectRef = docId => `projects/${projectId}`;
@@ -22,7 +21,12 @@ test.before(async () => {
     },
   });
 
-  await withSecurityRulesDisabled(testEnv, async context => {
+  await seedTestData();
+});
+
+async function seedTestData() {
+  await testEnv.clearFirestore();
+  await testEnv.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
     await setDoc(doc(db, 'projects', projectId), {
       name: 'Test Vineyard',
@@ -42,7 +46,9 @@ test.before(async () => {
     });
     await setDoc(doc(db, 'library', projectId), { sections: [] });
   });
-});
+}
+
+test.beforeEach(seedTestData);
 
 test.after(async () => {
   await testEnv.cleanup();
@@ -50,16 +56,16 @@ test.after(async () => {
 
 test('project members can read project-scoped data', async () => {
   const memberDb = testEnv.authenticatedContext('member-1').firestore();
-  await assertSucceeds(memberDb.get(doc(memberDb, 'seasons', `${projectId}_2026`)));
-  await assertSucceeds(memberDb.get(doc(memberDb, 'inventory', `${projectId}_2026`)));
-  await assertSucceeds(memberDb.get(doc(memberDb, 'library', projectId)));
+  await assertSucceeds(getDoc(doc(memberDb, 'seasons', `${projectId}_2026`)));
+  await assertSucceeds(getDoc(doc(memberDb, 'inventory', `${projectId}_2026`)));
+  await assertSucceeds(getDoc(doc(memberDb, 'library', projectId)));
 });
 
 test('non-members cannot read project-scoped data', async () => {
   const outsiderDb = testEnv.authenticatedContext('outsider-1').firestore();
-  await assertFails(outsiderDb.get(doc(outsiderDb, 'seasons', `${projectId}_2026`)));
-  await assertFails(outsiderDb.get(doc(outsiderDb, 'inventory', `${projectId}_2026`)));
-  await assertFails(outsiderDb.get(doc(outsiderDb, 'library', projectId)));
+  await assertFails(getDoc(doc(outsiderDb, 'seasons', `${projectId}_2026`)));
+  await assertFails(getDoc(doc(outsiderDb, 'inventory', `${projectId}_2026`)));
+  await assertFails(getDoc(doc(outsiderDb, 'library', projectId)));
 });
 
 test('only owners can change membership and owners can promote members', async () => {
@@ -93,5 +99,5 @@ test('only owners can create invitations and invited email can read its invitati
   }));
 
   const invitedDb = testEnv.authenticatedContext('new-user', { email: 'new@example.com' }).firestore();
-  await assertSucceeds(invitedDb.get(doc(invitedDb, 'invitations/invite-1')));
+  await assertSucceeds(getDoc(doc(invitedDb, 'invitations/invite-1')));
 });
