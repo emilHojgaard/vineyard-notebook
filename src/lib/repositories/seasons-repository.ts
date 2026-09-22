@@ -1,7 +1,30 @@
-import { collection, deleteDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, runTransaction, where } from 'firebase/firestore';
 import type { Season } from '../../types';
 import { db } from '../firebase';
 import { seasonDocument } from '../firestore-repositories';
+import { joinSeasonRoot, splitSeasonRoot, type SeasonContent, type SeasonStructureNode } from './season-storage';
+
+export class ConcurrentWriteError extends Error {
+  code = 'aborted';
+
+  constructor(resource: string) {
+    super(`${resource} changed remotely. Reload it before saving again.`);
+    this.name = 'ConcurrentWriteError';
+  }
+}
+
+function hydrateSeason(data: Record<string, any>): Season {
+  const root = data.structure && data.content
+    ? joinSeasonRoot(data.structure as SeasonStructureNode[], data.content as SeasonContent)
+    : data.root || [];
+  return {
+    status: data.status,
+    title: data.title,
+    root,
+    locked: data.locked ?? true,
+    revision: data.revision || 0,
+  };
+}
 
 export function subscribeSeasons(
   projectId: string,
@@ -13,8 +36,9 @@ export function subscribeSeasons(
     (snapshot) => {
       const seasons: Record<number, Season> = {};
       snapshot.docs.forEach((seasonDoc) => {
-        const year = parseInt(seasonDoc.id.split('_')[2] || '0');
-        if (year) seasons[year] = seasonDoc.data() as Season;
+        const data = seasonDoc.data();
+        const year = Number(data.title) || parseInt(seasonDoc.id.split('_').pop() || '0', 10);
+        if (year) seasons[year] = hydrateSeason(data);
       });
       onSeasons(seasons);
     },
@@ -22,10 +46,53 @@ export function subscribeSeasons(
   );
 }
 
-export async function saveSeason(projectId: string, year: number, season: Season): Promise<void> {
-  await setDoc(seasonDocument(projectId, year), { ...season, projectId });
+/**
+ * Save with an optimistic revision check. A stale collaborator can no longer
+ * silently replace a newer tree; callers must reload and retry explicitly.
+ * The structure/content split gives Firestore rules a server-visible way to
+ * permit ordinary edits while rejecting structural edits on a locked season.
+ */
+export async function saveSeason(
+  projectId: string,
+  year: number,
+  season: Season,
+  expectedRevision?: number,
+): Promise<Season> {
+  const ref = seasonDocument(projectId, year);
+  let saved: Season;
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const current = snapshot.exists() ? snapshot.data() : {};
+    const currentRevision = snapshot.exists() ? (current.revision || 0) : 0;
+    if (snapshot.exists() && expectedRevision !== currentRevision) {
+      throw new ConcurrentWriteError(`Season ${year}`);
+    }
+    if (!snapshot.exists() && expectedRevision !== undefined) {
+      throw new ConcurrentWriteError(`Season ${year}`);
+    }
+    const { structure, content } = splitSeasonRoot(season.root);
+    const nextRevision = currentRevision + 1;
+    saved = { ...season, revision: nextRevision, locked: season.locked ?? current.locked ?? true };
+    transaction.set(ref, {
+      projectId,
+      status: saved.status,
+      title: saved.title,
+      structure,
+      content,
+      locked: saved.locked,
+      revision: nextRevision,
+    });
+  });
+  return saved!;
 }
 
-export async function deleteSeason(projectId: string, year: number): Promise<void> {
-  await deleteDoc(seasonDocument(projectId, year));
+export async function deleteSeason(projectId: string, year: number, expectedRevision?: number): Promise<void> {
+  const ref = seasonDocument(projectId, year);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) return;
+    const currentRevision = snapshot.data().revision || 0;
+    if (expectedRevision !== currentRevision) throw new ConcurrentWriteError(`Season ${year}`);
+    transaction.delete(ref);
+  });
 }

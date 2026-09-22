@@ -32,258 +32,244 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listCalendarTokens = exports.revokeCalendarToken = exports.generateCalendarToken = exports.calendarFeed = void 0;
+exports.calendarFeed = exports.listCalendarTokens = exports.revokeCalendarToken = exports.acceptInvitation = exports.generateCalendarToken = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-const cors_1 = __importDefault(require("cors"));
 const ics_generator_1 = require("./ics-generator");
-// Initialize CORS with options to allow development and production origins
-const corsHandler = (0, cors_1.default)({
-    origin: true, // Allows all origins (for calendar clients)
-    credentials: true,
-});
+const security_1 = require("./security");
 admin.initializeApp();
 /**
- * Validate calendar token and return user ID if valid
- */
-async function validateCalendarToken(token, projectId) {
-    try {
-        const tokenDoc = await admin
-            .firestore()
-            .collection('calendar_tokens')
-            .doc(token)
-            .get();
-        if (!tokenDoc.exists) {
-            return null;
-        }
-        const tokenData = tokenDoc.data();
-        if (!tokenData) {
-            return null;
-        }
-        // Check if token is for the correct project
-        if (tokenData.projectId !== projectId) {
-            return null;
-        }
-        // Check if token is expired (optional: add expiration logic here)
-        // For now, tokens are long-lived
-        return tokenData.userId;
-    }
-    catch (error) {
-        console.error('Error validating token:', error);
-        return null;
-    }
-}
-/**
- * Check if user is a member of the project
- */
-async function isProjectMember(userId, projectId) {
-    try {
-        const projectDoc = await admin
-            .firestore()
-            .collection('projects')
-            .doc(projectId)
-            .get();
-        if (!projectDoc.exists) {
-            return false;
-        }
-        const projectData = projectDoc.data();
-        if (!projectData) {
-            return false;
-        }
-        return projectData.members.includes(userId);
-    }
-    catch (error) {
-        console.error('Error checking project membership:', error);
-        return false;
-    }
-}
-/**
- * Calendar feed endpoint
- * URL: /calendarFeed/:projectId/:seasonYear?token=xxx
- */
-exports.calendarFeed = functions.https.onRequest(async (req, res) => {
-    // Handle CORS
-    return corsHandler(req, res, async () => {
-        // Extract parameters
-        const pathParts = req.path.split('/').filter(p => p);
-        const projectId = pathParts[0];
-        const seasonYear = pathParts[1];
-        const token = req.query.token;
-        // Validate inputs
-        if (!projectId || !seasonYear || !token) {
-            res.status(400).send('Missing required parameters: projectId, seasonYear, or token');
-            return;
-        }
-        // Validate token
-        const userId = await validateCalendarToken(token, projectId);
-        if (!userId) {
-            res.status(403).send('Invalid or expired token');
-            return;
-        }
-        // Verify user is a project member
-        const isMember = await isProjectMember(userId, projectId);
-        if (!isMember) {
-            res.status(403).send('User is not a member of this project');
-            return;
-        }
-        try {
-            // Fetch project data
-            const projectDoc = await admin
-                .firestore()
-                .collection('projects')
-                .doc(projectId)
-                .get();
-            if (!projectDoc.exists) {
-                res.status(404).send('Project not found');
-                return;
-            }
-            const projectData = projectDoc.data();
-            const projectName = (projectData === null || projectData === void 0 ? void 0 : projectData.name) || 'Vineyard';
-            // Fetch season data
-            const seasonId = `${projectId}_${seasonYear}`;
-            const seasonDoc = await admin
-                .firestore()
-                .collection('seasons')
-                .doc(seasonId)
-                .get();
-            if (!seasonDoc.exists) {
-                res.status(404).send('Season not found');
-                return;
-            }
-            const seasonData = seasonDoc.data();
-            if (!seasonData) {
-                res.status(404).send('Season data is empty');
-                return;
-            }
-            // Generate .ics file
-            const icsContent = (0, ics_generator_1.generateICS)(seasonData, projectName);
-            // Return .ics file
-            res.set('Content-Type', 'text/calendar; charset=utf-8');
-            res.set('Content-Disposition', `inline; filename="vineyard-${seasonYear}.ics"`);
-            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.status(200).send(icsContent);
-        }
-        catch (error) {
-            console.error('Error generating calendar feed:', error);
-            res.status(500).send('Internal server error');
-        }
-    });
-});
-/**
- * Generate a new calendar token for a user and project
- * Callable function from the client
+ * Generate a new calendar token for a project
  */
 exports.generateCalendarToken = functions.https.onCall(async (data, context) => {
+    var _a;
     // Verify user is authenticated
     if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated to generate a calendar token');
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const userId = context.auth.uid;
     const { projectId } = data;
     if (!projectId) {
         throw new functions.https.HttpsError('invalid-argument', 'projectId is required');
     }
-    // Verify user is a member of the project
-    const isMember = await isProjectMember(userId, projectId);
-    if (!isMember) {
+    // Verify user has access to this project
+    const projectRef = admin.firestore().collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Project not found');
+    }
+    const projectData = projectDoc.data();
+    if (!((_a = projectData === null || projectData === void 0 ? void 0 : projectData.members) === null || _a === void 0 ? void 0 : _a.includes(context.auth.uid))) {
         throw new functions.https.HttpsError('permission-denied', 'User is not a member of this project');
     }
-    try {
-        // Generate a unique token
-        const tokenId = admin.firestore().collection('calendar_tokens').doc().id;
-        // Store token in Firestore
-        await admin
-            .firestore()
-            .collection('calendar_tokens')
-            .doc(tokenId)
-            .set({
-            userId,
-            projectId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        return { token: tokenId };
+    // Generate a random token
+    const token = generateRandomToken();
+    // Store token in Firestore
+    await admin.firestore().collection('calendar_tokens').doc(token).set({
+        projectId,
+        userId: context.auth.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { token };
+});
+/**
+ * Accept an invitation and add the authenticated user to the project.
+ * This is intentionally a callable function: rules cannot correlate an
+ * arbitrary project membership update with one invitation document.
+ */
+exports.acceptInvitation = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    catch (error) {
-        console.error('Error generating calendar token:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to generate token');
+    const invitationId = typeof (data === null || data === void 0 ? void 0 : data.invitationId) === 'string' ? data.invitationId : '';
+    if (!invitationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'invitationId is required');
     }
+    const invitationRef = admin.firestore().collection('invitations').doc(invitationId);
+    const projectRefForInvitation = admin.firestore().collection('projects');
+    await admin.firestore().runTransaction(async (transaction) => {
+        const invitationSnapshot = await transaction.get(invitationRef);
+        if (!invitationSnapshot.exists) {
+            throw new functions.https.HttpsError('not-found', 'Invitation not found');
+        }
+        const invitation = invitationSnapshot.data();
+        const authEmail = (context.auth.token.email || '').toLowerCase();
+        if (invitation.status !== 'pending' ||
+            typeof invitation.email !== 'string' ||
+            invitation.email.toLowerCase() !== authEmail) {
+            throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
+        }
+        const projectRef = projectRefForInvitation.doc(invitation.projectId);
+        const projectSnapshot = await transaction.get(projectRef);
+        if (!projectSnapshot.exists) {
+            throw new functions.https.HttpsError('not-found', 'Project not found');
+        }
+        const project = projectSnapshot.data();
+        const members = Array.isArray(project.members) ? project.members : [];
+        if (!members.includes(context.auth.uid)) {
+            transaction.update(projectRef, {
+                members: [...members, context.auth.uid],
+                memberAddedAt: Object.assign(Object.assign({}, (project.memberAddedAt || {})), { [context.auth.uid]: admin.firestore.Timestamp.now() }),
+            });
+        }
+        transaction.delete(invitationRef);
+    });
+    return { success: true };
 });
 /**
  * Revoke a calendar token
- * Callable function from the client
  */
 exports.revokeCalendarToken = functions.https.onCall(async (data, context) => {
+    var _a;
     // Verify user is authenticated
     if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated to revoke a calendar token');
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const userId = context.auth.uid;
     const { token } = data;
     if (!token) {
         throw new functions.https.HttpsError('invalid-argument', 'token is required');
     }
-    try {
-        const tokenDoc = await admin
-            .firestore()
-            .collection('calendar_tokens')
-            .doc(token)
-            .get();
-        if (!tokenDoc.exists) {
-            throw new functions.https.HttpsError('not-found', 'Token not found');
-        }
-        const tokenData = tokenDoc.data();
-        if ((tokenData === null || tokenData === void 0 ? void 0 : tokenData.userId) !== userId) {
-            throw new functions.https.HttpsError('permission-denied', 'Cannot revoke another user\'s token');
-        }
-        // Delete the token
-        await admin.firestore().collection('calendar_tokens').doc(token).delete();
-        return { success: true };
+    // Get token document
+    const tokenRef = admin.firestore().collection('calendar_tokens').doc(token);
+    const tokenDoc = await tokenRef.get();
+    if (!tokenDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Token not found');
     }
-    catch (error) {
-        console.error('Error revoking calendar token:', error);
-        if (error instanceof functions.https.HttpsError) {
-            throw error;
-        }
-        throw new functions.https.HttpsError('internal', 'Failed to revoke token');
+    const tokenData = tokenDoc.data();
+    // Verify user has access to this token's project
+    const projectRef = admin.firestore().collection('projects').doc(tokenData.projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Project not found');
     }
+    const projectData = projectDoc.data();
+    if (!((_a = projectData === null || projectData === void 0 ? void 0 : projectData.members) === null || _a === void 0 ? void 0 : _a.includes(context.auth.uid))) {
+        throw new functions.https.HttpsError('permission-denied', 'User is not a member of this project');
+    }
+    // Delete token
+    await tokenRef.delete();
+    return { success: true };
 });
 /**
- * List all calendar tokens for the current user and a specific project
- * Callable function from the client
+ * List all calendar tokens for a project
  */
 exports.listCalendarTokens = functions.https.onCall(async (data, context) => {
+    var _a;
     // Verify user is authenticated
     if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated to list calendar tokens');
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const userId = context.auth.uid;
     const { projectId } = data;
     if (!projectId) {
         throw new functions.https.HttpsError('invalid-argument', 'projectId is required');
     }
-    try {
-        const tokensSnapshot = await admin
-            .firestore()
-            .collection('calendar_tokens')
-            .where('userId', '==', userId)
-            .where('projectId', '==', projectId)
-            .get();
-        const tokens = tokensSnapshot.docs.map(doc => {
-            var _a;
-            return ({
-                id: doc.id,
-                createdAt: ((_a = doc.data().createdAt) === null || _a === void 0 ? void 0 : _a.toDate().toISOString()) || null,
-            });
-        });
-        return { tokens };
+    // Verify user has access to this project
+    const projectRef = admin.firestore().collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Project not found');
     }
-    catch (error) {
-        console.error('Error listing calendar tokens:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to list tokens');
+    const projectData = projectDoc.data();
+    if (!((_a = projectData === null || projectData === void 0 ? void 0 : projectData.members) === null || _a === void 0 ? void 0 : _a.includes(context.auth.uid))) {
+        throw new functions.https.HttpsError('permission-denied', 'User is not a member of this project');
     }
+    // Get all tokens for this project
+    const tokensSnapshot = await admin.firestore()
+        .collection('calendar_tokens')
+        .where('projectId', '==', projectId)
+        .get();
+    const tokens = tokensSnapshot.docs.map((doc) => {
+        var _a, _b;
+        const data = doc.data();
+        return {
+            id: doc.id,
+            createdAt: ((_b = (_a = data.createdAt) === null || _a === void 0 ? void 0 : _a.toDate()) === null || _b === void 0 ? void 0 : _b.toISOString()) || null,
+        };
+    });
+    return { tokens };
 });
+/**
+ * HTTP endpoint to serve calendar feed
+ * URL format: /calendarFeed/{projectId}/{year}?token={token}
+ */
+exports.calendarFeed = functions.https.onRequest(async (req, res) => {
+    var _a;
+    // Enable CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+    if (req.method !== 'GET') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+    // Parse URL: /projectId/year
+    const pathParts = req.path.split('/').filter((p) => p);
+    if (pathParts.length !== 2) {
+        res.status(400).send('Invalid URL format. Expected: /projectId/year?token=xxx');
+        return;
+    }
+    const [projectId, yearStr] = pathParts;
+    const year = parseInt(yearStr, 10);
+    const token = req.query.token;
+    if (!token) {
+        res.status(401).send('Missing token parameter');
+        return;
+    }
+    if (isNaN(year)) {
+        res.status(400).send('Invalid year');
+        return;
+    }
+    // Verify token
+    const tokenRef = admin.firestore().collection('calendar_tokens').doc(token);
+    const tokenDoc = await tokenRef.get();
+    if (!tokenDoc.exists) {
+        res.status(401).send('Invalid token');
+        return;
+    }
+    const tokenData = tokenDoc.data();
+    if (tokenData.projectId !== projectId) {
+        res.status(403).send('Token does not match project');
+        return;
+    }
+    // A token is not a permanent authorization grant. Removed members lose
+    // feed access immediately, even if their old URL is still subscribed.
+    const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+    if (!projectDoc.exists || !(0, security_1.isActiveCalendarTokenOwner)((_a = projectDoc.data()) === null || _a === void 0 ? void 0 : _a.members, tokenData.userId)) {
+        res.status(403).send('Token owner is no longer a project member');
+        return;
+    }
+    // Get season data
+    const seasonRef = admin.firestore().collection('seasons').doc(`${projectId}_${year}`);
+    const seasonDoc = await seasonRef.get();
+    if (!seasonDoc.exists) {
+        res.status(404).send('Season not found');
+        return;
+    }
+    const seasonData = seasonDoc.data();
+    // Generate ICS calendar
+    const icsContent = (0, ics_generator_1.generateCalendar)(seasonData);
+    if (!icsContent) {
+        res.status(500).send('Error generating calendar');
+        return;
+    }
+    // Return ICS file
+    res.set('Content-Type', 'text/calendar; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="vineyard-calendar-${year}.ics"`);
+    res.status(200).send(icsContent);
+});
+/**
+ * Generate a random token string
+ */
+function generateRandomToken() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let token = '';
+    for (let i = 0; i < 32; i++) {
+        token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return token;
+}
 //# sourceMappingURL=index.js.map

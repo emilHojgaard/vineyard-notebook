@@ -1,10 +1,18 @@
-import { collection, deleteDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, runTransaction, where } from 'firebase/firestore';
 import type { Inventory } from '../../types';
 import { db } from '../firebase';
 import { inventoryDocument } from '../firestore-repositories';
 import { createDefaultInventory } from './repository-models';
+import { ConcurrentWriteError } from './seasons-repository';
 
 export const defaultInventory = createDefaultInventory;
+
+export function inventoryStructure(inventory: Inventory) {
+  return inventory.sections.map((section) => ({
+    id: section.id,
+    itemIds: section.items.map((item) => item.id),
+  }));
+}
 
 export function subscribeInventory(
   projectId: string,
@@ -16,8 +24,12 @@ export function subscribeInventory(
     (snapshot) => {
       const inventory: Record<number, Inventory> = {};
       snapshot.docs.forEach((inventoryDoc) => {
-        const year = parseInt(inventoryDoc.id.split('_')[2] || '0');
-        if (year) inventory[year] = { sections: inventoryDoc.data().sections || [] };
+        const data = inventoryDoc.data();
+        const year = Number(data.year) || parseInt(inventoryDoc.id.split('_').pop() || '0', 10);
+        if (year) inventory[year] = {
+          sections: data.sections || [],
+          revision: data.revision || 0,
+        };
       });
       onInventory(inventory);
     },
@@ -25,13 +37,43 @@ export function subscribeInventory(
   );
 }
 
-export async function saveInventory(projectId: string, year: number, inventory: Inventory): Promise<void> {
-  await setDoc(inventoryDocument(projectId, year), {
-    projectId,
-    sections: inventory.sections,
+export async function saveInventory(
+  projectId: string,
+  year: number,
+  inventory: Inventory,
+  expectedRevision?: number,
+): Promise<Inventory> {
+  const ref = inventoryDocument(projectId, year);
+  let saved: Inventory;
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const currentRevision = snapshot.exists() ? (snapshot.data().revision || 0) : 0;
+    if (snapshot.exists() && expectedRevision !== currentRevision) {
+      throw new ConcurrentWriteError(`Inventory ${year}`);
+    }
+    if (!snapshot.exists() && expectedRevision !== undefined) {
+      throw new ConcurrentWriteError(`Inventory ${year}`);
+    }
+    saved = { sections: inventory.sections, revision: currentRevision + 1 };
+    transaction.set(ref, {
+      projectId,
+      year,
+      sections: saved.sections,
+      structure: inventoryStructure(inventory),
+      revision: saved.revision,
+    });
   });
+  return saved!;
 }
 
-export async function deleteInventory(projectId: string, year: number): Promise<void> {
-  await deleteDoc(inventoryDocument(projectId, year));
+export async function deleteInventory(projectId: string, year: number, expectedRevision?: number): Promise<void> {
+  const ref = inventoryDocument(projectId, year);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) return;
+    if ((snapshot.data().revision || 0) !== expectedRevision) {
+      throw new ConcurrentWriteError(`Inventory ${year}`);
+    }
+    transaction.delete(ref);
+  });
 }

@@ -11,7 +11,23 @@ interface Node {
 
 interface Season {
   title: string;
-  root: Node[];
+  root?: Node[];
+  structure?: Array<{ id: string; name: string; branches: Array<{ id: string; name: string; nodes: any[] }> | null }>;
+  content?: Record<string, Omit<Node, 'id' | 'name' | 'branches'>>;
+}
+
+function seasonRoot(season: Season): Node[] {
+  if (season.root) return season.root;
+  const content = season.content || {};
+  const join = (nodes: any[]): Node[] => nodes.map((node) => ({
+    ...node,
+    ...(content[node.id] || { start: '', end: '', events: [] }),
+    branches: node.branches?.map((branch: any) => ({
+      ...branch,
+      nodes: join(branch.nodes),
+    })) || null,
+  }));
+  return join(season.structure || []);
 }
 
 /**
@@ -88,7 +104,7 @@ function extractEvents(nodes: Node[], events: EventAttributes[] = []): EventAttr
  * Generate ICS calendar from season data
  */
 export function generateCalendar(season: Season): string | null {
-  const events = extractEvents(season.root);
+  const events = extractEvents(seasonRoot(season));
 
   if (events.length === 0) {
     return null;

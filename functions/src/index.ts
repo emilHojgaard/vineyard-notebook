@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { generateCalendar } from './ics-generator';
+import { isActiveCalendarTokenOwner } from './security';
 
 admin.initializeApp();
 
@@ -42,6 +43,57 @@ export const generateCalendarToken = functions.https.onCall(async (data, context
   });
 
   return { token };
+});
+
+/**
+ * Accept an invitation and add the authenticated user to the project.
+ * This is intentionally a callable function: rules cannot correlate an
+ * arbitrary project membership update with one invitation document.
+ */
+export const acceptInvitation = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  const invitationId = typeof data?.invitationId === 'string' ? data.invitationId : '';
+  if (!invitationId) {
+    throw new functions.https.HttpsError('invalid-argument', 'invitationId is required');
+  }
+
+  const invitationRef = admin.firestore().collection('invitations').doc(invitationId);
+  const projectRefForInvitation = admin.firestore().collection('projects');
+  await admin.firestore().runTransaction(async (transaction) => {
+    const invitationSnapshot = await transaction.get(invitationRef);
+    if (!invitationSnapshot.exists) {
+      throw new functions.https.HttpsError('not-found', 'Invitation not found');
+    }
+    const invitation = invitationSnapshot.data()!;
+    const authEmail = (context.auth!.token.email || '').toLowerCase();
+    if (invitation.status !== 'pending' ||
+        typeof invitation.email !== 'string' ||
+        invitation.email.toLowerCase() !== authEmail) {
+      throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
+    }
+
+    const projectRef = projectRefForInvitation.doc(invitation.projectId);
+    const projectSnapshot = await transaction.get(projectRef);
+    if (!projectSnapshot.exists) {
+      throw new functions.https.HttpsError('not-found', 'Project not found');
+    }
+    const project = projectSnapshot.data()!;
+    const members = Array.isArray(project.members) ? project.members as string[] : [];
+    if (!members.includes(context.auth!.uid)) {
+      transaction.update(projectRef, {
+        members: [...members, context.auth!.uid],
+        memberAddedAt: {
+          ...(project.memberAddedAt || {}),
+          [context.auth!.uid]: admin.firestore.Timestamp.now(),
+        },
+      });
+    }
+    transaction.delete(invitationRef);
+  });
+
+  return { success: true };
 });
 
 /**
@@ -184,6 +236,14 @@ export const calendarFeed = functions.https.onRequest(async (req, res) => {
   const tokenData = tokenDoc.data();
   if (tokenData!.projectId !== projectId) {
     res.status(403).send('Token does not match project');
+    return;
+  }
+
+  // A token is not a permanent authorization grant. Removed members lose
+  // feed access immediately, even if their old URL is still subscribed.
+  const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+  if (!projectDoc.exists || !isActiveCalendarTokenOwner(projectDoc.data()?.members, tokenData!.userId)) {
+    res.status(403).send('Token owner is no longer a project member');
     return;
   }
 

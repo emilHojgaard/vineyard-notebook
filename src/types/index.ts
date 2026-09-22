@@ -42,6 +42,10 @@ export interface Season {
   status: SeasonStatus;
   title: string;
   root: Node[]; // trunk phases
+  /** Server-visible structural lock; defaults to true for legacy seasons. */
+  locked?: boolean;
+  /** Firestore optimistic-concurrency revision; not shown in the UI. */
+  revision?: number;
 }
 
 export interface InventoryItem {
@@ -61,6 +65,8 @@ export interface InventorySection {
 
 export interface Inventory {
   sections: InventorySection[];
+  /** Firestore optimistic-concurrency revision; not shown in the UI. */
+  revision?: number;
 }
 
 export interface LibraryItem {
@@ -79,6 +85,8 @@ export interface LibrarySection {
 
 export interface Library {
   sections: LibrarySection[];
+  /** Firestore optimistic-concurrency revision; not shown in the UI. */
+  revision?: number;
 }
 
 // App state (UI state, not persisted per-season)

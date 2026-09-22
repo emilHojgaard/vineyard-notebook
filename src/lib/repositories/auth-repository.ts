@@ -12,8 +12,9 @@ import {
   where,
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
 import { invitationsCollection, projectDocument } from '../firestore-repositories';
+import { httpsCallable } from 'firebase/functions';
 
 export interface PendingInvitation {
   id: string;
@@ -68,27 +69,11 @@ export async function loadPendingInvitations(email: string): Promise<PendingInvi
   return invitations;
 }
 
-export async function acceptInvitation(invitation: PendingInvitation, userId: string): Promise<void> {
-  await runTransaction(db, async (transaction) => {
-    const projectSnapshot = await transaction.get(projectDocument(invitation.projectId));
-    if (!projectSnapshot.exists()) return;
-
-    const projectData = projectSnapshot.data();
-    const currentMembers = (projectData.members || []) as string[];
-    if (currentMembers.includes(userId)) return;
-
-    transaction.update(projectDocument(invitation.projectId), {
-      members: [...currentMembers, userId],
-      memberAddedAt: {
-        ...(projectData.memberAddedAt || {}),
-        [userId]: Timestamp.now(),
-      },
-    });
-  });
-
-  // Preserve the existing behavior: the invitation is removed after the
-  // membership transaction, including when the project no longer exists.
-  await deleteDoc(doc(db, 'invitations', invitation.id));
+export async function acceptInvitation(invitation: PendingInvitation, _userId: string): Promise<void> {
+  // Membership addition is deliberately server-side. A Firestore client
+  // cannot prove that a project update corresponds to this exact invitation.
+  const callable = httpsCallable(functions, 'acceptInvitation');
+  await callable({ invitationId: invitation.id });
 }
 
 export async function declineInvitation(invitationId: string): Promise<void> {

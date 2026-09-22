@@ -55,12 +55,23 @@ export async function createProject(input: CreateProjectInput): Promise<void> {
   batch.set(seasonDocument(input.id, Number(input.season.title)), {
     ...input.season,
     projectId: input.id,
+    revision: 1,
   });
   batch.set(inventoryDocument(input.id, Number(input.season.title)), {
     projectId: input.id,
+    year: Number(input.season.title),
     sections: input.inventory.sections,
+    structure: input.inventory.sections.map((section) => ({
+      id: section.id,
+      itemIds: section.items.map((item) => item.id),
+    })),
+    revision: 1,
   });
-  batch.set(libraryDocument(input.id), input.library);
+  batch.set(libraryDocument(input.id), {
+    projectId: input.id,
+    sections: input.library.sections,
+    revision: 1,
+  });
   await batch.commit();
 }
 
@@ -112,7 +123,13 @@ export async function removeMember(projectId: string, memberId: string, actorId:
       if (updatedMembers.includes(id)) memberAddedAt[id] = Timestamp.fromDate(date);
     });
 
-    const update: Record<string, unknown> = { members: updatedMembers, memberAddedAt };
+    const existingOwners = (projectData.owners || [projectData.createdBy]) as string[];
+    const updatedOwners = existingOwners.filter((id) => updatedMembers.includes(id));
+    const update: Record<string, unknown> = {
+      members: updatedMembers,
+      owners: updatedOwners,
+      memberAddedAt,
+    };
     if (memberId === projectData.createdBy) {
       const newOwner = updatedMembers.reduce((oldest, candidate) => (
         memberAddedAt[candidate].toDate().getTime() < memberAddedAt[oldest].toDate().getTime()
@@ -120,18 +137,22 @@ export async function removeMember(projectId: string, memberId: string, actorId:
           : oldest
       ), updatedMembers[0]);
       update.createdBy = newOwner;
+      if (!updatedOwners.includes(newOwner)) updatedOwners.push(newOwner);
+      update.owners = updatedOwners;
     }
     transaction.update(projectDocument(projectId), update);
   });
 }
 
 export async function promoteMemberToOwner(projectId: string, memberId: string): Promise<void> {
-  const projectSnapshot = await getDoc(projectDocument(projectId));
-  if (!projectSnapshot.exists()) throw new Error('Project not found');
-  const data = projectSnapshot.data();
-  if (!(data.members || []).includes(memberId)) throw new Error('Only project members can become owners');
-  const owners = Array.from(new Set([...(data.owners || [data.createdBy]), memberId]));
-  await updateDoc(projectDocument(projectId), { owners });
+  await runTransaction(db, async (transaction) => {
+    const projectSnapshot = await transaction.get(projectDocument(projectId));
+    if (!projectSnapshot.exists()) throw new Error('Project not found');
+    const data = projectSnapshot.data();
+    if (!(data.members || []).includes(memberId)) throw new Error('Only project members can become owners');
+    const owners = Array.from(new Set([...(data.owners || [data.createdBy]), memberId]));
+    transaction.update(projectDocument(projectId), { owners });
+  });
 }
 
 export async function deleteProject(projectId: string): Promise<void> {

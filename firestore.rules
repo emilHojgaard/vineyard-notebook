@@ -20,15 +20,29 @@ service cloud.firestore {
          request.auth.uid in project(projectId).owners);
     }
 
+    function validProjectMembershipDocument(data) {
+      return data.members.size() > 0 &&
+        data.createdBy in data.members &&
+        (!data.keys().hasAll(['owners']) ||
+         (data.owners.size() > 0 && data.owners.hasOnly(data.members))) &&
+        (!data.keys().hasAll(['memberAddedAt']) ||
+         data.memberAddedAt.keys().hasOnly(data.members));
+    }
+
     match /projects/{projectId} {
       allow read: if isProjectMember(projectId);
       allow create: if signedIn() &&
         request.auth.uid == request.resource.data.createdBy &&
-        request.auth.uid in request.resource.data.members;
-      // Membership and ownership are security-sensitive and can only be
-      // changed by an existing owner. Owners may promote other members.
+        request.auth.uid in request.resource.data.members &&
+        validProjectMembershipDocument(request.resource.data);
+      // Membership additions are performed by the acceptInvitation callable,
+      // which verifies the invitation and runs as trusted server code. A
+      // browser owner may only remove existing members or change ownership of
+      // existing members; this prevents arbitrary membership injection.
       allow update: if isProjectOwner(projectId) &&
-        request.resource.data.createdBy == resource.data.createdBy;
+        validProjectMembershipDocument(request.resource.data) &&
+        request.resource.data.createdBy in resource.data.members &&
+        resource.data.members.hasAll(request.resource.data.members);
       allow delete: if isProjectOwner(projectId);
     }
 
@@ -38,19 +52,65 @@ service cloud.firestore {
 
     match /seasons/{seasonId} {
       allow read: if isProjectMember(resource.data.projectId);
-      allow create: if isProjectMember(request.resource.data.projectId);
-      allow update, delete: if isProjectMember(resource.data.projectId);
+      // A season is created only in the current state and its document ID is
+      // bound to its project partition and year/title.
+      allow create: if isProjectMember(request.resource.data.projectId) &&
+        request.resource.data.status == 'current' &&
+        request.resource.data.revision == 1 &&
+        seasonId == request.resource.data.projectId + '_' + request.resource.data.title;
+      // Completed seasons are immutable. Re-opening one, changing its
+      // partition key, or writing a non-current status is rejected server-side.
+      allow update: if isProjectMember(resource.data.projectId) &&
+        resource.data.projectId == request.resource.data.projectId &&
+        seasonId == request.resource.data.projectId + '_' + request.resource.data.title &&
+        ((!resource.data.keys().hasAll(['revision']) && request.resource.data.revision == 1) ||
+         request.resource.data.revision == resource.data.revision + 1) &&
+        request.resource.data.keys().hasAll(['structure', 'content']) &&
+        !request.resource.data.keys().hasAll(['root']) &&
+        (!resource.data.keys().hasAll(['structure', 'content']) ||
+         !resource.data.locked ||
+         request.resource.data.structure == resource.data.structure) &&
+        resource.data.status == 'current' &&
+        (request.resource.data.status == 'current' ||
+         request.resource.data.status == 'completed');
+      allow delete: if isProjectMember(resource.data.projectId) &&
+        resource.data.status == 'current' &&
+        !resource.data.locked;
     }
 
     match /inventory/{inventoryId} {
       allow read: if isProjectMember(resource.data.projectId);
-      allow create: if isProjectMember(request.resource.data.projectId);
-      allow update, delete: if isProjectMember(resource.data.projectId);
+      // Inventory is partitioned by project and year. The season gate also
+      // prevents writes after the corresponding season is archived.
+      allow create: if isProjectMember(request.resource.data.projectId) &&
+        inventoryId == request.resource.data.projectId + '_' + request.resource.data.year &&
+        request.resource.data.revision == 1 &&
+        request.resource.data.keys().hasAll(['structure']) &&
+        get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
+      allow update: if isProjectMember(resource.data.projectId) &&
+        resource.data.projectId == request.resource.data.projectId &&
+        inventoryId == request.resource.data.projectId + '_' + request.resource.data.year &&
+        ((!resource.data.keys().hasAll(['revision']) && request.resource.data.revision == 1) ||
+         request.resource.data.revision == resource.data.revision + 1) &&
+        (!resource.data.keys().hasAll(['structure']) ||
+         !get(/databases/$(database)/documents/seasons/$(inventoryId)).data.locked ||
+         request.resource.data.structure == resource.data.structure) &&
+        get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
+      allow delete: if isProjectMember(resource.data.projectId) &&
+        !get(/databases/$(database)/documents/seasons/$(inventoryId)).data.locked &&
+        get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
     }
 
     match /library/{projectId} {
       allow read, delete: if isProjectMember(projectId);
-      allow create, update: if isProjectMember(projectId);
+      allow create: if isProjectMember(projectId) &&
+        request.resource.data.projectId == projectId &&
+        request.resource.data.revision == 1;
+      allow update: if isProjectMember(projectId) &&
+        request.resource.data.projectId == projectId &&
+        ((!resource.data.keys().hasAll(['revision']) && request.resource.data.revision == 1) ||
+         request.resource.data.revision == resource.data.revision + 1) &&
+        (resource.data.projectId == projectId || !resource.data.keys().hasAll(['projectId']));
     }
 
     match /invitations/{invitationId} {
@@ -58,10 +118,21 @@ service cloud.firestore {
         (signedIn() && request.auth.token.email == resource.data.email);
       allow create: if isProjectOwner(request.resource.data.projectId) &&
         request.resource.data.status == 'pending' &&
-        request.resource.data.invitedBy == request.auth.uid;
-      allow update, delete: if isProjectOwner(resource.data.projectId);
+        request.resource.data.invitedBy == request.auth.uid &&
+        request.resource.data.email == request.resource.data.email.lower();
+      // Invitation state is not a client-controlled membership operation.
+      // Owners can only cancel; invitees can only decline their own invite.
+      allow update: if isProjectOwner(resource.data.projectId) &&
+        request.resource.data.projectId == resource.data.projectId &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.invitedBy == resource.data.invitedBy &&
+        request.resource.data.status == 'pending';
+      allow delete: if isProjectOwner(resource.data.projectId) ||
+        (signedIn() && request.auth.token.email == resource.data.email);
     }
 
+    // Calendar token documents are server-managed; the HTTP feed performs a
+    // second, live membership check for the token owner.
     match /calendar_tokens/{token} {
       allow read, write: if false;
     }

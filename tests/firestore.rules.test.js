@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 const projectRef = docId => `projects/${projectId}`;
@@ -37,18 +37,28 @@ async function seedTestData() {
       members: ['owner-1', 'member-1'],
       owners: ['owner-1'],
       createdBy: 'owner-1',
+      memberAddedAt: {
+        'owner-1': new Date(0),
+        'member-1': new Date(1),
+      },
     });
     await setDoc(doc(db, 'seasons', `${projectId}_2026`), {
       projectId,
       status: 'current',
       title: '2026',
-      root: [],
+      structure: [],
+      content: {},
+      locked: true,
+      revision: 1,
     });
     await setDoc(doc(db, 'inventory', `${projectId}_2026`), {
       projectId,
+      year: 2026,
       sections: [],
+      structure: [],
+      revision: 1,
     });
-    await setDoc(doc(db, 'library', projectId), { sections: [] });
+    await setDoc(doc(db, 'library', projectId), { projectId, sections: [], revision: 1 });
   });
 }
 
@@ -84,6 +94,69 @@ test('only owners can change membership and owners can promote members', async (
   }));
 });
 
+test('archived seasons and their inventory are read-only, and partition keys cannot move', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const season = doc(memberDb, 'seasons', `${projectId}_2026`);
+  await assertSucceeds(updateDoc(season, { content: { note: { start: '2026-01-01' } }, revision: 2 }));
+  await assertFails(updateDoc(season, { structure: [{ id: 'tampered' }], revision: 3 }));
+  await assertFails(updateDoc(doc(memberDb, 'inventory', `${projectId}_2026`), {
+    sections: [{ id: 'new-section', items: [] }],
+    structure: [{ id: 'new-section', itemIds: [] }],
+    revision: 2,
+  }));
+  await assertSucceeds(updateDoc(season, { status: 'completed', revision: 3 }));
+  await assertFails(updateDoc(season, { content: {}, revision: 4 }));
+  await assertFails(updateDoc(doc(memberDb, 'inventory', `${projectId}_2026`), {
+    projectId: 'another-project',
+    revision: 2,
+  }));
+});
+
+test('stale revisions cannot silently overwrite collaborative data', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const season = doc(memberDb, 'seasons', `${projectId}_2026`);
+  await assertSucceeds(updateDoc(season, { content: { newer: { start: '', end: '' } }, revision: 2 }));
+  await assertFails(updateDoc(season, { content: { stale: { start: '', end: '' } }, revision: 2 }));
+});
+
+test('legacy season documents can make one guarded migration write', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'seasons', `${projectId}_2025`), {
+      projectId, status: 'current', title: '2025', root: [],
+    });
+  });
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const legacy = doc(memberDb, 'seasons', `${projectId}_2025`);
+  await assertSucceeds(setDoc(legacy, {
+    projectId, status: 'current', title: '2025',
+    structure: [], content: {}, locked: true, revision: 1,
+  }));
+  await assertFails(updateDoc(legacy, { root: [], revision: 2 }));
+});
+
+test('members cannot inject membership or mutate invitation ownership', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  await assertFails(updateDoc(doc(memberDb, 'projects', projectId), {
+    members: ['owner-1', 'member-1', 'outsider-1'],
+    memberAddedAt: {
+      'owner-1': new Date(0),
+      'member-1': new Date(1),
+      'outsider-1': new Date(2),
+    },
+  }));
+
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  await assertSucceeds(setDoc(doc(ownerDb, 'invitations/invite-secure'), {
+    projectId,
+    email: 'invitee@example.com',
+    invitedBy: 'owner-1',
+    status: 'pending',
+  }));
+  await assertFails(updateDoc(doc(memberDb, 'invitations/invite-secure'), {
+    projectId: 'other-project',
+  }));
+});
+
 test('project members can access project storage but outsiders cannot', async () => {
   const memberStorage = testEnv.authenticatedContext('member-1').storage();
   const outsiderStorage = testEnv.authenticatedContext('outsider-1').storage();
@@ -115,4 +188,8 @@ test('only owners can create invitations and invited email can read its invitati
 
   const invitedDb = testEnv.authenticatedContext('new-user', { email: 'new@example.com' }).firestore();
   await assertSucceeds(getDoc(doc(invitedDb, 'invitations/invite-1')));
+  await assertFails(updateDoc(doc(invitedDb, 'projects', projectId), {
+    members: ['owner-1', 'member-1', 'new-user'],
+  }));
+  await assertSucceeds(deleteDoc(doc(invitedDb, 'invitations/invite-1')));
 });

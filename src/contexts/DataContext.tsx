@@ -234,6 +234,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentProject, seasons, appState.year]);
 
+  // Keep the local control in sync with the server-visible lock when changing
+  // seasons/projects or receiving a newer revision. The revision dependency
+  // avoids undoing an optimistic toggle before its write is confirmed.
+  const selectedSeason = seasons[appState.year];
+  useEffect(() => {
+    if (selectedSeason?.locked !== undefined) {
+      setAppState((prev) => prev.locked === selectedSeason.locked
+        ? prev
+        : { ...prev, locked: selectedSeason.locked! });
+    }
+  }, [currentProject?.id, appState.year, selectedSeason?.revision, selectedSeason?.locked]);
+
   // Branch focus belongs to one season/project and must not leak into another.
   useEffect(() => {
     setFocusedBranchId(null);
@@ -303,6 +315,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       status: 'current',
       title: `${year}`,
       root: createDefaultPhases(),
+      locked: true,
     };
     syncStatuses(initialSeason.root);
     await createProjectInRepository({
@@ -347,6 +360,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       status: 'current',
       title: `${year}`,
       root: createDefaultPhases(),
+      locked: true,
     };
     
     syncStatuses(initialSeason.root);
@@ -363,14 +377,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
     }
     syncStatuses(season.root);
-    await saveSeason(currentProject.id, year, season);
+    const savedSeason = await saveSeason(currentProject.id, year, season, season.revision);
     // Reflect a confirmed write immediately; the snapshot listener will still
-    // reconcile remote edits as before.
+    // reconcile remote edits as before. The revision is retained so a later
+    // save rejects stale collaborative edits instead of overwriting them.
     setAllSeasons((prev) => ({
       ...prev,
       [currentProject.id]: {
         ...(prev[currentProject.id] || {}),
-        [year]: season,
+        [year]: savedSeason,
       },
     }));
   };
@@ -611,8 +626,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const deleteSeason = async (year: number) => {
     if (!currentProject) return;
     
-    await deleteSeasonInRepository(currentProject.id, year);
-    await deleteInventory(currentProject.id, year);
+    // Delete inventory first: the rules intentionally require the live season
+    // lock/status gate while the season document still exists.
+    await deleteInventory(currentProject.id, year, inventory[year]?.revision);
+    await deleteSeasonInRepository(currentProject.id, year, seasons[year]?.revision);
     
     // Update local state
     setAllSeasons((prev) => {
@@ -648,12 +665,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (season && season.status !== 'current') {
       throw new Error('Archived season inventory is read-only');
     }
-    await saveInventory(currentProject.id, year, inv);
+    const savedInventory = await saveInventory(currentProject.id, year, inv, inv.revision);
+    setAllInventory((prev) => ({
+      ...prev,
+      [currentProject.id]: {
+        ...(prev[currentProject.id] || {}),
+        [year]: savedInventory,
+      },
+    }));
   };
 
   const updateLibrary = async (lib: Library) => {
     if (!currentProject) return;
-    await saveLibrary(currentProject.id, lib);
+    const savedLibrary = await saveLibrary(currentProject.id, lib, lib.revision);
+    setAllLibrary((prev) => ({ ...prev, [currentProject.id]: savedLibrary }));
   };
 
   const updateAppState = (state: Partial<AppState>) => {
@@ -662,6 +687,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ...state,
       ...(state.year !== undefined && state.year !== prev.year ? { calMonth: null } : {}),
     }));
+
+    // The padlock is also persisted so Firestore can enforce the structural
+    // boundary. Content edits remain possible while locked because season
+    // storage separates structure from node content.
+    if (state.locked !== undefined && currentProject) {
+      const season = seasons[appState.year];
+      if (season && season.status === 'current' && season.locked !== state.locked) {
+        void updateSeason(appState.year, { ...season, locked: state.locked }).catch((error) => {
+          handleDataError(error);
+        });
+      }
+    }
   };
 
   const inviteMember = async (email: string) => {
