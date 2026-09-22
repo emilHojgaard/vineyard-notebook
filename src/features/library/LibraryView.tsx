@@ -67,7 +67,7 @@ export function LibraryView() {
   const currentEditingItem = getCurrentEditingItem();
 
   const handleAddSection = async () => {
-    if (!addingSectionName.trim()) return;
+    if (!isEditMode || !addingSectionName.trim()) return;
 
     const newSection: LibrarySection = {
       id: uid('sec'),
@@ -84,6 +84,7 @@ export function LibraryView() {
   };
 
   const handleDeleteSection = async (sectionId: string) => {
+    if (!isEditMode) return;
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     updatedLibrary.sections = updatedLibrary.sections.filter((s) => s.id !== sectionId);
     if (await persistLibrary(updatedLibrary)) setConfirmDelete(null);

@@ -221,13 +221,25 @@ export function DayEventsModal({
                     return (
                       <div
                         key={event.id}
-                        className="bg-surface border border-border rounded-md overflow-hidden"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open phase ${event.title}`}
+                        onClick={() => setPhaseModalNodeId(event.nodeId)}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setPhaseModalNodeId(event.nodeId);
+                          }
+                        }}
+                        className="bg-surface border border-border rounded-md overflow-hidden cursor-pointer"
                       >
                         <div className="flex items-stretch">
                           <button
-                            onClick={() =>
-                              setExpandedPhase(isExpanded ? null : event.nodeId)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhaseModalNodeId(event.nodeId);
+                            }}
                             className="flex-1 flex items-center gap-3 px-3 py-3 hover:bg-surface-2 transition-colors text-left"
                           >
                             <div
@@ -242,14 +254,27 @@ export function DayEventsModal({
                                 {isStart ? 'Phase starts' : 'Phase ends'}
                               </div>
                             </div>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedPhase(isExpanded ? null : event.nodeId);
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            className="px-2 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft flex items-center"
+                            title={isExpanded ? 'Hide phase summary' : 'Show phase summary'}
+                            aria-label={isExpanded ? 'Hide phase summary' : 'Show phase summary'}
+                          >
                             <Icon
                               name={isExpanded ? 'chevronUp' : 'chevronDown'}
                               size={16}
-                              className="text-ink-soft"
                             />
                           </button>
                           <button
-                            onClick={() => setPhaseModalNodeId(event.nodeId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhaseModalNodeId(event.nodeId);
+                            }}
                             className="px-3 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft hover:text-burgundy flex items-center"
                             title="Open phase details"
                           >
@@ -299,7 +324,18 @@ export function DayEventsModal({
                     return (
                       <div
                         key={event.id}
-                        className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open phase ${event.title}`}
+                        onClick={() => setPhaseModalNodeId(event.nodeId)}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setPhaseModalNodeId(event.nodeId);
+                          }
+                        }}
+                        className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md cursor-pointer"
                       >
                         <div
                           className="w-1 h-8 rounded-full flex-shrink-0"
@@ -312,7 +348,10 @@ export function DayEventsModal({
                           <div className="text-xs text-ink-soft">{event.title}</div>
                         </div>
                         <button
-                          onClick={() => setPhaseModalNodeId(event.nodeId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhaseModalNodeId(event.nodeId);
+                          }}
                           className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
                           title="Open phase details"
                         >
@@ -320,13 +359,14 @@ export function DayEventsModal({
                         </button>
                         {!isArchived && (
                           <button
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setConfirmDeleteEvent({
                                 nodeId: event.nodeId,
                                 eventId: event.id,
                                 eventName: event.checkName || 'this event',
-                              })
-                            }
+                              });
+                            }}
                             className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                           >
                             <Icon name="trash" size={14} />
