@@ -4,8 +4,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Icon } from '../../components/Icon';
 import type { Node, Branch, Note, Event } from '../../types';
 import { fmtDate, todayISO, derivedStatus, uid, daysUntil } from '../../lib/utils';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../lib/firebase';
+import { uploadPhasePhoto } from '../../lib/repositories/media-repository';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
@@ -70,12 +69,7 @@ export function PhaseModal({
       const response = await fetch(dataUrl);
       const blob = await response.blob();
       const filename = `${Date.now()}_${uid('photo')}.jpg`;
-      const photoRef = ref(
-        storage,
-        `projects/${currentProject.id}/photos/${filename}`
-      );
-      await uploadBytes(photoRef, blob);
-      return await getDownloadURL(photoRef);
+      return await uploadPhasePhoto(currentProject.id, filename, blob);
     } catch (error) {
       console.error('Photo upload failed:', error);
       throw new Error('Photo upload failed. Please try again.');

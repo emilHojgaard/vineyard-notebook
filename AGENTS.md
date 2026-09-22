@@ -86,6 +86,7 @@ src/
     members/       # Member management
   contexts/        # React contexts (AuthContext, DataContext)
   lib/             # Utilities (firebase.ts, utils.ts)
+    repositories/  # Typed Firestore, Storage, and Functions boundaries
   types/           # TypeScript definitions
 functions/        # Firebase Cloud Functions
   src/
@@ -178,6 +179,11 @@ Two read-only states:
 - **Security Rules**: Comprehensive Firestore rules for invitations collection
 - **UI Integration**: Accessible via header button, clean modal interface
 - **Real-time Updates**: Members and invitations update via Firestore snapshots
+
+✅ **Repository Extraction** (Completed):
+- Typed repositories isolate auth/invitations, projects/members, seasons, inventory, library, media, and calendar operations.
+- DataContext remains the compatibility facade for subscriptions, scoped state, and tree/domain behavior.
+- Firestore document shapes and existing project-scoped storage paths are preserved.
 
 ✅ **Phase 5 - Calendar Features** (Completed):
 - **Static Export**: Download .ics files with phases and sub-events

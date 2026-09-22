@@ -1,20 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  where,
-  Timestamp,
-  writeBatch,
-  runTransaction,
-  updateDoc,
-} from 'firebase/firestore';
-import { db, functions } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import type {
   Project,
@@ -30,7 +14,27 @@ import type {
 import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById } from '../lib/utils';
 import { hasBranchId, validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
-import { inventoryDocument, libraryDocument } from '../lib/firestore-repositories';
+import {
+  createInvitation,
+  deleteInvitation,
+  ensureUserProfile,
+  subscribeProjectInvitations,
+} from '../lib/repositories/auth-repository';
+import {
+  createProject as createProjectInRepository,
+  loadMembers,
+  promoteMemberToOwner as promoteMemberToOwnerInRepository,
+  removeMember as removeMemberInRepository,
+  subscribeProjects,
+} from '../lib/repositories/projects-repository';
+import { deleteSeason as deleteSeasonInRepository, saveSeason, subscribeSeasons } from '../lib/repositories/seasons-repository';
+import { defaultInventory, deleteInventory, saveInventory, subscribeInventory } from '../lib/repositories/inventory-repository';
+import { saveLibrary, subscribeLibrary } from '../lib/repositories/library-repository';
+import {
+  generateCalendarToken as generateCalendarTokenInRepository,
+  listCalendarTokens as listCalendarTokensInRepository,
+  revokeCalendarToken as revokeCalendarTokenInRepository,
+} from '../lib/repositories/calendar-repository';
 import { statusForError, type ConnectionStatus } from '../lib/connection-status';
 
 interface DataContextType {
@@ -196,20 +200,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const q = query(
-      collection(db, 'projects'),
-      where('members', 'array-contains', currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedProjects = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-      })) as Project[];
-
+    return subscribeProjects(currentUser.uid, (loadedProjects) => {
       setProjects(loadedProjects);
-
       // Auto-select the first project if none is selected, and keep the selected
       // project current when ownership or membership changes remotely.
       setCurrentProject((selectedProject) => {
@@ -223,8 +215,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       handleDataError(error);
     });
-
-    return unsubscribe;
   }, [currentUser]);
 
   // Auto-adjust year when switching projects
@@ -263,111 +253,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const unsubscribers: (() => void)[] = [];
 
     // Load seasons
-    const seasonsQuery = query(
-      collection(db, 'seasons'),
-      where('projectId', '==', currentProject.id)
-    );
-    unsubscribers.push(
-      onSnapshot(seasonsQuery, (snapshot) => {
-        const loadedSeasons: Record<number, Season> = {};
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const year = parseInt(doc.id.split('_')[2] || '0');
-          if (year) {
-            loadedSeasons[year] = data as Season;
-            // Sync statuses on load
-            syncStatuses(loadedSeasons[year].root);
-          }
-        });
-        setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
-        markDataLoaded(loadedCollections, 'seasons');
-      }, (error) => handleDataError(error))
-    );
+    unsubscribers.push(subscribeSeasons(currentProject.id, (loadedSeasons) => {
+      Object.values(loadedSeasons).forEach((season) => syncStatuses(season.root));
+      setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
+      markDataLoaded(loadedCollections, 'seasons');
+    }, (error) => handleDataError(error)));
 
     // Load inventory
-    const inventoryQuery = query(
-      collection(db, 'inventory'),
-      where('projectId', '==', currentProject.id)
-    );
-    unsubscribers.push(
-      onSnapshot(inventoryQuery, (snapshot) => {
-        const loadedInventory: Record<number, Inventory> = {};
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const year = parseInt(doc.id.split('_')[2] || '0');
-          if (year) {
-            loadedInventory[year] = { sections: data.sections || [] };
-          }
-        });
-        setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
-        markDataLoaded(loadedCollections, 'inventory');
-      }, (error) => handleDataError(error))
-    );
+    unsubscribers.push(subscribeInventory(currentProject.id, (loadedInventory) => {
+      setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
+      markDataLoaded(loadedCollections, 'inventory');
+    }, (error) => handleDataError(error)));
 
     // Load library (project-wide, not per-year)
-    const libraryDoc = doc(db, 'library', currentProject.id);
-    unsubscribers.push(
-      onSnapshot(libraryDoc, (snapshot) => {
-        const lib = snapshot.exists() 
-          ? (snapshot.data() as Library) 
-          : { sections: [] };
-        setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
-        markDataLoaded(loadedCollections, 'library');
-      }, (error) => handleDataError(error))
-    );
+    unsubscribers.push(subscribeLibrary(currentProject.id, (lib) => {
+      setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
+      markDataLoaded(loadedCollections, 'library');
+    }, (error) => handleDataError(error)));
 
     // Load pending invitations
-    const invitationsQuery = query(
-      collection(db, 'invitations'),
-      where('projectId', '==', currentProject.id),
-      where('status', '==', 'pending')
-    );
-    unsubscribers.push(
-      onSnapshot(invitationsQuery, (snapshot) => {
-        const invites = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-        })) as Invitation[];
-        setPendingInvitations(invites);
-      })
-    );
+    unsubscribers.push(subscribeProjectInvitations(currentProject.id, (invites) => {
+      setPendingInvitations(invites as Invitation[]);
+    }));
 
     // Load members
-    loadMembers(currentProject.id);
+    void loadMembers(currentProject.id);
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
   }, [currentProject, dataRetryKey]);
 
-  const loadMembers = async (projectId: string) => {
-    const projectDoc = await getDoc(doc(db, 'projects', projectId));
-    if (!projectDoc.exists()) return;
-
-    const projectData = projectDoc.data();
-    const memberIds = projectData.members || [];
-    const memberAddedAt = projectData.memberAddedAt || {};
-    const projectCreatedAt = projectData.createdAt?.toDate?.() || new Date(0);
-
-    // Load user data for each member
-    const memberPromises = memberIds.map(async (uid: string, index: number) => {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (!userDoc.exists()) return null;
-      const userData = userDoc.data();
-      const addedAtValue = memberAddedAt[uid];
-      const addedAt = addedAtValue?.toDate?.() || (addedAtValue instanceof Date ? addedAtValue : new Date(projectCreatedAt.getTime() + index));
-      return {
-        id: uid,
-        email: userData.email || '',
-        displayName: userData.displayName || 'Unknown',
-        role: (projectData.owners || [projectData.createdBy]).includes(uid) ? 'owner' : 'member',
-        addedAt,
-      } as Member;
-    });
-
-    const loadedMembers = (await Promise.all(memberPromises)).filter(Boolean) as Member[];
-    setMembers(loadedMembers);
+  const refreshMembers = async (projectId: string) => {
+    setMembers(await loadMembers(projectId));
   };
 
   const createProject = async (name: string): Promise<string> => {
@@ -375,61 +293,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const projectId = `proj_${Date.now()}`;
     const year = new Date().getFullYear();
-    const createdAt = Timestamp.now();
-
-    // Ensure the profile exists before creating project data. The project batch
-    // below then succeeds or fails as one unit.
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists()) {
-      await setDoc(userDocRef, {
-        email: currentUser.email,
-        displayName: currentUser.displayName || 'User',
-      });
-    }
-
-    // Create initial project data as one atomic batch. This prevents a partially
-    // initialized project if a season, inventory, or library write fails.
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'projects', projectId), {
-      name,
-      members: [currentUser.uid],
-      owners: [currentUser.uid],
-      createdBy: currentUser.uid,
-      createdAt,
-      memberAddedAt: {
-        [currentUser.uid]: createdAt,
-      },
+    // Profile creation remains separate so an existing profile is never overwritten.
+    await ensureUserProfile({
+      uid: currentUser.uid,
+      email: currentUser.email,
+      displayName: currentUser.displayName,
     });
-
-    // Create initial season with default winemaking phases
     const initialSeason: Season = {
       status: 'current',
       title: `${year}`,
       root: createDefaultPhases(),
     };
-    
-    // Sync statuses for the default phases
     syncStatuses(initialSeason.root);
-
-    batch.set(doc(db, 'seasons', `${projectId}_${year}`), {
-      ...initialSeason,
-      projectId,
+    await createProjectInRepository({
+      id: projectId,
+      name,
+      ownerId: currentUser.uid,
+      season: initialSeason,
+      inventory: defaultInventory(),
+      library: { sections: [] },
     });
-
-    // Create inventory with default sections
-    batch.set(doc(db, 'inventory', `${projectId}_${year}`), {
-      projectId,
-      sections: [
-        { id: 'inv1', name: 'Equipment', items: [] },
-        { id: 'inv2', name: 'Supplies', items: [] },
-        { id: 'inv3', name: 'Chemicals/Additives', items: [] },
-      ],
-    });
-
-    // Create library with empty sections
-    batch.set(doc(db, 'library', projectId), { sections: [] });
-    await batch.commit();
 
     // Immediately set as current project (don't wait for snapshot)
     const newProject: Project = {
@@ -468,20 +351,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     
     syncStatuses(initialSeason.root);
     
-    await setDoc(doc(db, 'seasons', `${currentProject.id}_${year}`), {
-      ...initialSeason,
-      projectId: currentProject.id,
-    });
-    
+    await saveSeason(currentProject.id, year, initialSeason);
     // Create inventory with default sections for this year
-    await setDoc(inventoryDocument(currentProject.id, year), {
-      projectId: currentProject.id,
-      sections: [
-        { id: 'inv1', name: 'Equipment', items: [] },
-        { id: 'inv2', name: 'Supplies', items: [] },
-        { id: 'inv3', name: 'Chemicals/Additives', items: [] },
-      ],
-    });
+    await saveInventory(currentProject.id, year, defaultInventory());
   };
 
   const updateSeason = async (year: number, season: Season) => {
@@ -491,10 +363,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
     }
     syncStatuses(season.root);
-    await setDoc(doc(db, 'seasons', `${currentProject.id}_${year}`), {
-      ...season,
-      projectId: currentProject.id,
-    });
+    await saveSeason(currentProject.id, year, season);
     // Reflect a confirmed write immediately; the snapshot listener will still
     // reconcile remote edits as before.
     setAllSeasons((prev) => ({
@@ -742,11 +611,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const deleteSeason = async (year: number) => {
     if (!currentProject) return;
     
-    // Delete season document
-    await deleteDoc(doc(db, 'seasons', `${currentProject.id}_${year}`));
-    
-    // Delete associated inventory
-    await deleteDoc(doc(db, 'inventory', `${currentProject.id}_${year}`));
+    await deleteSeasonInRepository(currentProject.id, year);
+    await deleteInventory(currentProject.id, year);
     
     // Update local state
     setAllSeasons((prev) => {
@@ -782,15 +648,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (season && season.status !== 'current') {
       throw new Error('Archived season inventory is read-only');
     }
-    await setDoc(inventoryDocument(currentProject.id, year), {
-      projectId: currentProject.id,
-      sections: inv.sections,
-    });
+    await saveInventory(currentProject.id, year, inv);
   };
 
   const updateLibrary = async (lib: Library) => {
     if (!currentProject) return;
-    await setDoc(libraryDocument(currentProject.id), lib);
+    await saveLibrary(currentProject.id, lib);
   };
 
   const updateAppState = (state: Partial<AppState>) => {
@@ -804,31 +667,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const inviteMember = async (email: string) => {
     if (!currentProject || !currentUser) throw new Error('Not authenticated');
 
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Check if already invited
-    const invitationsRef = collection(db, 'invitations');
-    const inviteQuery = query(
-      invitationsRef,
-      where('projectId', '==', currentProject.id),
-      where('email', '==', normalizedEmail),
-      where('status', '==', 'pending')
-    );
-    const existingInvites = await getDocs(inviteQuery);
-    
-    if (!existingInvites.empty) {
-      throw new Error('User is already invited');
-    }
-
-    // Create pending invitation (works for both existing and new users)
-    const invitationRef = doc(collection(db, 'invitations'));
-    await setDoc(invitationRef, {
-      projectId: currentProject.id,
-      email: normalizedEmail,
-      invitedBy: currentUser.uid,
-      createdAt: Timestamp.now(),
-      status: 'pending',
-    });
+    await createInvitation(currentProject.id, email, currentUser.uid);
     
     // Real-time listener will automatically update pendingInvitations
   };
@@ -837,108 +676,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!currentProject || !currentUser) return;
 
     const projectId = currentProject.id;
-    const projectRef = doc(db, 'projects', projectId);
-
-    await runTransaction(db, async (transaction) => {
-      const projectDoc = await transaction.get(projectRef);
-      if (!projectDoc.exists()) return;
-
-      const projectData = projectDoc.data();
-      const currentMembers = (projectData.members || []) as string[];
-      if (!currentMembers.includes(memberId)) return;
-
-      // The owner is the only user who can manage membership. This mirrors the
-      // Members view and keeps a stale client from changing project ownership.
-      if (projectData.createdBy !== currentUser.uid) {
-        throw new Error('Only the project owner can remove members');
-      }
-
-      // Keep the existing product safeguard: a project must not be deleted or
-      // left without a member when its final member attempts to leave.
-      if (currentMembers.length <= 1) {
-        throw new Error('Cannot remove the final project member');
-      }
-
-      const updatedMembers = currentMembers.filter((id) => id !== memberId);
-      const existingAddedAt = projectData.memberAddedAt || {};
-      const projectCreatedAt = projectData.createdAt?.toDate?.() || new Date(0);
-      const memberAddedAt: Record<string, Timestamp> = {};
-
-      // Backfill legacy projects deterministically from their existing member
-      // order. New memberships always receive a real timestamp below.
-      currentMembers.forEach((id, index) => {
-        const value = existingAddedAt[id];
-        const date = value?.toDate?.() || (value instanceof Date ? value : new Date(projectCreatedAt.getTime() + index));
-        if (updatedMembers.includes(id)) {
-          memberAddedAt[id] = Timestamp.fromDate(date);
-        }
-      });
-
-      const update: Record<string, unknown> = {
-        members: updatedMembers,
-        memberAddedAt,
-      };
-
-      if (memberId === projectData.createdBy) {
-        // Membership age, with the member array as a stable tie-breaker for
-        // legacy records, determines who inherits the owner's permissions.
-        const newOwner = updatedMembers.reduce((oldest, candidate) => {
-          const oldestDate = memberAddedAt[oldest].toDate().getTime();
-          const candidateDate = memberAddedAt[candidate].toDate().getTime();
-          return candidateDate < oldestDate ? candidate : oldest;
-        }, updatedMembers[0]);
-        update.createdBy = newOwner;
-      }
-
-      transaction.update(projectRef, update);
-    });
-
+    await removeMemberInRepository(projectId, memberId, currentUser.uid);
     // Once an owner leaves, Firestore rules correctly revoke their access;
     // avoid a post-transaction read from the departing client.
-    if (memberId !== currentUser.uid) {
-      await loadMembers(projectId);
-    }
+    if (memberId !== currentUser.uid) await refreshMembers(projectId);
   };
 
   const promoteMemberToOwner = async (memberId: string) => {
     if (!currentProject || !currentUser) throw new Error('Not authenticated');
-    const projectRef = doc(db, 'projects', currentProject.id);
-    const projectDoc = await getDoc(projectRef);
-    if (!projectDoc.exists()) throw new Error('Project not found');
-
-    const data = projectDoc.data();
-    const owners = Array.from(new Set([...(data.owners || [data.createdBy]), memberId]));
-    if (!(data.members || []).includes(memberId)) {
-      throw new Error('Only project members can become owners');
-    }
-    await updateDoc(projectRef, { owners });
-    await loadMembers(currentProject.id);
+    await promoteMemberToOwnerInRepository(currentProject.id, memberId);
+    await refreshMembers(currentProject.id);
   };
 
   const cancelInvitation = async (invitationId: string) => {
-    await deleteDoc(doc(db, 'invitations', invitationId));
+    await deleteInvitation(invitationId);
   };
 
   const generateCalendarToken = async (): Promise<string> => {
     if (!currentProject) throw new Error('No project selected');
-    const { httpsCallable } = await import('firebase/functions');
-    const generateToken = httpsCallable(functions, 'generateCalendarToken');
-    const result = await generateToken({ projectId: currentProject.id });
-    return (result.data as { token: string }).token;
+    return generateCalendarTokenInRepository(currentProject.id);
   };
 
   const revokeCalendarToken = async (token: string): Promise<void> => {
-    const { httpsCallable } = await import('firebase/functions');
-    const revokeToken = httpsCallable(functions, 'revokeCalendarToken');
-    await revokeToken({ token });
+    await revokeCalendarTokenInRepository(token);
   };
 
   const listCalendarTokens = async (): Promise<Array<{ id: string; createdAt: string | null }>> => {
     if (!currentProject) return [];
-    const { httpsCallable } = await import('firebase/functions');
-    const listTokens = httpsCallable(functions, 'listCalendarTokens');
-    const result = await listTokens({ projectId: currentProject.id });
-    return (result.data as { tokens: Array<{ id: string; createdAt: string | null }> }).tokens;
+    return listCalendarTokensInRepository(currentProject.id);
   };
 
   const value = {

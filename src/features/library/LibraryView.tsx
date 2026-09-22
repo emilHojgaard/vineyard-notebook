@@ -6,8 +6,7 @@ import { Icon } from '../../components/Icon';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../lib/firebase';
+import { uploadLibraryFile } from '../../lib/repositories/media-repository';
 import { notifyError } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
@@ -134,9 +133,7 @@ export function LibraryView() {
     setUploading(true);
     try {
       const filename = `${Date.now()}_${file.name}`;
-      const fileRef = ref(storage, `projects/${currentProject.id}/library/${filename}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
+      const url = await uploadLibraryFile(currentProject.id, filename, file);
 
       handleUpdateItem(sectionId, itemId, { [fieldType]: url });
     } catch (error) {

@@ -4,8 +4,7 @@ import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ProjectSetup } from '../features/auth/ProjectSetup';
 import { ConfirmDialog } from './ConfirmDialog';
-import { doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { deleteProject } from '../lib/repositories/projects-repository';
 import { notifyError } from '../lib/notifications';
 
 interface HeaderProps {
@@ -25,27 +24,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      // Delete all seasons for this project
-      const seasonsQuery = query(
-        collection(db, 'seasons'),
-        where('projectId', '==', projectId)
-      );
-      const seasonDocs = await getDocs(seasonsQuery);
-      await Promise.all(seasonDocs.docs.map(doc => deleteDoc(doc.ref)));
-
-      // Delete all inventory for this project
-      const inventoryQuery = query(
-        collection(db, 'inventory'),
-        where('projectId', '==', projectId)
-      );
-      const inventoryDocs = await getDocs(inventoryQuery);
-      await Promise.all(inventoryDocs.docs.map(doc => deleteDoc(doc.ref)));
-
-      // Delete library
-      await deleteDoc(doc(db, 'library', projectId));
-
-      // Delete project
-      await deleteDoc(doc(db, 'projects', projectId));
+      await deleteProject(projectId);
 
       // Select another project if available
       if (currentProject?.id === projectId && projects.length > 1) {

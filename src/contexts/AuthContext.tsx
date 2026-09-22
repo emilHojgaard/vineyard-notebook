@@ -7,27 +7,15 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  deleteDoc,
-  runTransaction,
-  Timestamp,
-} from 'firebase/firestore';
-
-interface PendingInvitation {
-  id: string;
-  projectId: string;
-  projectName: string;
-  email: string;
-  invitedBy: string;
-}
+  acceptInvitation as acceptInvitationInRepository,
+  declineInvitation as declineInvitationInRepository,
+  ensureUserProfile,
+  loadPendingInvitations,
+  saveUserProfile,
+} from '../lib/repositories/auth-repository';
+import type { PendingInvitation } from '../lib/repositories/auth-repository';
 
 export interface InvitationNotification {
   id: string;
@@ -68,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Load pending invitations when user logs in
-        await loadPendingInvitations(user);
+        await loadUserPendingInvitations(user);
       }
       setCurrentUser(user);
       setLoading(false);
@@ -77,40 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const loadPendingInvitations = async (user: FirebaseUser) => {
+  const loadUserPendingInvitations = async (user: FirebaseUser) => {
     if (!user.email) return;
-
-    const normalizedEmail = user.email.toLowerCase();
-    const invitationsQuery = query(
-      collection(db, 'invitations'),
-      where('email', '==', normalizedEmail),
-      where('status', '==', 'pending')
-    );
-
-    const snapshot = await getDocs(invitationsQuery);
-    
-    // Load all pending invitations with project names
-    const invitations: PendingInvitation[] = [];
-    for (const inviteDoc of snapshot.docs) {
-      const invitation = inviteDoc.data();
-      const projectId = invitation.projectId;
-
-      // Fetch project name
-      const projectRef = doc(db, 'projects', projectId);
-      const projectDoc = await getDoc(projectRef);
-      
-      if (projectDoc.exists()) {
-        invitations.push({
-          id: inviteDoc.id,
-          projectId,
-          projectName: projectDoc.data().name || 'Unknown Project',
-          email: invitation.email,
-          invitedBy: invitation.invitedBy,
-        });
-      }
-    }
-
-    setPendingInvitations(invitations);
+    setPendingInvitations(await loadPendingInvitations(user.email));
   };
 
   const acceptInvitation = async (invitationId: string) => {
@@ -121,26 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Add user to project members and record when they joined. A transaction
     // avoids dropping a concurrent membership change.
-    const projectRef = doc(db, 'projects', invitation.projectId);
-    await runTransaction(db, async (transaction) => {
-      const projectDoc = await transaction.get(projectRef);
-      if (!projectDoc.exists()) return;
-
-      const projectData = projectDoc.data();
-      const currentMembers = (projectData.members || []) as string[];
-      if (currentMembers.includes(currentUser.uid)) return;
-
-      transaction.update(projectRef, {
-        members: [...currentMembers, currentUser.uid],
-        memberAddedAt: {
-          ...(projectData.memberAddedAt || {}),
-          [currentUser.uid]: Timestamp.now(),
-        },
-      });
-    });
-
-    // Delete the invitation
-    await deleteDoc(doc(db, 'invitations', invitationId));
+    await acceptInvitationInRepository(invitation, currentUser.uid);
 
     // Remove from local state
     setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
@@ -165,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const declineInvitation = async (invitationId: string) => {
     // Delete the invitation without adding user to project
-    await deleteDoc(doc(db, 'invitations', invitationId));
+    await declineInvitationInRepository(invitationId);
 
     // Remove from local state
     setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));
@@ -176,15 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userCredential.user) {
       await updateProfile(userCredential.user, { displayName });
       
-      // Create user document in Firestore
-      const userDocRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userDocRef, {
-        email: email.toLowerCase(),
-        displayName,
-      });
-      
+      await saveUserProfile(userCredential.user, email, displayName);
       // Load any pending invitations for this email
-      await loadPendingInvitations(userCredential.user);
+      await loadUserPendingInvitations(userCredential.user);
     }
   };
 
