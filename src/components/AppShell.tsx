@@ -10,7 +10,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { appState, updateAppState, currentProject } = useData();
+  const { appState, updateAppState, currentProject, connectionStatus, dataError, retryData } = useData();
   const [showSettings, setShowSettings] = React.useState(false);
   const [showMembers, setShowMembers] = React.useState(false);
 
@@ -31,6 +31,32 @@ export function AppShell({ children }: AppShellProps) {
           {/* Phone screen */}
           <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
+            {connectionStatus !== 'online' && (
+              <div
+                role={connectionStatus === 'error' ? 'alert' : 'status'}
+                aria-live="polite"
+                className={`flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold ${
+                  connectionStatus === 'error'
+                    ? 'bg-status-need/10 text-status-need'
+                    : connectionStatus === 'offline'
+                      ? 'bg-gold/20 text-cellar'
+                      : 'bg-surface-2 text-ink-soft'
+                }`}
+              >
+                <span>
+                  {connectionStatus === 'offline'
+                    ? 'Offline — changes will not be marked saved until connection returns.'
+                    : connectionStatus === 'reconnecting'
+                      ? 'Reconnecting…'
+                      : 'Unable to sync the latest data.'}
+                </span>
+                {connectionStatus === 'error' && dataError && (
+                  <button type="button" onClick={retryData} className="shrink-0 underline">
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
             <Header 
               onSettingsClick={() => setShowSettings(!showSettings)} 
               onMembersClick={() => setShowMembers(!showMembers)}

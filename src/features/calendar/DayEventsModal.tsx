@@ -386,8 +386,8 @@ export function DayEventsModal({
           node={phaseModalNode}
           isOpen={isOpen}
           onClose={() => setPhaseModalNodeId(null)}
-          onUpdate={() => {
-            updateSeason(appState.year, season);
+          onUpdate={async () => {
+            await updateSeason(appState.year, season);
             onUpdate();
           }}
           isLocked={appState.locked}

@@ -8,12 +8,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
+import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 interface PhaseModalProps {
   node: Node;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: () => void;
+  onUpdate: () => Promise<void>;
   onDelete?: () => void;
   isLocked: boolean;
   isArchived: boolean;
@@ -38,6 +39,8 @@ export function PhaseModal({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +78,22 @@ export function PhaseModal({
       return await getDownloadURL(photoRef);
     } catch (error) {
       console.error('Photo upload failed:', error);
-      return null;
+      throw new Error('Photo upload failed. Please try again.');
+    }
+  };
+
+  const persistChanges = async () => {
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      await onUpdate();
+      setSaveState('saved');
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save. Please try again.';
+      setSaveError(message);
+      setSaveState('failed');
+      return false;
     }
   };
 
@@ -83,39 +101,46 @@ export function PhaseModal({
     if (!noteText.trim() && !photoPreview) return;
 
     setUploading(true);
-    let photoUrl: string | undefined;
+    try {
+      let photoUrl: string | undefined;
+      if (photoPreview) photoUrl = (await uploadPhoto(photoPreview)) || undefined;
 
-    if (photoPreview) {
-      const url = await uploadPhoto(photoPreview);
-      if (url) photoUrl = url;
+      const newNote: Note = {
+        id: uid('note'),
+        author: currentUser?.displayName || 'Unknown',
+        text: noteText.trim(),
+        date: todayISO(),
+        photo: photoUrl,
+      };
+
+      node.notes.push(newNote);
+      if (await persistChanges()) {
+        setNoteText('');
+        setPhotoPreview(null);
+        if (photoInputRef.current) photoInputRef.current.value = '';
+      } else {
+        node.notes.pop();
+      }
+    } catch (error) {
+      setSaveState('failed');
+      setSaveError(error instanceof Error ? error.message : 'Failed to save. Please try again.');
+    } finally {
+      setUploading(false);
     }
-
-    const newNote: Note = {
-      id: uid('note'),
-      author: currentUser?.displayName || 'Unknown',
-      text: noteText.trim(),
-      date: todayISO(),
-      photo: photoUrl,
-    };
-
-    node.notes.push(newNote);
-    setNoteText('');
-    setPhotoPreview(null);
-    if (photoInputRef.current) photoInputRef.current.value = '';
-    setUploading(false);
-    onUpdate();
   };
 
-  const handleDeleteNote = (noteId: string) => {
+  const handleDeleteNote = async (noteId: string) => {
     const idx = node.notes.findIndex((n) => n.id === noteId);
     if (idx !== -1) {
-      node.notes.splice(idx, 1);
-      onUpdate();
+      const [removed] = node.notes.splice(idx, 1);
+      if (await persistChanges()) setConfirmDeleteNote(null);
+      else node.notes.splice(idx, 0, removed);
+    } else {
+      setConfirmDeleteNote(null);
     }
-    setConfirmDeleteNote(null);
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!eventName.trim() || !eventDate) return;
 
     const newEvent: Event = {
@@ -125,23 +150,29 @@ export function PhaseModal({
     };
 
     node.events.push(newEvent);
-    setEventName('');
-    setEventDate('');
-    onUpdate();
+    if (await persistChanges()) {
+      setEventName('');
+      setEventDate('');
+    } else {
+      node.events.pop();
+    }
   };
 
-  const handleDeleteEvent = (eventId: string) => {
+  const handleDeleteEvent = async (eventId: string) => {
     const idx = node.events.findIndex((e) => e.id === eventId);
     if (idx !== -1) {
-      node.events.splice(idx, 1);
-      onUpdate();
+      const [removed] = node.events.splice(idx, 1);
+      if (await persistChanges()) setConfirmDeleteEvent(null);
+      else node.events.splice(idx, 0, removed);
+    } else {
+      setConfirmDeleteEvent(null);
     }
-    setConfirmDeleteEvent(null);
   };
 
-  const handleStatusChange = (status: 'upcoming' | 'active' | 'done') => {
+  const handleStatusChange = async (status: 'upcoming' | 'active' | 'done') => {
+    const previousStatus = node.status;
     node.status = status;
-    onUpdate();
+    if (!await persistChanges()) node.status = previousStatus;
   };
 
   const sortedEvents = [...node.events].sort((a, b) =>
@@ -151,6 +182,7 @@ export function PhaseModal({
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title={node.branches ? 'Split Point' : 'Phase'}>
+        <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {/* Title */}
         {roEdit ? (
           <div className="text-lg font-semibold text-ink mb-2">{node.name}</div>
@@ -160,7 +192,7 @@ export function PhaseModal({
             value={node.name}
             onChange={(e) => {
               node.name = e.target.value || 'Untitled phase';
-              onUpdate();
+              void persistChanges();
             }}
             className="w-full px-3 py-2 text-lg font-semibold border border-border rounded-md bg-surface text-ink mb-2"
           />
@@ -178,7 +210,7 @@ export function PhaseModal({
               value={node.start}
               onChange={(e) => {
                 node.start = e.target.value;
-                onUpdate();
+                void persistChanges();
               }}
               className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
             />
@@ -188,7 +220,7 @@ export function PhaseModal({
               value={node.end}
               onChange={(e) => {
                 node.end = e.target.value;
-                onUpdate();
+                void persistChanges();
               }}
               className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
             />

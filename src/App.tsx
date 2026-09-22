@@ -9,6 +9,7 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotificationCenter } from './components/NotificationCenter';
 import { InvitationPrompt } from './components/InvitationPrompt';
+import { DataState } from './components/DataState';
 
 // Lazy load main feature views for better performance
 const TimelineView = lazy(() => import('./features/timeline/TimelineView'));
@@ -53,7 +54,7 @@ function InvitationNotifications() {
 
 function AppContent() {
   const { currentUser } = useAuth();
-  const { currentProject, loading, appState } = useData();
+  const { currentProject, loading, appState, dataError, connectionStatus, retryData } = useData();
 
   if (!currentUser) {
     return <LoginPage />;
@@ -68,6 +69,9 @@ function AppContent() {
   }
 
   if (!currentProject) {
+    if (dataError) {
+      return <DataState loading={false} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="projects" />;
+    }
     return <ProjectSetup />;
   }
 

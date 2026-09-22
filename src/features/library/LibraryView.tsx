@@ -9,9 +9,11 @@ import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 import { notifyError } from '../../lib/notifications';
+import { DataState } from '../../components/DataState';
+import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 export function LibraryView() {
-  const { library, updateLibrary, currentProject, appState } = useData();
+  const { library, updateLibrary, currentProject, appState, dataLoading, dataError, connectionStatus, retryData } = useData();
   const { canEditContent } = useSeasonPermissions();
   const isEditMode = canEditContent;
 
@@ -21,7 +23,29 @@ export function LibraryView() {
   const [editingItem, setEditingItem] = useState<{ sectionId: string; item: LibraryItem } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'section' | 'item'; id: string; sectionId?: string } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const persistLibrary = async (updatedLibrary: typeof library) => {
+    if (!updatedLibrary) return false;
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      await updateLibrary(updatedLibrary);
+      setSaveState('saved');
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save. Please try again.';
+      setSaveError(message);
+      setSaveState('failed');
+      return false;
+    }
+  };
+
+  if (dataLoading || dataError) {
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="library" />;
+  }
 
   if (!library) {
     return (
@@ -42,7 +66,7 @@ export function LibraryView() {
 
   const currentEditingItem = getCurrentEditingItem();
 
-  const handleAddSection = () => {
+  const handleAddSection = async () => {
     if (!addingSectionName.trim()) return;
 
     const newSection: LibrarySection = {
@@ -53,19 +77,19 @@ export function LibraryView() {
 
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     updatedLibrary.sections.push(newSection);
-    setAddingSectionName('');
-    setAddingSection(false);
-    updateLibrary(updatedLibrary);
+    if (await persistLibrary(updatedLibrary)) {
+      setAddingSectionName('');
+      setAddingSection(false);
+    }
   };
 
-  const handleDeleteSection = (sectionId: string) => {
+  const handleDeleteSection = async (sectionId: string) => {
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     updatedLibrary.sections = updatedLibrary.sections.filter((s) => s.id !== sectionId);
-    updateLibrary(updatedLibrary);
-    setConfirmDelete(null);
+    if (await persistLibrary(updatedLibrary)) setConfirmDelete(null);
   };
 
-  const handleAddItem = (sectionId: string, type: LibraryItemType) => {
+  const handleAddItem = async (sectionId: string, type: LibraryItemType) => {
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -78,8 +102,9 @@ export function LibraryView() {
     };
 
     section.items.push(newItem);
-    setEditingItem({ sectionId, item: newItem });
-    updateLibrary(updatedLibrary);
+    if (await persistLibrary(updatedLibrary)) {
+      setEditingItem({ sectionId, item: newItem });
+    }
   };
 
   const handleUpdateItem = (sectionId: string, itemId: string, updates: Partial<LibraryItem>) => {
@@ -91,7 +116,7 @@ export function LibraryView() {
     if (!item) return;
 
     Object.assign(item, updates);
-    updateLibrary(updatedLibrary);
+    void persistLibrary(updatedLibrary);
   };
 
   const handleFileUpload = async (
@@ -117,13 +142,13 @@ export function LibraryView() {
     setUploading(false);
   };
 
-  const handleDeleteItem = (sectionId: string, itemId: string) => {
+  const handleDeleteItem = async (sectionId: string, itemId: string) => {
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
     section.items = section.items.filter((i) => i.id !== itemId);
-    updateLibrary(updatedLibrary);
+    if (!await persistLibrary(updatedLibrary)) return;
     setConfirmDelete(null);
     setEditingItem(null);
     setSelectedItem(null);
@@ -153,6 +178,7 @@ export function LibraryView() {
       </div>
 
       <div className="p-4">
+        <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {library.sections.length === 0 && !addingSection ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No library sections yet</p>
@@ -356,6 +382,7 @@ export function LibraryView() {
           title={`Edit ${currentEditingItem.type.charAt(0).toUpperCase() + currentEditingItem.type.slice(1)}`}
         >
           <div className="space-y-4">
+            <SaveStatus state={saveState} error={saveError} />
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-faint block mb-2">
                 Title

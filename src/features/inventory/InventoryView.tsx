@@ -5,6 +5,8 @@ import { invStatus, uid, walkNodes } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useSeasonPermissions } from '../../hooks/useSeasonPermissions';
+import { DataState } from '../../components/DataState';
+import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 import {
   beginInventoryItemEdit,
   discardInventoryItemDraft,
@@ -36,6 +38,10 @@ export function InventoryView() {
     updateSeason,
     updateAppState,
     currentProject,
+    dataLoading,
+    dataError,
+    connectionStatus,
+    retryData,
   } = useData();
   const inv = inventory[appState.year];
   const { isArchived, canEditContent } = useSeasonPermissions();
@@ -51,6 +57,8 @@ export function InventoryView() {
     drafts: {},
   });
   const { drafts } = editingState;
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{
     type: 'section' | 'item';
     id: string;
@@ -59,6 +67,21 @@ export function InventoryView() {
   } | null>(null);
 
   const hasSeasons = Object.keys(seasons).length > 0;
+
+  const runMutation = async (mutation: () => Promise<void>): Promise<boolean> => {
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      await mutation();
+      setSaveState('saved');
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save. Please try again.';
+      setSaveError(message);
+      setSaveState('failed');
+      return false;
+    }
+  };
 
   // Do not carry drafts or an edit target across seasons or projects. Inventory row
   // identities are only meaningful inside their current project's season data.
@@ -145,11 +168,18 @@ export function InventoryView() {
       updateInventoryItemPhaseLinks(seasonUpdate.root, identity.itemId, selectedPhaseIds);
     }
 
-    await updateInventory(appState.year, updatedInv);
-    if (seasonUpdate) await updateSeason(appState.year, seasonUpdate);
-
-    setEditingState((previous) => discardInventoryItemDraft(previous, itemKey));
+    const saved = await runMutation(async () => {
+      await updateInventory(appState.year, updatedInv);
+      if (seasonUpdate) await updateSeason(appState.year, seasonUpdate);
+    });
+    if (saved) {
+      setEditingState((previous) => discardInventoryItemDraft(previous, itemKey));
+    }
   };
+
+  if (dataLoading || dataError) {
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="inventory" />;
+  }
 
   if (!hasSeasons) {
     return (
@@ -192,7 +222,7 @@ export function InventoryView() {
     );
   }
 
-  const handleAddSection = () => {
+  const handleAddSection = async () => {
     if (isArchived || !isEditMode || !addingSectionName.trim()) return;
 
     const newSection: InventorySection = {
@@ -203,12 +233,13 @@ export function InventoryView() {
 
     const updatedInv = JSON.parse(JSON.stringify(inv));
     updatedInv.sections.push(newSection);
-    setAddingSectionName('');
-    setAddingSection(false);
-    updateInventory(appState.year, updatedInv);
+    if (await runMutation(() => updateInventory(appState.year, updatedInv))) {
+      setAddingSectionName('');
+      setAddingSection(false);
+    }
   };
 
-  const handleDeleteSection = (sectionId: string) => {
+  const handleDeleteSection = async (sectionId: string) => {
     if (isArchived || !isEditMode) return;
 
     const section = inv.sections.find((candidate) => candidate.id === sectionId);
@@ -217,7 +248,8 @@ export function InventoryView() {
     const itemIds = new Set(section.items.map((item) => item.id));
     const updatedInv = JSON.parse(JSON.stringify(inv));
     updatedInv.sections = updatedInv.sections.filter((s: InventorySection) => s.id !== sectionId);
-    updateInventory(appState.year, updatedInv);
+    const inventorySaved = await runMutation(() => updateInventory(appState.year, updatedInv));
+    if (!inventorySaved) return;
 
     // A section deletion also removes its item references from phases.
     if (season && itemIds.size > 0) {
@@ -225,7 +257,8 @@ export function InventoryView() {
       walkNodes(updatedSeason.root, (node) => {
         node.invIds = (node.invIds || []).filter((id) => !itemIds.has(id));
       });
-      void updateSeason(appState.year, updatedSeason);
+      const seasonSaved = await runMutation(() => updateSeason(appState.year, updatedSeason));
+      if (!seasonSaved) return;
     }
 
     setEditingState((previous) => {
@@ -243,7 +276,7 @@ export function InventoryView() {
     setConfirmDelete(null);
   };
 
-  const handleAddItem = (sectionId: string) => {
+  const handleAddItem = async (sectionId: string) => {
     if (isArchived || !isEditMode) return;
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s) => s.id === sectionId);
@@ -282,7 +315,7 @@ export function InventoryView() {
         phaseIds: [],
       })),
     );
-    updateInventory(appState.year, updatedInv);
+    await runMutation(() => updateInventory(appState.year, updatedInv));
   };
 
   const handleDeleteItem = async (sectionId: string, itemId: string, itemIndex: number) => {
@@ -295,7 +328,7 @@ export function InventoryView() {
     section.items = section.items.filter(
       (item: InventoryItem, index: number) => index !== itemIndex || item.id !== itemId,
     );
-    await updateInventory(appState.year, updatedInv);
+    if (!await runMutation(() => updateInventory(appState.year, updatedInv))) return;
 
     // Remove deleted item references from the current season as well, so a
     // later project/season switch can never expose a dangling cross-link.
@@ -304,7 +337,7 @@ export function InventoryView() {
       walkNodes(updatedSeason.root, (node) => {
         node.invIds = (node.invIds || []).filter((id) => id !== itemId);
       });
-      await updateSeason(appState.year, updatedSeason);
+      if (!await runMutation(() => updateSeason(appState.year, updatedSeason))) return;
     }
 
     setEditingState((previous) => discardInventoryItemDraft(
@@ -337,6 +370,7 @@ export function InventoryView() {
       </div>
 
       <div className="p-4">
+        <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {isArchived && (
           <div className="mb-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-soft">
             This inventory belongs to an archived season and is read-only.

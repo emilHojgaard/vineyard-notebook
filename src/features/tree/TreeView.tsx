@@ -6,6 +6,7 @@ import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { notifyError } from '../../lib/notifications';
+import { DataState } from '../../components/DataState';
 
 interface LayoutNode {
   node: Node;
@@ -58,7 +59,7 @@ interface PinchState {
 }
 
 export function TreeView() {
-  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
+  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
@@ -292,6 +293,10 @@ export function TreeView() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [zoomAt]);
+
+  if (dataLoading || dataError) {
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="tree" />;
+  }
 
   if (!season) {
     return (

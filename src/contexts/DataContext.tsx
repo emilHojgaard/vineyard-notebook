@@ -31,6 +31,7 @@ import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason,
 import { validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
 import { inventoryDocument, libraryDocument } from '../lib/firestore-repositories';
+import { statusForError, type ConnectionStatus } from '../lib/connection-status';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -47,6 +48,10 @@ interface DataContextType {
   members: Member[];
   pendingInvitations: Invitation[] | null;
   loading: boolean;
+  dataLoading: boolean;
+  dataError: string | null;
+  connectionStatus: ConnectionStatus;
+  retryData: () => void;
   focusedBranchId: string | null;
   setFocusedBranchId: (branchId: string | null) => void;
   createProject: (name: string) => Promise<string>;
@@ -92,7 +97,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online',
+  );
+  const [dataRetryKey, setDataRetryKey] = useState(0);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
+
+  const retryData = () => {
+    setDataError(null);
+    setDataLoading(true);
+    setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting');
+    setDataRetryKey((key) => key + 1);
+  };
+
+  const handleDataError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unable to load project data.';
+    setDataError(message);
+    setDataLoading(false);
+    setConnectionStatus(statusForError(error, typeof navigator === 'undefined' || navigator.onLine));
+  };
+
+  const markDataLoaded = (loadedCollections: Set<string>, collectionName: string) => {
+    loadedCollections.add(collectionName);
+    if (loadedCollections.size === 3) {
+      setDataLoading(false);
+      setDataError(null);
+      setConnectionStatus('online');
+    }
+  };
+
+  useEffect(() => {
+    const handleOffline = () => setConnectionStatus('offline');
+    const handleOnline = () => {
+      setConnectionStatus('reconnecting');
+      setDataRetryKey((key) => key + 1);
+    };
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   // Computed values for current project (for backward compatibility with existing views)
   const seasons = currentProject ? (allSeasons[currentProject.id] || {}) : {};
@@ -125,6 +173,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) {
       setProjects([]);
       setCurrentProject(null);
+      setDataLoading(false);
+      setDataError(null);
       setLoading(false);
       return;
     }
@@ -152,6 +202,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return loadedProjects[0] || null;
       });
       setLoading(false);
+    }, (error) => {
+      setLoading(false);
+      handleDataError(error);
     });
 
     return unsubscribe;
@@ -176,8 +229,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Load project data when project changes
   useEffect(() => {
-    if (!currentProject) return;
+    if (!currentProject) {
+      setDataLoading(false);
+      return;
+    }
 
+    setDataLoading(true);
+    setDataError(null);
+    const loadedCollections = new Set<string>();
     const unsubscribers: (() => void)[] = [];
 
     // Load seasons
@@ -198,7 +257,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
         });
         setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
-      })
+        markDataLoaded(loadedCollections, 'seasons');
+      }, (error) => handleDataError(error))
     );
 
     // Load inventory
@@ -217,7 +277,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
         });
         setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
-      })
+        markDataLoaded(loadedCollections, 'inventory');
+      }, (error) => handleDataError(error))
     );
 
     // Load library (project-wide, not per-year)
@@ -228,7 +289,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ? (snapshot.data() as Library) 
           : { sections: [] };
         setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
-      })
+        markDataLoaded(loadedCollections, 'library');
+      }, (error) => handleDataError(error))
     );
 
     // Load pending invitations
@@ -254,7 +316,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [currentProject]);
+  }, [currentProject, dataRetryKey]);
 
   const loadMembers = async (projectId: string) => {
     const projectDoc = await getDoc(doc(db, 'projects', projectId));
@@ -814,6 +876,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     members,
     pendingInvitations,
     loading,
+    dataLoading,
+    dataError,
+    connectionStatus,
+    retryData,
     focusedBranchId,
     setFocusedBranchId,
     createProject,

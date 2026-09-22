@@ -6,6 +6,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Member } from '../../types';
 import { notifyError } from '../../lib/notifications';
+import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 export function MembersView() {
   const { currentProject, members, inviteMember, removeMember, promoteMemberToOwner, pendingInvitations, cancelInvitation } = useData();
@@ -13,6 +14,7 @@ export function MembersView() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteError, setInviteError] = useState('');
+  const [inviteState, setInviteState] = useState<SaveState>('idle');
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
   const [confirmCancelInvite, setConfirmCancelInvite] = useState<string | null>(null);
 
@@ -54,11 +56,14 @@ export function MembersView() {
       return;
     }
 
+    setInviteState('saving');
     try {
       await inviteMember(inviteEmail.trim());
+      setInviteState('saved');
       setInviteEmail('');
       setShowInviteModal(false);
     } catch (error: any) {
+      setInviteState('failed');
       setInviteError(error.message || 'Failed to send invitation');
     }
   };
@@ -242,7 +247,8 @@ export function MembersView() {
               className="w-full px-3 py-2 border border-border rounded-lg bg-white text-ink"
               autoFocus
             />
-            {inviteError && (
+            <SaveStatus state={inviteState} error={inviteError} className="mt-2 block" />
+            {inviteError && inviteState !== 'failed' && (
               <div className="mt-2 text-sm text-status-need">
                 {inviteError}
               </div>
@@ -272,9 +278,10 @@ export function MembersView() {
             </button>
             <button
               onClick={handleInvite}
-              className="flex-1 px-4 py-2 bg-burgundy text-white rounded-lg font-semibold hover:bg-burgundy-dark transition-colors"
+              disabled={inviteState === 'saving'}
+              className="flex-1 px-4 py-2 bg-burgundy text-white rounded-lg font-semibold hover:bg-burgundy-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Send Invitation
+              {inviteState === 'saving' ? 'Sending…' : 'Send Invitation'}
             </button>
           </div>
         </div>

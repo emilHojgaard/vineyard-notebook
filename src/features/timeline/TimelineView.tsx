@@ -6,9 +6,10 @@ import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { notifyError } from '../../lib/notifications';
+import { DataState } from '../../components/DataState';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -59,6 +60,10 @@ export function TimelineView() {
     // Clear the focusedNodeId after handling it
     updateAppState({ focusedNodeId: null });
   }, [season, appState.focusedNodeId, updateAppState]);
+
+  if (dataLoading || dataError) {
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="timeline" />;
+  }
 
   if (!season) {
     return (

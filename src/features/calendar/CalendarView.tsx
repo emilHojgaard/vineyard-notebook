@@ -7,6 +7,7 @@ import { generateICS, downloadICS } from '../../lib/calendar-export';
 import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
 import { notifyError } from '../../lib/notifications';
 import { DayEventsModal } from './DayEventsModal';
+import { DataState } from '../../components/DataState';
 
 interface CalendarEvent {
   id: string;
@@ -19,7 +20,7 @@ interface CalendarEvent {
 }
 
 export function CalendarView() {
-  const { seasons, appState, updateAppState } = useData();
+  const { seasons, appState, updateAppState, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -133,6 +134,10 @@ export function CalendarView() {
         </div>
       </div>
     );
+  }
+
+  if (dataLoading || dataError) {
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="calendar" />;
   }
 
   if (!season) {
