@@ -14,8 +14,9 @@ import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 export function LibraryView() {
   const { library, updateLibrary, currentProject, appState, dataLoading, dataError, connectionStatus, retryData } = useData();
   const { canEditContent, isLocked } = useSeasonPermissions();
-  // Structural library mutations require the explicit edit mode. Existing
-  // items can still be browsed and their content edited while locked.
+  // Section mutations require explicit edit mode. Existing items can still be
+  // browsed and their content edited while locked; adding items to an existing
+  // section is also available in browse mode.
   const isEditMode = canEditContent && !isLocked;
 
   const [addingSectionName, setAddingSectionName] = useState('');
@@ -92,7 +93,6 @@ export function LibraryView() {
   };
 
   const handleAddItem = async (sectionId: string, type: LibraryItemType) => {
-    if (!isEditMode) return;
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -232,8 +232,8 @@ export function LibraryView() {
                   </div>
                 )}
 
-                {/* Add item buttons */}
-                {isEditMode && <div className="flex flex-wrap justify-center gap-2">
+                {/* Adding items to an existing section is allowed outside edit mode. */}
+                <div className="flex flex-wrap justify-center gap-2">
                   {(['note', 'pdf', 'video', 'photo'] as LibraryItemType[]).map((type) => (
                     <button
                       key={type}
@@ -244,7 +244,7 @@ export function LibraryView() {
                       {type}
                     </button>
                   ))}
-                </div>}
+                </div>
               </div>
             ))}
 
