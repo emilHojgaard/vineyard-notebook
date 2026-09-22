@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   collection,
   doc,
@@ -28,7 +28,7 @@ import type {
   Branch,
 } from '../types';
 import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById } from '../lib/utils';
-import { validateTree } from '../lib/tree';
+import { hasBranchId, validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
 import { inventoryDocument, libraryDocument } from '../lib/firestore-repositories';
 import { statusForError, type ConnectionStatus } from '../lib/connection-status';
@@ -65,6 +65,7 @@ interface DataContextType {
   deletePhase: (year: number, phaseId: string) => Promise<void>;
   addBranch: (year: number, parentNodeId: string, branchName: string) => Promise<void>;
   deleteBranch: (year: number, parentNodeId: string, branchId: string) => Promise<void>;
+  undoLastDeletion: () => Promise<boolean>;
   updateInventory: (year: number, inventory: Inventory) => Promise<void>;
   updateLibrary: (library: Library) => Promise<void>;
   updateAppState: (state: Partial<AppState>) => void;
@@ -104,6 +105,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
   const [dataRetryKey, setDataRetryKey] = useState(0);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
+  const [lastDeletion, setLastDeletionState] = useState<{
+    projectId: string;
+    year: number;
+    before: Season;
+    after: Season;
+  } | null>(null);
+  const lastDeletionRef = useRef(lastDeletion);
+  const setLastDeletion = (value: typeof lastDeletion) => {
+    lastDeletionRef.current = value;
+    setLastDeletionState(value);
+  };
 
   const retryData = () => {
     setDataError(null);
@@ -146,6 +158,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const seasons = currentProject ? (allSeasons[currentProject.id] || {}) : {};
   const inventory = currentProject ? (allInventory[currentProject.id] || {}) : {};
   const library = currentProject ? (allLibrary[currentProject.id] || null) : null;
+  // Undo actions can outlive the render that created their notification.
+  const seasonsRef = useRef(seasons);
+  const currentProjectRef = useRef(currentProject);
+  seasonsRef.current = seasons;
+  currentProjectRef.current = currentProject;
 
   // Default app state
   const [appState, setAppState] = useState<AppState>({
@@ -223,9 +240,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // If current year doesn't exist in this project, switch to newest season
     if (!seasons[appState.year]) {
       const newestYear = Math.max(...availableYears);
-      setAppState((prev) => ({ ...prev, year: newestYear }));
+      setAppState((prev) => ({ ...prev, year: newestYear, calMonth: null }));
     }
   }, [currentProject, seasons, appState.year]);
+
+  // Branch focus belongs to one season/project and must not leak into another.
+  useEffect(() => {
+    setFocusedBranchId(null);
+    setLastDeletion(null);
+  }, [currentProject?.id, appState.year]);
 
   // Load project data when project changes
   useEffect(() => {
@@ -428,6 +451,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setCurrentProject(project);
+      setLastDeletion(null);
+      setFocusedBranchId(null);
+      setAppState((prev) => ({ ...prev, calMonth: null }));
     }
   };
 
@@ -469,6 +495,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ...season,
       projectId: currentProject.id,
     });
+    // Reflect a confirmed write immediately; the snapshot listener will still
+    // reconcile remote edits as before.
+    setAllSeasons((prev) => ({
+      ...prev,
+      [currentProject.id]: {
+        ...(prev[currentProject.id] || {}),
+        [year]: season,
+      },
+    }));
   };
 
 
@@ -610,9 +645,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const season = seasons[year];
     if (!season) return;
 
-    const updatedSeason = JSON.parse(JSON.stringify(season));
+    const before = JSON.parse(JSON.stringify(season)) as Season;
+    const updatedSeason = JSON.parse(JSON.stringify(season)) as Season;
     deleteNodeFromTree(updatedSeason.root, phaseId);
+    if (JSON.stringify(before) === JSON.stringify(updatedSeason)) return;
+
     await updateSeason(year, updatedSeason);
+    setLastDeletion({
+      projectId: currentProject.id,
+      year,
+      before,
+      after: JSON.parse(JSON.stringify(updatedSeason)) as Season,
+    });
+    if (focusedBranchId && !hasBranchId(updatedSeason.root, focusedBranchId)) {
+      setFocusedBranchId(null);
+    }
   };
 
   // Add a new branch to a phase. Structural manipulation lives in a pure,
@@ -651,9 +698,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const season = seasons[year];
     if (!season) return;
 
-    const updatedSeason = JSON.parse(JSON.stringify(season));
+    const before = JSON.parse(JSON.stringify(season)) as Season;
+    const updatedSeason = JSON.parse(JSON.stringify(season)) as Season;
     deleteBranchFromTree(updatedSeason.root, parentNodeId, branchId);
+    if (JSON.stringify(before) === JSON.stringify(updatedSeason)) return;
+
     await updateSeason(year, updatedSeason);
+    setLastDeletion({
+      projectId: currentProject.id,
+      year,
+      before,
+      after: JSON.parse(JSON.stringify(updatedSeason)) as Season,
+    });
+    if (focusedBranchId === branchId) setFocusedBranchId(null);
+  };
+
+  // Restore only when the season is still exactly the post-delete snapshot.
+  // Any intervening edit or remote change makes restoration unsafe.
+  const undoLastDeletion = async (): Promise<boolean> => {
+    const deletion = lastDeletionRef.current;
+    const project = currentProjectRef.current;
+    if (!deletion || !project || deletion.projectId !== project.id) return false;
+    const currentSeason = seasonsRef.current[deletion.year];
+    if (!currentSeason || JSON.stringify(currentSeason) !== JSON.stringify(deletion.after)) {
+      setLastDeletion(null);
+      return false;
+    }
+
+    await updateSeason(deletion.year, deletion.before);
+    setLastDeletion(null);
+    return true;
   };
 
   const completeSeason = async (year: number) => {
@@ -720,7 +794,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateAppState = (state: Partial<AppState>) => {
-    setAppState((prev) => ({ ...prev, ...state }));
+    setAppState((prev) => ({
+      ...prev,
+      ...state,
+      ...(state.year !== undefined && state.year !== prev.year ? { calMonth: null } : {}),
+    }));
   };
 
   const inviteMember = async (email: string) => {
@@ -893,6 +971,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     deletePhase,
     addBranch,
     deleteBranch,
+    undoLastDeletion,
     updateInventory,
     updateLibrary,
     updateAppState,

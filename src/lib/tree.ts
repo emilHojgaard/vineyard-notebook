@@ -5,6 +5,49 @@ export interface TreeValidationResult {
   errors: string[];
 }
 
+/**
+ * Return the nodes that remain visible when a branch is focused. The shared
+ * helper keeps the Timeline and Tree views on the same focus semantics.
+ */
+export function getHighlightedNodeIds(root: Node[], focusedBranchId: string | null): Set<string> {
+  const highlighted = new Set<string>();
+  if (!focusedBranchId) return highlighted;
+
+  function collectBranchNodes(nodes: Node[]) {
+    for (const node of nodes) {
+      highlighted.add(node.id);
+      node.branches?.forEach((branch) => collectBranchNodes(branch.nodes));
+    }
+  }
+
+  function walk(nodes: Node[], ancestors: string[]): boolean {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      const currentAncestors = [...ancestors, ...nodes.slice(0, index).map((item) => item.id)];
+
+      for (const branch of node.branches || []) {
+        if (branch.id === focusedBranchId) {
+          currentAncestors.forEach((id) => highlighted.add(id));
+          highlighted.add(node.id);
+          collectBranchNodes(branch.nodes);
+          return true;
+        }
+        if (walk(branch.nodes, [...currentAncestors, node.id])) return true;
+      }
+    }
+    return false;
+  }
+
+  walk(root, []);
+  return highlighted;
+}
+
+export function hasBranchId(root: Node[], branchId: string): boolean {
+  return root.some((node) => node.branches?.some(
+    (branch) => branch.id === branchId || hasBranchId(branch.nodes, branchId),
+  ) ?? false);
+}
+
 /** Validate the recursive tree invariants before persisting a season. */
 export function validateTree(root: Node[]): TreeValidationResult {
   const errors: string[] = [];

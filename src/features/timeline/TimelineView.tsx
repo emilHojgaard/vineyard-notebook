@@ -5,11 +5,12 @@ import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { notifyError } from '../../lib/notifications';
+import { notifyError, notifyUndo, notifySuccess } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
+import { getHighlightedNodeIds } from '../../lib/tree';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -94,6 +95,15 @@ export function TimelineView() {
     try {
       await deletePhase(appState.year, confirmDeletePhase.id);
       setConfirmDeletePhase(null);
+      notifyUndo('Phase deleted', async () => {
+        try {
+          if (await undoLastDeletion()) notifySuccess('Phase restored');
+          else notifyError('This deletion can no longer be undone.');
+        } catch (error) {
+          console.error('Failed to undo phase deletion:', error);
+          notifyError('Failed to restore the phase. Please try again.');
+        }
+      });
     } catch (error) {
       console.error('Failed to delete phase:', error);
       notifyError('Failed to delete phase. Please try again.');
@@ -114,6 +124,15 @@ export function TimelineView() {
 
     await deleteBranch(appState.year, node.id, branchId);
     setConfirmDeleteBranch(null);
+    notifyUndo('Branch deleted', async () => {
+      try {
+        if (await undoLastDeletion()) notifySuccess('Branch restored');
+        else notifyError('This deletion can no longer be undone.');
+      } catch (error) {
+        console.error('Failed to undo branch deletion:', error);
+        notifyError('Failed to restore the branch. Please try again.');
+      }
+    });
   };
 
   const handleSelectBranch = (nodeId: string, branchId: string) => {
@@ -128,52 +147,7 @@ export function TimelineView() {
     });
   };
 
-  // Get all node IDs that should be highlighted when a branch is focused
-  const getHighlightedNodeIds = (): Set<string> => {
-    const highlighted = new Set<string>();
-    if (!focusedBranchId || !season) return highlighted;
-
-    // Find the focused branch and collect ALL ancestors up to root + branch nodes
-    function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        const currentAncestors = [...ancestors, ...nodes.slice(0, i).map(n => n.id)];
-        
-        if (node.branches) {
-          for (const branch of node.branches) {
-            if (branch.id === focusedBranchId) {
-              // Found the focused branch!
-              // Add all ancestors (including preceding siblings)
-              currentAncestors.forEach(id => highlighted.add(id));
-              // Add this node (parent of the branch)
-              highlighted.add(node.id);
-              // Add all nodes in the focused branch
-              function collectBranchNodes(branchNodes: Node[]) {
-                for (const n of branchNodes) {
-                  highlighted.add(n.id);
-                  if (n.branches) {
-                    n.branches.forEach(b => collectBranchNodes(b.nodes));
-                  }
-                }
-              }
-              collectBranchNodes(branch.nodes);
-              return true;
-            }
-            // Recurse into this branch
-            if (walkAndCollect(branch.nodes, [...currentAncestors, node.id])) {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    }
-
-    walkAndCollect(season.root, []);
-    return highlighted;
-  };
-
-  const highlightedNodeIds = getHighlightedNodeIds();
+  const highlightedNodeIds = getHighlightedNodeIds(season.root, focusedBranchId);
 
   const getPhaseAlert = (node: Node): { text: string; type: 'event' | 'inv' } | null => {
     // Check for upcoming events first (higher priority)

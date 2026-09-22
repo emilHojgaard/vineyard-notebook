@@ -19,6 +19,10 @@ interface CalendarEvent {
   checkName?: string;
 }
 
+function formatMonth(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function CalendarView() {
   const { seasons, appState, updateAppState, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
@@ -95,29 +99,26 @@ export function CalendarView() {
     return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }, [season, eventsRevision]);
 
-  // Update calendar month when season changes (smart start date logic)
+  // A null month is an explicit reset: current-year seasons open on this
+  // month's calendar, while other seasons open at their first event. A
+  // selected month remains stable when the view remounts or data refreshes.
   useEffect(() => {
-    if (season && !appState.calMonth) {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const year = parseInt(season.title);
-      
-      if (year === currentYear) {
-        // Current year: start on today's month
-        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        setCurrentMonth(monthStr);
-      } else if (allEvents.length > 0) {
-        // Different year: start on first event's month
-        const firstEventDate = allEvents[0].date;
-        const [eventYear, eventMonth] = firstEventDate.split('-');
-        setCurrentMonth(`${eventYear}-${eventMonth}`);
-      } else {
-        // No events: default to January of season year
-        setCurrentMonth(`${year}-01`);
-      }
-      updateAppState({ calMonth: null });
+    if (!season) return;
+    if (appState.calMonth) {
+      setCurrentMonth(appState.calMonth);
+      return;
     }
-  }, [appState.year, season?.title, allEvents]);
+
+    const year = parseInt(season.title);
+    const now = new Date();
+    if (year === now.getFullYear()) {
+      setCurrentMonth(formatMonth(now));
+    } else if (allEvents.length > 0) {
+      setCurrentMonth(allEvents[0].date.slice(0, 7));
+    } else {
+      setCurrentMonth(`${year}-01`);
+    }
+  }, [appState.calMonth, appState.year, season?.title, allEvents]);
 
   const hasSeasons = Object.keys(seasons).length > 0;
 
@@ -201,20 +202,17 @@ export function CalendarView() {
     });
   }
 
-  const handlePrevMonth = () => {
-    const newMonth = month === 1 ? 12 : month - 1;
-    const newYear = month === 1 ? year - 1 : year;
-    const newMonthStr = `${newYear}-${String(newMonth).padStart(2, '0')}`;
+  const moveMonth = (offset: number) => {
+    const date = new Date(year, month - 1 + offset, 1);
+    const newMonthStr = formatMonth(date);
     setCurrentMonth(newMonthStr);
     updateAppState({ calMonth: newMonthStr });
   };
 
-  const handleNextMonth = () => {
-    const newMonth = month === 12 ? 1 : month + 1;
-    const newYear = month === 12 ? year + 1 : year;
-    const newMonthStr = `${newYear}-${String(newMonth).padStart(2, '0')}`;
-    setCurrentMonth(newMonthStr);
-    updateAppState({ calMonth: newMonthStr });
+  const handleToday = () => {
+    const todayMonth = formatMonth(new Date());
+    setCurrentMonth(todayMonth);
+    updateAppState({ calMonth: todayMonth });
   };
 
 
@@ -240,18 +238,30 @@ export function CalendarView() {
       <div className="bg-surface px-4 py-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <button
-            onClick={handlePrevMonth}
+            type="button"
+            onClick={() => moveMonth(-1)}
+            aria-label="Previous month"
             className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded-md text-ink hover:bg-surface-2 transition-colors"
           >
             <Icon name="chevronleft" size={16} />
           </button>
-          <div className="text-center">
+          <div className="text-center" aria-live="polite" aria-atomic="true">
             <div className="text-base font-bold text-ink">
               {monthNames[month - 1]} {year}
             </div>
+            <button
+              type="button"
+              onClick={handleToday}
+              aria-label="Go to today"
+              className={`mt-1 text-xs font-semibold hover:underline ${currentMonth === formatMonth(new Date()) ? 'text-ink-faint' : 'text-burgundy'}`}
+            >
+              Today
+            </button>
           </div>
           <button
-            onClick={handleNextMonth}
+            type="button"
+            onClick={() => moveMonth(1)}
+            aria-label="Next month"
             className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded-md text-ink hover:bg-surface-2 transition-colors"
           >
             <Icon name="chevronright" size={16} />

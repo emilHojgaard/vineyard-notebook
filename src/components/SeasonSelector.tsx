@@ -42,7 +42,9 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const yearOptions = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i).reverse();
 
   const handleYearChange = (year: number) => {
-    updateAppState({ year });
+    // Calendar navigation is scoped to a season; changing seasons always
+    // returns to that season's predictable default month.
+    updateAppState({ year, calMonth: null });
     setIsExpanded(false);
   };
 
@@ -64,7 +66,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     setCreating(true);
     try {
       await createSeason(selectedYear);
-      updateAppState({ year: selectedYear });
+      updateAppState({ year: selectedYear, calMonth: null });
       setIsCreating(false);
       setShowDuplicateConfirm(false);
       setIsExpanded(false); // Auto-collapse after creation

@@ -5,8 +5,9 @@ import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { notifyError } from '../../lib/notifications';
+import { notifyError, notifyUndo, notifySuccess } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
+import { getHighlightedNodeIds } from '../../lib/tree';
 
 interface LayoutNode {
   node: Node;
@@ -24,6 +25,9 @@ interface LayoutEdge {
   x2: number;
   y2: number;
   color: string;
+  branchId: string | null;
+  fromNodeId: string;
+  toNodeId?: string;
 }
 
 interface TreeLayout {
@@ -59,7 +63,7 @@ interface PinchState {
 }
 
 export function TreeView() {
-  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
@@ -319,52 +323,7 @@ export function TreeView() {
     setFocusedBranchId(branchId);
   };
 
-  // Get all node IDs that should be highlighted when a branch is focused
-  const getHighlightedNodeIds = (): Set<string> => {
-    const highlighted = new Set<string>();
-    if (!focusedBranchId || !season) return highlighted;
-
-    // Find the focused branch and collect ALL ancestors up to root + branch nodes
-    function walkAndCollect(nodes: Node[], ancestors: string[]): boolean {
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        const currentAncestors = [...ancestors, ...nodes.slice(0, i).map(n => n.id)];
-        
-        if (node.branches) {
-          for (const branch of node.branches) {
-            if (branch.id === focusedBranchId) {
-              // Found the focused branch!
-              // Add all ancestors (including preceding siblings)
-              currentAncestors.forEach(id => highlighted.add(id));
-              // Add this node (parent of the branch)
-              highlighted.add(node.id);
-              // Add all nodes in the focused branch
-              function collectBranchNodes(branchNodes: Node[]) {
-                for (const n of branchNodes) {
-                  highlighted.add(n.id);
-                  if (n.branches) {
-                    n.branches.forEach(b => collectBranchNodes(b.nodes));
-                  }
-                }
-              }
-              collectBranchNodes(branch.nodes);
-              return true;
-            }
-            // Recurse into this branch
-            if (walkAndCollect(branch.nodes, [...currentAncestors, node.id])) {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    }
-
-    walkAndCollect(season.root, []);
-    return highlighted;
-  };
-
-  const highlightedNodeIds = getHighlightedNodeIds();
+  const highlightedNodeIds = getHighlightedNodeIds(season.root, focusedBranchId);
 
   // Determine which nodes/edges should be dimmed
   const getDimmed = (node: Node): boolean => {
@@ -378,6 +337,15 @@ export function TreeView() {
     try {
       await deletePhase(appState.year, confirmDeletePhase.id);
       setConfirmDeletePhase(null);
+      notifyUndo('Phase deleted', async () => {
+        try {
+          if (await undoLastDeletion()) notifySuccess('Phase restored');
+          else notifyError('This deletion can no longer be undone.');
+        } catch (error) {
+          console.error('Failed to undo phase deletion:', error);
+          notifyError('Failed to restore the phase. Please try again.');
+        }
+      });
     } catch (error) {
       console.error('Failed to delete phase:', error);
       notifyError('Failed to delete phase. Please try again.');
@@ -411,6 +379,15 @@ export function TreeView() {
 
     await deleteBranch(appState.year, node.id, branchId);
     setConfirmDeleteBranch(null);
+    notifyUndo('Branch deleted', async () => {
+      try {
+        if (await undoLastDeletion()) notifySuccess('Branch restored');
+        else notifyError('This deletion can no longer be undone.');
+      } catch (error) {
+        console.error('Failed to undo branch deletion:', error);
+        notifyError('Failed to restore the branch. Please try again.');
+      }
+    });
   };
 
   return (
@@ -465,7 +442,12 @@ export function TreeView() {
             height={layout.height}
           >
             {layout.edges.map((edge, i) => {
-              const isDim = false; // TODO: implement edge dimming based on focus
+              // Edges use the same highlighted node set as the phase cards. This
+              // keeps connectors from suggesting a path that the nodes dim out.
+              const edgeIsHighlighted = edge.toNodeId
+                ? highlightedNodeIds.has(edge.fromNodeId) && highlightedNodeIds.has(edge.toNodeId)
+                : edge.branchId === focusedBranchId;
+              const isDim = Boolean(focusedBranchId && !edgeIsHighlighted);
               // Create unique key from edge coordinates to prevent ghost edges when season changes
               const edgeKey = `${edge.x1}-${edge.y1}-${edge.x2}-${edge.y2}-${i}`;
               return (
@@ -822,6 +804,9 @@ function buildTreeLayout(root: Node[]): TreeLayout {
             x2: x + NODE_WIDTH / 2,
             y2: nextNodeY,
             color: parentColor,
+            branchId,
+            fromNodeId: node.id,
+            toNodeId: chain[idx + 1].id,
           });
         }
       });
@@ -841,6 +826,9 @@ function buildTreeLayout(root: Node[]): TreeLayout {
               x2: branchFirstNode.x + NODE_WIDTH / 2,
               y2: branchFirstNode.y,
               color: branchColor,
+              branchId: branch.id,
+              fromNodeId: lastNode.id,
+              toNodeId: branch.nodes[0].id,
             });
           }
         } else {
@@ -854,6 +842,8 @@ function buildTreeLayout(root: Node[]): TreeLayout {
             x2: branchX + NODE_WIDTH / 2,
             y2: branchStartY,
             color: branchColor,
+            branchId: branch.id,
+            fromNodeId: lastNode.id,
           });
         }
       });
@@ -893,6 +883,9 @@ function buildTreeLayout(root: Node[]): TreeLayout {
             x2: x + NODE_WIDTH / 2,
             y2: nextNodeY,
             color: parentColor,
+            branchId,
+            fromNodeId: node.id,
+            toNodeId: chain[idx + 1].id,
           });
         }
       });

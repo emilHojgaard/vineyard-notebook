@@ -6,7 +6,7 @@ import {
   deleteBranchFromTree,
   deleteNodeFromTree,
 } from '../src/lib/tree-operations.ts';
-import { validateTree } from '../src/lib/tree.ts';
+import { getHighlightedNodeIds, validateTree } from '../src/lib/tree.ts';
 
 const node = (id: string, branches: Node['branches'] = null): Node => ({
   id,
@@ -88,4 +88,21 @@ test('deleting an unknown node leaves the tree unchanged', () => {
   const root = [node('first')];
   deleteNodeFromTree(root, 'missing');
   assert.deepEqual(root.map(item => item.id), ['first']);
+});
+
+test('focused branch highlights the same ancestors and descendants for every view', () => {
+  const root = [
+    node('before'),
+    node('fork', [
+      { id: 'red', name: 'Red', nodes: [node('red-phase')] },
+      { id: 'white', name: 'White', nodes: [node('white-phase')] },
+    ]),
+    node('after'),
+  ];
+
+  assert.deepEqual(
+    [...getHighlightedNodeIds(root, 'white')],
+    ['before', 'fork', 'white-phase'],
+  );
+  assert.deepEqual([...getHighlightedNodeIds(root, null)], []);
 });
