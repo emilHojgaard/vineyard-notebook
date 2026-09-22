@@ -172,7 +172,9 @@ export function DayEventsModal({
                   Add a check for this day
                 </h4>
                 <div className="flex flex-col gap-2">
+                  <label htmlFor="day-event-phase-empty" className="sr-only">Phase for new check</label>
                   <select
+                    id="day-event-phase-empty"
                     value={selectedPhaseId || ''}
                     onChange={(e) => setSelectedPhaseId(e.target.value)}
                     className="px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
@@ -188,6 +190,7 @@ export function DayEventsModal({
                     <input
                       type="text"
                       value={newEventName}
+                      aria-label="New check name"
                       onChange={(e) => setNewEventName(e.target.value)}
                       placeholder="e.g. pH check"
                       className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
@@ -221,25 +224,13 @@ export function DayEventsModal({
                     return (
                       <div
                         key={event.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Open phase ${event.title}`}
-                        onClick={() => setPhaseModalNodeId(event.nodeId)}
-                        onKeyDown={(e) => {
-                          if (e.target !== e.currentTarget) return;
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setPhaseModalNodeId(event.nodeId);
-                          }
-                        }}
-                        className="bg-surface border border-border rounded-md overflow-hidden cursor-pointer"
+                        className="bg-surface border border-border rounded-md overflow-hidden"
                       >
                         <div className="flex items-stretch">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPhaseModalNodeId(event.nodeId);
-                            }}
+                            type="button"
+                            onClick={() => setPhaseModalNodeId(event.nodeId)}
+                            aria-label={`Open phase ${event.title}`}
                             className="flex-1 flex items-center gap-3 px-3 py-3 hover:bg-surface-2 transition-colors text-left"
                           >
                             <div
@@ -256,11 +247,8 @@ export function DayEventsModal({
                             </div>
                           </button>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedPhase(isExpanded ? null : event.nodeId);
-                            }}
-                            onKeyDown={(e) => e.stopPropagation()}
+                            type="button"
+                            onClick={() => setExpandedPhase(isExpanded ? null : event.nodeId)}
                             className="px-2 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft flex items-center"
                             title={isExpanded ? 'Hide phase summary' : 'Show phase summary'}
                             aria-label={isExpanded ? 'Hide phase summary' : 'Show phase summary'}
@@ -271,12 +259,11 @@ export function DayEventsModal({
                             />
                           </button>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPhaseModalNodeId(event.nodeId);
-                            }}
+                            type="button"
+                            onClick={() => setPhaseModalNodeId(event.nodeId)}
                             className="px-3 border-l border-border hover:bg-surface-2 transition-colors text-ink-soft hover:text-burgundy flex items-center"
                             title="Open phase details"
+                            aria-label={`Open phase details for ${event.title}`}
                           >
                             <Icon name="chevronright" size={14} />
                           </button>
@@ -324,50 +311,45 @@ export function DayEventsModal({
                     return (
                       <div
                         key={event.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Open phase ${event.title}`}
-                        onClick={() => setPhaseModalNodeId(event.nodeId)}
-                        onKeyDown={(e) => {
-                          if (e.target !== e.currentTarget) return;
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setPhaseModalNodeId(event.nodeId);
-                          }
-                        }}
-                        className="flex items-center gap-3 px-3 py-3 bg-surface border border-border rounded-md cursor-pointer"
+                        className="flex items-center gap-2 bg-surface border border-border rounded-md"
                       >
-                        <div
-                          className="w-1 h-8 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: event.color }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-ink">
-                            {event.checkName}
-                          </div>
-                          <div className="text-xs text-ink-soft">{event.title}</div>
-                        </div>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPhaseModalNodeId(event.nodeId);
-                          }}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                          type="button"
+                          onClick={() => setPhaseModalNodeId(event.nodeId)}
+                          aria-label={`Open phase ${event.title} for ${event.checkName}`}
+                          className="flex flex-1 min-w-0 items-center gap-3 px-3 py-3 text-left hover:bg-surface-2 transition-colors rounded-md"
+                        >
+                          <div
+                            className="w-1 h-8 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: event.color }}
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-ink">
+                              {event.checkName}
+                            </span>
+                            <span className="block text-xs text-ink-soft">{event.title}</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPhaseModalNodeId(event.nodeId)}
+                          className="w-8 h-8 mr-1 rounded-full flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors"
                           title="Open phase details"
+                          aria-label={`Open phase details for ${event.title}`}
                         >
                           <Icon name="chevronright" size={14} />
                         </button>
                         {!isArchived && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmDeleteEvent({
-                                nodeId: event.nodeId,
-                                eventId: event.id,
-                                eventName: event.checkName || 'this event',
-                              });
-                            }}
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                            type="button"
+                            onClick={() => setConfirmDeleteEvent({
+                              nodeId: event.nodeId,
+                              eventId: event.id,
+                              eventName: event.checkName || 'this event',
+                            })}
+                            className="w-8 h-8 mr-2 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
+                            title={`Delete ${event.checkName || 'event'}`}
+                            aria-label={`Delete ${event.checkName || 'event'}`}
                           >
                             <Icon name="trash" size={14} />
                           </button>
@@ -386,7 +368,9 @@ export function DayEventsModal({
                   Add Check
                 </h4>
                 <div className="flex flex-col gap-2">
+                  <label htmlFor="day-event-phase-existing" className="sr-only">Phase for new check</label>
                   <select
+                    id="day-event-phase-existing"
                     value={selectedPhaseId || ''}
                     onChange={(e) => setSelectedPhaseId(e.target.value)}
                     className="px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
@@ -402,6 +386,7 @@ export function DayEventsModal({
                     <input
                       type="text"
                       value={newEventName}
+                      aria-label="New check name"
                       onChange={(e) => setNewEventName(e.target.value)}
                       placeholder="e.g. pH check"
                       className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"

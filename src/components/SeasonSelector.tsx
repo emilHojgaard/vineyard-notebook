@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Icon } from './Icon';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
 import { getSeasonCompletionBlockReason } from '../lib/utils';
 import { notifyError } from '../lib/notifications';
 
@@ -303,80 +304,62 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
         )}
       </div>
 
-      {/* Create season modal */}
-      {canManageSeasons && isCreating && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              e.stopPropagation();
+      {/* Create season dialog */}
+      <Modal
+        isOpen={canManageSeasons && isCreating}
+        onClose={() => {
+          setIsCreating(false);
+          setSelectedYear(new Date().getFullYear());
+        }}
+        title="Add New Season"
+        maxWidth="384px"
+      >
+        <div className="mb-4">
+          <label htmlFor="new-season-year" className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+            Select Year
+          </label>
+          <select
+            id="new-season-year"
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
+            data-autofocus
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+                {seasons[year] ? ' (Already exists)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleCreateSeason}
+            disabled={creating}
+            className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {creating ? 'Creating...' : 'Create Season'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setIsCreating(false);
               setSelectedYear(new Date().getFullYear());
-            }
-          }}
-          className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        >
-          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-ink">Add New Season</h3>
-              <button
-                onClick={() => {
-                  setIsCreating(false);
-                  setSelectedYear(new Date().getFullYear());
-                }}
-                className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-
-            <div className="mb-4">
-              <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
-                Select Year
-              </label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
-                autoFocus
-              >
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                    {seasons[year] ? ' (Already exists)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleCreateSeason}
-                disabled={creating}
-                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {creating ? 'Creating...' : 'Create Season'}
-              </button>
-              <button
-                onClick={() => {
-                  setIsCreating(false);
-                  setSelectedYear(new Date().getFullYear());
-                }}
-                disabled={creating}
-                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-
-            <p className="text-xs text-ink-faint mt-3 text-center">
-              New seasons include 7 default winemaking phases
-            </p>
-          </div>
+            }}
+            disabled={creating}
+            className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
         </div>
-      )}
+
+        <p className="text-xs text-ink-faint mt-3 text-center">
+          New seasons include 7 default winemaking phases
+        </p>
+      </Modal>
 
       {/* Duplicate season confirmation */}
       <ConfirmDialog

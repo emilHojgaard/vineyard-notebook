@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { Icon } from '../../components/Icon';
 import { useModalKeyboard } from '../../components/useModalKeyboard';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface CalendarSubscriptionModalProps {
   onClose: () => void;
@@ -15,7 +16,10 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [existingTokens, setExistingTokens] = useState<Array<{ id: string; createdAt: string | null }>>([]);
+  const [tokenToRevoke, setTokenToRevoke] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const keyboard = useModalKeyboard(true, onClose, modalRef);
 
   // Get the function URL based on environment
@@ -28,6 +32,11 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
 
   useEffect(() => {
     loadExistingTokens();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, []);
 
   const loadExistingTokens = async () => {
@@ -56,10 +65,6 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
   };
 
   const handleRevokeToken = async (tokenId: string) => {
-    if (!confirm('Are you sure you want to revoke this token? Calendar subscriptions using this token will stop working.')) {
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
@@ -88,12 +93,19 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="calendar-subscription-title" onKeyDown={keyboard.onKeyDown} className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={(event) => {
+        if (event.target === overlayRef.current) onClose();
+      }}
+    >
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={keyboard.onKeyDown} className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between">
-          <h2 id="calendar-subscription-title" className="text-xl font-bold text-ink">Calendar Subscription</h2>
+          <h2 id={titleId} className="text-xl font-bold text-ink">Calendar Subscription</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close dialog"
             className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded-md text-ink hover:bg-surface-2 transition-colors"
@@ -125,6 +137,7 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
           {!token && existingTokens.length === 0 && (
             <div className="space-y-3">
               <button
+                type="button"
                 onClick={handleGenerateToken}
                 disabled={loading}
                 className="w-full px-4 py-3 bg-burgundy text-white font-semibold rounded-lg hover:bg-burgundy-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -148,9 +161,10 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
           {token && (
             <div className="space-y-3">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-ink">Subscription URL</label>
+                <label htmlFor="subscription-url" className="text-sm font-semibold text-ink">Subscription URL</label>
                 <div className="flex gap-2">
                   <input
+                    id="subscription-url"
                     type="text"
                     value={getSubscriptionUrl()}
                     readOnly
@@ -233,7 +247,8 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
                       )}
                     </div>
                     <button
-                      onClick={() => handleRevokeToken(existingToken.id)}
+                      type="button"
+                      onClick={() => setTokenToRevoke(existingToken.id)}
                       disabled={loading}
                       className="ml-3 px-3 py-1.5 border border-red-200 text-red-600 rounded-md text-sm hover:bg-red-50 transition-colors disabled:opacity-50"
                     >
@@ -244,6 +259,7 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
               </div>
               {!token && (
                 <button
+                  type="button"
                   onClick={handleGenerateToken}
                   disabled={loading}
                   className="w-full px-4 py-2 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
@@ -259,6 +275,7 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
         {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t border-border px-6 py-4">
           <button
+            type="button"
             onClick={onClose}
             className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-ink font-semibold hover:bg-surface-2 transition-colors"
           >
@@ -266,6 +283,18 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
           </button>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={tokenToRevoke !== null}
+        title="Revoke subscription token"
+        message="Calendar subscriptions using this token will stop working. This cannot be undone."
+        confirmText="Revoke"
+        onConfirm={() => {
+          if (tokenToRevoke) void handleRevokeToken(tokenToRevoke);
+          setTokenToRevoke(null);
+        }}
+        onCancel={() => setTokenToRevoke(null)}
+        isDanger
+      />
     </div>
   );
 }

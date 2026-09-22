@@ -279,12 +279,17 @@ export function CalendarView() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1" role="grid" aria-label={`${monthNames[month - 1]} ${year}`}>
             {calendarDays.map((dayData, idx) => (
               <button
+                type="button"
                 key={idx}
                 onClick={() => dayData.day !== null && setSelectedDay(dayData.date)}
                 disabled={dayData.day === null}
+                aria-label={dayData.day === null
+                  ? undefined
+                  : `${monthNames[month - 1]} ${dayData.day}, ${year}${dayData.events.length ? `, ${dayData.events.length} event${dayData.events.length === 1 ? '' : 's'}` : ''}`}
+                aria-current={dayData.isToday ? 'date' : undefined}
                 className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
                   dayData.day === null
                     ? 'bg-transparent cursor-default'
@@ -297,7 +302,7 @@ export function CalendarView() {
                   <>
                     <span className="text-ink">{dayData.day}</span>
                     {dayData.events.length > 0 && (
-                      <div className="flex gap-0.5 mt-1">
+                      <div className="flex gap-0.5 mt-1" aria-hidden="true">
                         {dayData.events.slice(0, 3).map((event, i) => (
                           <div
                             key={i}

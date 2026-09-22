@@ -4,6 +4,7 @@ import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ProjectSetup } from '../features/auth/ProjectSetup';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
 import { deleteProject } from '../lib/repositories/projects-repository';
 import { notifyError } from '../lib/notifications';
 
@@ -166,25 +167,15 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
         </div>
       </div>
 
-      {/* New Project Modal */}
-      {showNewProject && (
-        <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-parchment rounded-xl max-w-sm w-full shadow-phone">
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h3 className="text-lg font-semibold text-ink">Create New Project</h3>
-              <button
-                onClick={() => setShowNewProject(false)}
-                className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-            <div className="p-4">
-              <ProjectSetup onComplete={() => setShowNewProject(false)} />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* New Project dialog */}
+      <Modal
+        isOpen={showNewProject}
+        onClose={() => setShowNewProject(false)}
+        title="Create New Project"
+        maxWidth="384px"
+      >
+        <ProjectSetup onComplete={() => setShowNewProject(false)} />
+      </Modal>
 
       {/* Delete Project Confirmation */}
       {confirmDeleteProject && (

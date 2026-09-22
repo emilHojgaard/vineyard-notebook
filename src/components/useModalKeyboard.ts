@@ -12,11 +12,13 @@ export function useModalKeyboard(
     if (!isOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const root = rootRef.current;
-    const first = root?.querySelector<HTMLElement>(FOCUSABLE);
+    const first = root?.querySelector<HTMLElement>('[data-autofocus], ' + FOCUSABLE);
     first?.focus();
 
-    return () => previous?.focus?.();
-  }, [isOpen]);
+    return () => {
+      if (previous && previous.isConnected) previous.focus();
+    };
+  }, [isOpen, rootRef]);
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {

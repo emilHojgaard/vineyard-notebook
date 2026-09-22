@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { Icon } from './Icon';
 import { Header } from './Header';
 import { SeasonSelector } from './SeasonSelector';
+import { Modal } from './Modal';
 import { useData } from '../contexts/DataContext';
 import { LoadingSpinner } from './LoadingSpinner';
 
@@ -71,80 +72,49 @@ export function AppShell({ children }: AppShellProps) {
               <SeasonSelector showAddButton={!appState.locked} />
             )}
 
-            {/* Members overlay */}
-            {showMembers && (
-              <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-parchment rounded-xl max-w-sm w-full max-h-[85vh] overflow-y-auto shadow-phone">
-                  <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-parchment z-10">
-                    <h3 className="text-lg font-semibold text-ink">Member settings</h3>
-                    <button
-                      onClick={() => setShowMembers(false)}
-                      className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
-                    >
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-                  <Suspense fallback={<LoadingSpinner label="Loading members" compact />}>
-                    <MembersView />
-                  </Suspense>
+            {/* Members dialog */}
+            <Modal isOpen={showMembers} onClose={() => setShowMembers(false)} title="Member settings" maxWidth="384px">
+              <Suspense fallback={<LoadingSpinner label="Loading members" compact />}>
+                <MembersView />
+              </Suspense>
+            </Modal>
+
+            {/* Settings dialog */}
+            <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="Alert settings" maxWidth="384px">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="inventory-alert-days" className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+                    Inventory Alert Days
+                  </label>
+                  <input
+                    id="inventory-alert-days"
+                    type="number"
+                    value={appState.alertDays}
+                    onChange={(e) => updateAppState({ alertDays: parseInt(e.target.value) || 14 })}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
+                    min="1"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="event-alert-days" className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
+                    Event Alert Days
+                  </label>
+                  <input
+                    id="event-alert-days"
+                    type="number"
+                    value={appState.eventAlertDays}
+                    onChange={(e) => updateAppState({ eventAlertDays: parseInt(e.target.value) || 7 })}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
+                    min="1"
+                  />
+                </div>
+
+                <div className="text-xs text-ink-faint text-center border-t border-border pt-3">
+                  Use the user menu in the header to sign out
                 </div>
               </div>
-            )}
-
-            {/* Settings overlay */}
-            {showSettings && (
-              <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-parchment rounded-xl max-w-sm w-full p-6 shadow-phone">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-ink">Alert settings</h3>
-                    <button
-                      onClick={() => setShowSettings(false)}
-                      className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-2"
-                    >
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-
-
-                    <div>
-                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
-                        Inventory Alert Days
-                      </label>
-                      <input
-                        type="number"
-                        value={appState.alertDays}
-                        onChange={(e) =>
-                          updateAppState({ alertDays: parseInt(e.target.value) || 14 })
-                        }
-                        className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
-                        min="1"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
-                        Event Alert Days
-                      </label>
-                      <input
-                        type="number"
-                        value={appState.eventAlertDays}
-                        onChange={(e) =>
-                          updateAppState({ eventAlertDays: parseInt(e.target.value) || 7 })
-                        }
-                        className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
-                        min="1"
-                      />
-                    </div>
-
-                    <div className="text-xs text-ink-faint text-center border-t border-border pt-3">
-                      Use the user menu in the header to sign out
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            </Modal>
 
             {/* Content area */}
             <div id="app-content" className="flex-1 overflow-y-auto">

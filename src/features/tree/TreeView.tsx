@@ -5,6 +5,7 @@ import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { Modal } from '../../components/Modal';
 import { notifyError, notifyUndo, notifySuccess } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
 import { getHighlightedNodeIds } from '../../lib/tree';
@@ -475,16 +476,6 @@ export function TreeView() {
             return (
               <div key={layoutNode.node.id}>
                 <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open phase ${layoutNode.node.name}`}
-                  onClick={() => setSelectedNode(layoutNode.node)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedNode(layoutNode.node);
-                    }
-                  }}
                   className={`absolute flex items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
                     status === 'done' ? 'opacity-60' : ''
                   } ${isDim ? 'opacity-25' : ''}`}
@@ -499,40 +490,51 @@ export function TreeView() {
                     transform: isDim ? 'scale(0.95)' : 'scale(1)',
                   }}
                 >
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="text-xs font-semibold text-ink truncate">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNode(layoutNode.node)}
+                    aria-label={`Open phase ${layoutNode.node.name}`}
+                    className="flex-1 min-w-0 self-stretch text-left"
+                  >
+                    <span className="text-xs font-semibold text-ink truncate">
                       {layoutNode.node.name}
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                   {!isLocked && !isArchived && (
                     <>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setBranchingNode(layoutNode.node);
                         }}
                         className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
                         title="Create branch"
+                        aria-label={`Create branch from ${layoutNode.node.name}`}
                       >
                         <Icon name="branch" size={11} />
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setAddingPhase({ afterNodeId: layoutNode.node.id });
                         }}
                         className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors flex-shrink-0"
                         title="Add phase"
+                        aria-label={`Add phase after ${layoutNode.node.name}`}
                       >
                         <Icon name="plus" size={11} />
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setConfirmDeletePhase({ id: layoutNode.node.id, name: layoutNode.node.name });
                         }}
                         className="w-5 h-5 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors flex-shrink-0"
                         title="Delete phase"
+                        aria-label={`Delete phase ${layoutNode.node.name}`}
                       >
                         <Icon name="trash" size={11} />
                       </button>
@@ -551,6 +553,7 @@ export function TreeView() {
                 {/* Branch label with delete button */}
                 <div className="absolute flex items-center gap-2" style={{ left: label.x, top: label.y, transform: 'translateX(-50%)' }}>
                   <button
+                    type="button"
                     onClick={() => handleFocusBranch(label.branchId)}
                     className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border rounded-md shadow-sm hover:shadow-md transition-all ${
                       isDim ? 'opacity-40' : ''
@@ -566,6 +569,7 @@ export function TreeView() {
                   {/* Delete button */}
                   {!isLocked && !isArchived && (
                     <button
+                      type="button"
                       onClick={() => {
                         const parentNode = findNodeById(season.root, label.parentNodeId);
                         if (parentNode) {
@@ -575,6 +579,7 @@ export function TreeView() {
                       className="w-6 h-6 flex items-center justify-center rounded-md text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                       style={{ opacity: isDim ? 0.4 : 1 }}
                       title="Delete branch"
+                      aria-label={`Delete branch ${label.name}`}
                     >
                       <Icon name="trash" size={11} />
                     </button>
@@ -583,7 +588,9 @@ export function TreeView() {
                 {/* Show + button for empty branches (positioned below label like a phase would be) */}
                 {!isLocked && !isArchived && label.isEmpty && (
                   <button
+                    type="button"
                     onClick={() => setAddingPhase({ parentNodeId: label.parentNodeId, branchId: label.branchId })}
+                    aria-label={`Add phase to ${label.name}`}
                     className="absolute flex items-center justify-center gap-2 px-3 bg-surface border-2 border-dashed rounded-lg shadow-sm hover:shadow-md transition-all"
                     style={{
                       left: label.x - NODE_WIDTH / 2,
@@ -629,68 +636,79 @@ export function TreeView() {
         isDanger
       />
 
-      {/* Add phase modal */}
-      {addingPhase && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
-            <h3 className="text-base font-bold text-ink mb-3">
-              Add Phase{addingPhase.branchId ? ' to Branch' : ''}
-            </h3>
-            {addingPhase.branchId && (
-              <p className="text-sm text-ink-soft mb-4">
-                Adding to branch
-              </p>
-            )}
-            <input
-              type="text"
-              value={newPhaseName}
-              onChange={(e) => setNewPhaseName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
-              placeholder="Phase name"
-              autoFocus
-              className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleAddPhase}
-                disabled={!newPhaseName.trim()}
-                className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
-              >
-                Add Phase
-              </button>
-              <button
-                onClick={() => {
-                  setAddingPhase(null);
-                  setNewPhaseName('');
-                }}
-                className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+      {/* Add phase dialog */}
+      <Modal
+        isOpen={addingPhase !== null}
+        onClose={() => {
+          setAddingPhase(null);
+          setNewPhaseName('');
+        }}
+        title={`Add Phase${addingPhase?.branchId ? ' to Branch' : ''}`}
+        maxWidth="384px"
+      >
+        {addingPhase?.branchId && <p className="text-sm text-ink-soft mb-4">Adding to branch</p>}
+        <label htmlFor="tree-phase-name" className="sr-only">Phase name</label>
+        <input
+          id="tree-phase-name"
+          type="text"
+          value={newPhaseName}
+          onChange={(e) => setNewPhaseName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+          placeholder="Phase name"
+          data-autofocus
+          className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleAddPhase}
+            disabled={!newPhaseName.trim()}
+            className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
+          >
+            Add Phase
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAddingPhase(null);
+              setNewPhaseName('');
+            }}
+            className="flex-1 px-3 py-2 bg-surface border border-border text-ink rounded-md text-sm font-semibold hover:bg-surface-2 transition-colors"
+          >
+            Cancel
+          </button>
         </div>
-      )}
+      </Modal>
 
-      {/* Branch creation modal */}
-      {branchingNode && (
-        <div className="fixed inset-0 bg-cellar/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-parchment rounded-xl shadow-2xl w-full max-w-sm p-4">
-            <h3 className="text-base font-bold text-ink mb-3">Create New Branch</h3>
+      {/* Branch creation dialog */}
+      <Modal
+        isOpen={branchingNode !== null}
+        onClose={() => {
+          setBranchingNode(null);
+          setNewBranchName('');
+        }}
+        title="Create New Branch"
+        maxWidth="384px"
+      >
+        {branchingNode && (
+          <>
             <p className="text-sm text-ink-soft mb-4">
               Splitting from <strong>{branchingNode.name}</strong>
             </p>
+            <label htmlFor="tree-branch-name" className="sr-only">Branch name</label>
             <input
+              id="tree-branch-name"
               type="text"
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSplitPhase(branchingNode)}
               placeholder="Branch name (e.g. Red Wine)"
-              autoFocus
+              data-autofocus
               className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
             />
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => handleSplitPhase(branchingNode)}
                 disabled={!newBranchName.trim()}
                 className="flex-1 px-3 py-2 bg-burgundy text-white rounded-md text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-40"
@@ -698,6 +716,7 @@ export function TreeView() {
                 Create Branch
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setBranchingNode(null);
                   setNewBranchName('');
@@ -707,9 +726,9 @@ export function TreeView() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       {/* Delete branch confirmation */}
       <ConfirmDialog

@@ -175,7 +175,7 @@ export function PhaseModal({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title={node.branches ? 'Split Point' : 'Phase'}>
+      <Modal isOpen={isOpen} onClose={onClose} title={`${node.branches ? 'Split Point' : 'Phase'}: ${node.name}`}>
         <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {/* Title */}
         {roEdit ? (
@@ -271,7 +271,9 @@ export function PhaseModal({
                     </div>
                     {!roNotes && (
                       <button
+                        type="button"
                         onClick={() => setConfirmDeleteNote(note.id)}
+                        aria-label={`Delete note from ${fmtDate(note.date)}`}
                         className="w-6 h-6 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                       >
                         <Icon name="trash" size={13} />
@@ -298,10 +300,12 @@ export function PhaseModal({
                 <div className="relative inline-block">
                   <img src={photoPreview} alt="Preview" className="rounded-md max-w-full max-h-48" />
                   <button
+                    type="button"
                     onClick={() => {
                       setPhotoPreview(null);
                       if (photoInputRef.current) photoInputRef.current.value = '';
                     }}
+                    aria-label="Remove photo preview"
                     className="absolute top-1 right-1 w-6 h-6 rounded-full bg-cellar/60 text-white flex items-center justify-center hover:bg-cellar/80"
                   >
                     <Icon name="x" size={12} />
@@ -324,13 +328,17 @@ export function PhaseModal({
                   className="hidden"
                 />
                 <button
+                  type="button"
                   onClick={() => photoInputRef.current?.click()}
+                  aria-label="Add photo to note"
                   className="w-10 h-10 flex items-center justify-center border border-border rounded-md bg-surface text-ink-soft hover:text-burgundy hover:border-burgundy transition-colors"
                 >
                   <Icon name="camera" size={18} />
                 </button>
                 <button
+                  type="button"
                   onClick={handleAddNote}
+                  aria-label="Add note"
                   disabled={uploading || (!noteText.trim() && !photoPreview)}
                   className="w-10 h-10 flex items-center justify-center rounded-md bg-burgundy text-white hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -368,7 +376,9 @@ export function PhaseModal({
                     </div>
                     {!roNotes && (
                       <button
+                        type="button"
                         onClick={() => setConfirmDeleteEvent(event.id)}
+                        aria-label={`Delete check ${event.name}`}
                         className="w-6 h-6 rounded-full flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                       >
                         <Icon name="trash" size={13} />
@@ -396,7 +406,9 @@ export function PhaseModal({
                 className="px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
               />
               <button
+                type="button"
                 onClick={handleAddEvent}
+                aria-label="Add check"
                 disabled={!eventName.trim() || !eventDate}
                 className="w-10 h-10 flex items-center justify-center rounded-md bg-burgundy text-white hover:bg-burgundy-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
