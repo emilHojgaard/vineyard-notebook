@@ -19,7 +19,6 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
-  const canDeleteProjects = currentUser?.uid === currentProject?.createdBy;
   const isEditMode = !appState.locked;
 
   const handleDeleteProject = async (projectId: string) => {
@@ -101,7 +100,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                           >
                             {project.name}
                           </button>
-                          {canDeleteProjects && projects.length > 1 && (
+                          {currentUser?.uid === project.createdBy && projects.length > 1 && (
                             <button
                               onClick={() => { setConfirmDeleteProject(project.id); setShowProjectDropdown(false); }}
                               className="px-2 py-2 text-status-need hover:bg-surface transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"

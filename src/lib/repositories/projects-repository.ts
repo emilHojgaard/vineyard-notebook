@@ -1,6 +1,5 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -156,15 +155,35 @@ export async function promoteMemberToOwner(projectId: string, memberId: string):
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  const deleteCollection = async (collectionName: 'seasons' | 'inventory') => {
-    const snapshot = await getDocs(query(
-      collection(db, collectionName),
-      where('projectId', '==', projectId),
-    ));
-    await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)));
-  };
-  await deleteCollection('seasons');
-  await deleteCollection('inventory');
-  await deleteDoc(libraryDocument(projectId));
-  await deleteDoc(projectDocument(projectId));
+  // A missing project is already in the requested state. This makes retries
+  // safe after a successful final commit.
+  const projectSnapshot = await getDoc(projectDocument(projectId));
+  if (!projectSnapshot.exists()) return;
+
+  // Gather only records explicitly owned by this project. Firestore batches
+  // are atomic up to 500 writes; chunking keeps cleanup safe for larger
+  // projects while preserving retry/idempotency (the project is deleted last).
+  const [seasonSnapshot, inventorySnapshot, invitationSnapshot] = await Promise.all([
+    getDocs(query(collection(db, 'seasons'), where('projectId', '==', projectId))),
+    getDocs(query(collection(db, 'inventory'), where('projectId', '==', projectId))),
+    getDocs(query(collection(db, 'invitations'), where('projectId', '==', projectId))),
+  ]);
+  const relatedRefs = [
+    ...seasonSnapshot.docs.map((item) => item.ref),
+    ...inventorySnapshot.docs.map((item) => item.ref),
+    ...invitationSnapshot.docs.map((item) => item.ref),
+  ];
+
+  for (let index = 0; index < relatedRefs.length; index += 450) {
+    const batch = writeBatch(db);
+    relatedRefs.slice(index, index + 450).forEach((itemRef) => batch.delete(itemRef));
+    await batch.commit();
+  }
+
+  // Library and project are exact document paths. Keep the project deletion
+  // in the final atomic commit so a failed cleanup can be retried by an owner.
+  const finalBatch = writeBatch(db);
+  finalBatch.delete(libraryDocument(projectId));
+  finalBatch.delete(projectDocument(projectId));
+  await finalBatch.commit();
 }

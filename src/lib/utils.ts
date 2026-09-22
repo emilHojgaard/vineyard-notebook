@@ -94,10 +94,27 @@ export function invStatus(item: InventoryItem): InventoryStatus {
   return 'have';
 }
 
-// ID generation
+// ID generation. IDs are persisted in Firestore and may be created by multiple
+// tabs/users, so a process-local counter is not sufficient.
 let uidCounter = 1;
+
+function fallbackRandomId(): string {
+  // Older Web Crypto implementations may not expose randomUUID yet, but do
+  // expose getRandomValues. Only non-crypto test/runtime environments use the
+  // timestamp/counter fallback.
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+  const timestamp = Date.now().toString(36);
+  const counter = (uidCounter++).toString(36);
+  return `${timestamp}-${counter}`;
+}
+
 export function uid(prefix: string): string {
-  return `${prefix}${uidCounter++}`;
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return `${prefix}_${randomUuid || fallbackRandomId()}`;
 }
 
 export function setUidCounter(n: number): void {
@@ -193,10 +210,11 @@ export function branchColor(parentColor: string, idx: number): string {
     : shadeColor(parentColor, idx);
 }
 
-// Default winemaking phases for new projects
-export function createDefaultPhases(): Node[] {
-  const currentYear = new Date().getFullYear();
-  const nextYear = currentYear + 1;
+// Default winemaking phases for a season. The target year is explicit so
+// creating an older/newer season never silently uses the wall-clock year.
+export function createDefaultPhases(seasonYear = new Date().getFullYear()): Node[] {
+  const currentYear = seasonYear;
+  const nextYear = seasonYear + 1;
 
   const phases: Array<{
     name: string;

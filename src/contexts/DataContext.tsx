@@ -303,7 +303,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const createProject = async (name: string): Promise<string> => {
     if (!currentUser) throw new Error('Must be logged in');
 
-    const projectId = `proj_${Date.now()}`;
+    const projectId = uid('proj');
     const year = new Date().getFullYear();
     // Profile creation remains separate so an existing profile is never overwritten.
     await ensureUserProfile({
@@ -314,7 +314,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const initialSeason: Season = {
       status: 'current',
       title: `${year}`,
-      root: createDefaultPhases(),
+      root: createDefaultPhases(year),
       locked: true,
     };
     syncStatuses(initialSeason.root);
@@ -359,7 +359,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const initialSeason: Season = {
       status: 'current',
       title: `${year}`,
-      root: createDefaultPhases(),
+      root: createDefaultPhases(year),
       locked: true,
     };
     
@@ -557,7 +557,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const parent = findNodeById(updatedSeason.root, parentNodeId);
     if (!parent) return;
 
-    const defaultPhases = createDefaultPhases();
+    const defaultPhases = createDefaultPhases(year);
     const parentPhaseIndex = defaultPhases.findIndex((phase) => phase.name === parent.name);
     const newBranchNodes = parentPhaseIndex === -1
       ? []

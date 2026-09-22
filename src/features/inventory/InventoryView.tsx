@@ -284,8 +284,8 @@ export function InventoryView() {
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
-    // uid() is process-local and resets after a reload. Avoid reusing an ID
-    // already present in this season, otherwise separate rows can share links.
+    // Keep the local collision check for legacy/imported data, even though
+    // uid() now uses a cryptographically generated immutable ID.
     const existingItemIds = new Set(
       updatedInv.sections.flatMap((candidate: InventorySection) =>
         candidate.items.map((item: InventoryItem) => item.id),

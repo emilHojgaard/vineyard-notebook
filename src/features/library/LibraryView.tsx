@@ -132,7 +132,8 @@ export function LibraryView() {
 
     setUploading(true);
     try {
-      const filename = `${Date.now()}_${file.name}`;
+      const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
+      const filename = `${uid('file')}${extension}`;
       const url = await uploadLibraryFile(currentProject.id, filename, file);
 
       handleUpdateItem(sectionId, itemId, { [fieldType]: url });

@@ -1,4 +1,5 @@
 import type { Branch, Node } from '../types';
+import { uid } from './utils.ts';
 
 /**
  * Deletes a node while preserving descendants and the branching invariant.
@@ -15,7 +16,7 @@ export function addBranchToTree(root: Node[], parentNodeId: string, branch: Bran
 
   const followingNodes = found.siblings.splice(found.index + 1);
   found.node.branches = [{
-    id: `original-${found.node.id}`,
+    id: uid('b'),
     name: 'Original',
     nodes: followingNodes,
   }, branch];
@@ -46,14 +47,20 @@ export function deleteNodeFromTree(root: Node[], nodeId: string): void {
       parent.branches = parent.branches
         ? [...parent.branches, ...node.branches]
         : node.branches;
-    } else {
-      if (index === 0) {
-        throw new Error('Cannot delete the first root phase while it has branches; move its branches first.');
-      }
+    } else if (index > 0) {
       const previous = siblings[index - 1];
       previous.branches = previous.branches
         ? [...previous.branches, ...node.branches]
         : node.branches;
+    } else {
+      // There is no preceding trunk node to own the deleted root's branches.
+      // Promote every branch path to the root rather than rejecting the
+      // deletion (or, worse, dropping descendants). Branch labels belong to
+      // the deleted fork, so the surviving node/branch IDs are retained while
+      // the paths are flattened into the only available trunk sequence.
+      const promotedNodes = node.branches.flatMap((branch) => branch.nodes);
+      siblings.splice(index, 1, ...promotedNodes);
+      return;
     }
   }
 

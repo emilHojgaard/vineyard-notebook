@@ -51,14 +51,20 @@ test('deleting a non-first root phase preserves its branches on the previous roo
   assert.equal(validateTree(root).valid, true);
 });
 
-test('refuses to delete the first root phase when it owns branches', () => {
+test('deleting the first root phase promotes every branch path without losing descendants', () => {
   const root = [node('target', [
-    { id: 'red', name: 'Red', nodes: [node('red-child')] },
-    { id: 'white', name: 'White', nodes: [node('white-child')] },
+    { id: 'red', name: 'Red', nodes: [node('red-child', [
+      { id: 'red-still', name: 'Still Red', nodes: [node('red-leaf')] },
+      { id: 'red-white', name: 'Red White', nodes: [node('red-white-leaf')] },
+    ])] },
+    { id: 'white', name: 'White', nodes: [node('white-child'), node('white-following')] },
+    { id: 'blue', name: 'Blue', nodes: [node('blue-child')] },
   ])];
 
-  assert.throws(() => deleteNodeFromTree(root, 'target'), /Cannot delete the first root phase/);
-  assert.equal(root[0].id, 'target');
+  deleteNodeFromTree(root, 'target');
+
+  assert.deepEqual(root.map((item) => item.id), ['red-child', 'white-child', 'white-following', 'blue-child']);
+  assert.deepEqual(root[0].branches?.map((branch) => branch.nodes[0].id), ['red-leaf', 'red-white-leaf']);
   assert.equal(validateTree(root).valid, true);
 });
 

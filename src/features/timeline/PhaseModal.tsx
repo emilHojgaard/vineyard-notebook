@@ -68,7 +68,7 @@ export function PhaseModal({
     try {
       const response = await fetch(dataUrl);
       const blob = await response.blob();
-      const filename = `${Date.now()}_${uid('photo')}.jpg`;
+      const filename = `${uid('photo')}.jpg`;
       return await uploadPhasePhoto(currentProject.id, filename, blob);
     } catch (error) {
       console.error('Photo upload failed:', error);

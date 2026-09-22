@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { randomUUID } from 'node:crypto';
 import { generateCalendar } from './ics-generator';
 import { isActiveCalendarTokenOwner } from './security';
 
@@ -276,10 +277,5 @@ export const calendarFeed = functions.https.onRequest(async (req, res) => {
  * Generate a random token string
  */
 function generateRandomToken(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let token = '';
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
+  return randomUUID();
 }
