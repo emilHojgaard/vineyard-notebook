@@ -44,8 +44,10 @@ export function InventoryView() {
     retryData,
   } = useData();
   const inv = inventory[appState.year];
-  const { isArchived, canEditContent } = useSeasonPermissions();
-  const isEditMode = canEditContent;
+  const { isArchived, isLocked, canEditContent } = useSeasonPermissions();
+  // Structural inventory mutations require the explicit edit mode. Item fields
+  // remain editable while locked, as defined by the season permissions policy.
+  const isEditMode = canEditContent && !isLocked;
   const season = seasons[appState.year];
 
   const [addingSectionName, setAddingSectionName] = useState('');
@@ -605,7 +607,7 @@ export function InventoryView() {
                   </div>
                 )}
 
-                {!isArchived && (
+                {!isArchived && isEditMode && (
                   <button
                     onClick={() => handleAddItem(section.id)}
                     className="w-fit mx-auto px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"

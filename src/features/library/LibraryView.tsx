@@ -14,8 +14,10 @@ import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 export function LibraryView() {
   const { library, updateLibrary, currentProject, appState, dataLoading, dataError, connectionStatus, retryData } = useData();
-  const { canEditContent } = useSeasonPermissions();
-  const isEditMode = canEditContent;
+  const { canEditContent, isLocked } = useSeasonPermissions();
+  // Structural library mutations require the explicit edit mode. Existing
+  // items can still be browsed and their content edited while locked.
+  const isEditMode = canEditContent && !isLocked;
 
   const [addingSectionName, setAddingSectionName] = useState('');
   const [addingSection, setAddingSection] = useState(false);
@@ -91,6 +93,7 @@ export function LibraryView() {
   };
 
   const handleAddItem = async (sectionId: string, type: LibraryItemType) => {
+    if (!isEditMode) return;
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -144,6 +147,7 @@ export function LibraryView() {
   };
 
   const handleDeleteItem = async (sectionId: string, itemId: string) => {
+    if (!isEditMode) return;
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -231,7 +235,7 @@ export function LibraryView() {
                 )}
 
                 {/* Add item buttons */}
-                <div className="flex flex-wrap justify-center gap-2">
+                {isEditMode && <div className="flex flex-wrap justify-center gap-2">
                   {(['note', 'pdf', 'video', 'photo'] as LibraryItemType[]).map((type) => (
                     <button
                       key={type}
@@ -242,7 +246,7 @@ export function LibraryView() {
                       {type}
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
             ))}
 
