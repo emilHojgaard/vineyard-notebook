@@ -7,6 +7,10 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Keep long-lived vendor and dynamically imported feature chunks cacheable
+        // independently. Dynamic feature imports retain their entry names (for
+        // example, TimelineView-[hash].js) without bundling inactive tabs into the app entry.
+        chunkFileNames: 'assets/[name]-[hash].js',
         manualChunks: {
           // Vendor chunk for React and related libraries
           'react-vendor': ['react', 'react-dom'],

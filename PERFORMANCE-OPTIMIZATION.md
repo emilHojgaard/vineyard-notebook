@@ -1,79 +1,40 @@
-# Performance Optimization - Code Splitting Implementation
+# Performance optimization: lazy feature loading
 
-## Overview
-Implemented lazy loading and code splitting to improve initial page load performance by loading only the active view instead of all views upfront.
+## Implementation
 
-## Changes Made
+The application keeps the authentication and project-setup paths in the initial route, while feature views are loaded only when their tab is rendered:
 
-### 1. Lazy Loading Implementation (`src/App.tsx`)
-- Converted eager imports to React.lazy() dynamic imports
-- Wrapped view rendering in Suspense boundary
-- Added LoadingSpinner fallback component
+- `src/App.tsx` uses `React.lazy()` for Timeline, Tree, Calendar, Inventory, and Library.
+- `src/components/AppShell.tsx` lazy-loads the Members overlay because it is opened on demand.
+- Existing named feature exports remain available; lazy imports use each view's default export (and the Members import maps its named export).
+- `Suspense` boundaries keep the shell usable while a feature chunk is fetched.
 
-**Before:**
-```typescript
-import { TimelineView } from './features/timeline/TimelineView';
-import { TreeView } from './features/tree/TreeView';
-// ... all views imported eagerly
-```
+`src/components/LoadingSpinner.tsx` is the shared fallback. It exposes a `role="status"` live region, an explicit loading label, and hides the decorative animation from assistive technology. The compact variant is used for the Members overlay; the full-page variant is used during initial data loading.
 
-**After:**
-```typescript
-const TimelineView = lazy(() => import('./features/timeline/TimelineView'));
-const TreeView = lazy(() => import('./features/tree/TreeView'));
-// ... all views loaded on demand
-```
+## Chunk policy
 
-### 2. Loading Component (`src/components/LoadingSpinner.tsx`)
-- Created reusable loading spinner with wine theme styling
-- Displays during dynamic imports
-- Minimal visual footprint to avoid flash
+`vite.config.ts` keeps React and Firebase in separately cacheable vendor chunks. Dynamic feature imports retain descriptive entry names and use `assets/[name]-[hash].js`, so unchanged vendor/feature chunks can be reused across deployments while changed files receive new cache keys. No feature is forced into a manual chunk when it is not lazy-loaded.
 
-### 3. Default Exports
-Added default exports to all feature views:
-- `src/features/timeline/TimelineView.tsx`
-- `src/features/tree/TreeView.tsx`
-- `src/features/calendar/CalendarView.tsx`
-- `src/features/inventory/InventoryView.tsx`
-- `src/features/library/LibraryView.tsx`
+## Bundle evidence
 
-### 4. Vite Configuration (`vite.config.ts`)
-Optimized chunk splitting for better caching:
-- React vendor chunk (React + ReactDOM)
-- Firebase chunk (all Firebase modules)
-- Automatic view-based chunks via dynamic imports
+Measured with `npm run build` (Vite 6.4.3):
 
-## Performance Impact
+| Output | Raw | Gzip | Loading behavior |
+| --- | ---: | ---: | --- |
+| `index-Ci1z4Mqj.js` | 76.62 kB | 22.41 kB | Initial application entry |
+| `react-vendor-DRGAkOw0.js` | 142.24 kB | 45.61 kB | Shared vendor |
+| `firebase-BbNYaPud.js` | 614.90 kB | 146.51 kB | Shared vendor |
+| `TimelineView-CYAcDjRh.js` | 13.37 kB | 4.05 kB | Lazy feature |
+| `TreeView-CpPes_BA.js` | 15.71 kB | 5.41 kB | Lazy feature |
+| `CalendarView-C4Dc5Kuj.js` | 99.12 kB | 30.58 kB | Lazy feature |
+| `InventoryView-Bqbgg5pV.js` | 13.34 kB | 4.07 kB | Lazy feature |
+| `LibraryView-BUUGxnnh.js` | 11.28 kB | 3.17 kB | Lazy feature |
+| `MembersView-Kvqm8-6S.js` | 6.63 kB | 2.16 kB | Lazy overlay |
 
-### Bundle Analysis (from `npm run build`)
+The build confirms that inactive feature views are emitted separately from the application entry. These sizes document the split topology; they do not claim a real-world performance gain without a comparable baseline or browser measurement.
 
-**Chunks created:**
-- `index.js`: 41.59 kB (gzipped: 12.20 kB) - Main bundle
-- `react-vendor.js`: 141.74 kB (gzipped: 45.48 kB) - React core
-- `firebase.js`: 511.25 kB (gzipped: 121.06 kB) - Firebase SDK
-- `TimelineView.js`: 12.41 kB (gzipped: 3.80 kB) - Loaded on demand
-- `TreeView.js`: 10.88 kB (gzipped: 3.69 kB) - Loaded on demand
-- `CalendarView.js`: 6.03 kB (gzipped: 2.17 kB) - Loaded on demand
-- `InventoryView.js`: 8.75 kB (gzipped: 2.41 kB) - Loaded on demand
-- `LibraryView.js`: 10.51 kB (gzipped: 2.86 kB) - Loaded on demand
-- `PhaseModal.js`: 8.98 kB (gzipped: 2.77 kB) - Shared dependency
+## Validation
 
-### Benefits
-1. **Reduced initial bundle**: Only loads Timeline view by default (the landing tab)
-2. **Faster time-to-interactive**: Main bundle is ~41 kB instead of ~90+ kB
-3. **Better caching**: Vendor code cached separately from app code
-4. **On-demand loading**: Other views load only when user navigates to them
-5. **Code organization**: Clear separation between features in build output
-
-## Testing
-- ✅ TypeScript compilation passes
-- ✅ Development server runs without errors
-- ✅ Production build successful with optimal chunk sizes
-- ✅ All views maintain named exports for compatibility
-- ✅ Default exports added for React.lazy() compatibility
-
-## Future Optimizations (Optional)
-- Lazy load modals (PhaseModal currently shared)
-- Image optimization for uploaded photos
-- Service worker for offline support
-- Preload hints for predictable navigation patterns
+- `npm run build` passes (TypeScript plus production Vite build).
+- `npm test` passes (18 tests).
+- `npm run lint` is currently unavailable because the repository has no ESLint 9 flat config (`eslint.config.js/mjs/cjs`); this is unrelated to the changes here.

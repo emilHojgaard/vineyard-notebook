@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Icon } from './Icon';
 import { Header } from './Header';
 import { SeasonSelector } from './SeasonSelector';
 import { useData } from '../contexts/DataContext';
-import { MembersView } from '../features/members/MembersView';
+import { LoadingSpinner } from './LoadingSpinner';
+
+const MembersView = lazy(() =>
+  import('../features/members/MembersView').then(({ MembersView }) => ({ default: MembersView }))
+);
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -80,7 +84,9 @@ export function AppShell({ children }: AppShellProps) {
                       <Icon name="x" size={14} />
                     </button>
                   </div>
-                  <MembersView />
+                  <Suspense fallback={<LoadingSpinner label="Loading members" compact />}>
+                    <MembersView />
+                  </Suspense>
                 </div>
               </div>
             )}

@@ -62,9 +62,7 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-page-bg flex items-center justify-center">
-        <div className="text-ink-soft">Loading...</div>
-      </div>
+      <LoadingSpinner label="Loading your vineyard data" />
     );
   }
 
