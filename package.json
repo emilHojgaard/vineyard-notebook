@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:rules": "npx firebase emulators:exec --project demo-vineyard --only firestore,storage \"node --test tests/firestore.rules.test.js\"",
+    "test:functions": "npm --prefix functions run build && npx firebase emulators:exec --project demo-vineyard --only auth,firestore,functions \"node --test tests/functions.emulator.test.js\"",
     "preview": "vite preview"
   },
   "dependencies": {

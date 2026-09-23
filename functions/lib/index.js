@@ -34,11 +34,14 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.calendarFeed = exports.listCalendarTokens = exports.revokeCalendarToken = exports.acceptInvitation = exports.generateCalendarToken = void 0;
-const functions = __importStar(require("firebase-functions"));
+const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
+const node_crypto_1 = require("node:crypto");
 const ics_generator_1 = require("./ics-generator");
 const security_1 = require("./security");
 admin.initializeApp();
+const firestore = (0, firestore_1.getFirestore)();
 /**
  * Generate a new calendar token for a project
  */
@@ -53,7 +56,7 @@ exports.generateCalendarToken = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('invalid-argument', 'projectId is required');
     }
     // Verify user has access to this project
-    const projectRef = admin.firestore().collection('projects').doc(projectId);
+    const projectRef = firestore.collection('projects').doc(projectId);
     const projectDoc = await projectRef.get();
     if (!projectDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Project not found');
@@ -65,10 +68,10 @@ exports.generateCalendarToken = functions.https.onCall(async (data, context) => 
     // Generate a random token
     const token = generateRandomToken();
     // Store token in Firestore
-    await admin.firestore().collection('calendar_tokens').doc(token).set({
+    await firestore.collection('calendar_tokens').doc(token).set({
         projectId,
         userId: context.auth.uid,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
     });
     return { token };
 });
@@ -85,9 +88,9 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
     if (!invitationId) {
         throw new functions.https.HttpsError('invalid-argument', 'invitationId is required');
     }
-    const invitationRef = admin.firestore().collection('invitations').doc(invitationId);
-    const projectRefForInvitation = admin.firestore().collection('projects');
-    await admin.firestore().runTransaction(async (transaction) => {
+    const invitationRef = firestore.collection('invitations').doc(invitationId);
+    const projectRefForInvitation = firestore.collection('projects');
+    await firestore.runTransaction(async (transaction) => {
         const invitationSnapshot = await transaction.get(invitationRef);
         if (!invitationSnapshot.exists) {
             throw new functions.https.HttpsError('not-found', 'Invitation not found');
@@ -109,7 +112,7 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
         if (!members.includes(context.auth.uid)) {
             transaction.update(projectRef, {
                 members: [...members, context.auth.uid],
-                memberAddedAt: Object.assign(Object.assign({}, (project.memberAddedAt || {})), { [context.auth.uid]: admin.firestore.Timestamp.now() }),
+                memberAddedAt: Object.assign(Object.assign({}, (project.memberAddedAt || {})), { [context.auth.uid]: firestore_1.Timestamp.now() }),
             });
         }
         transaction.delete(invitationRef);
@@ -130,14 +133,14 @@ exports.revokeCalendarToken = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'token is required');
     }
     // Get token document
-    const tokenRef = admin.firestore().collection('calendar_tokens').doc(token);
+    const tokenRef = firestore.collection('calendar_tokens').doc(token);
     const tokenDoc = await tokenRef.get();
     if (!tokenDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Token not found');
     }
     const tokenData = tokenDoc.data();
     // Verify user has access to this token's project
-    const projectRef = admin.firestore().collection('projects').doc(tokenData.projectId);
+    const projectRef = firestore.collection('projects').doc(tokenData.projectId);
     const projectDoc = await projectRef.get();
     if (!projectDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Project not found');
@@ -164,7 +167,7 @@ exports.listCalendarTokens = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'projectId is required');
     }
     // Verify user has access to this project
-    const projectRef = admin.firestore().collection('projects').doc(projectId);
+    const projectRef = firestore.collection('projects').doc(projectId);
     const projectDoc = await projectRef.get();
     if (!projectDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Project not found');
@@ -174,7 +177,7 @@ exports.listCalendarTokens = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', 'User is not a member of this project');
     }
     // Get all tokens for this project
-    const tokensSnapshot = await admin.firestore()
+    const tokensSnapshot = await firestore
         .collection('calendar_tokens')
         .where('projectId', '==', projectId)
         .get();
@@ -224,7 +227,7 @@ exports.calendarFeed = functions.https.onRequest(async (req, res) => {
         return;
     }
     // Verify token
-    const tokenRef = admin.firestore().collection('calendar_tokens').doc(token);
+    const tokenRef = firestore.collection('calendar_tokens').doc(token);
     const tokenDoc = await tokenRef.get();
     if (!tokenDoc.exists) {
         res.status(401).send('Invalid token');
@@ -237,13 +240,13 @@ exports.calendarFeed = functions.https.onRequest(async (req, res) => {
     }
     // A token is not a permanent authorization grant. Removed members lose
     // feed access immediately, even if their old URL is still subscribed.
-    const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+    const projectDoc = await firestore.collection('projects').doc(projectId).get();
     if (!projectDoc.exists || !(0, security_1.isActiveCalendarTokenOwner)((_a = projectDoc.data()) === null || _a === void 0 ? void 0 : _a.members, tokenData.userId)) {
         res.status(403).send('Token owner is no longer a project member');
         return;
     }
     // Get season data
-    const seasonRef = admin.firestore().collection('seasons').doc(`${projectId}_${year}`);
+    const seasonRef = firestore.collection('seasons').doc(`${projectId}_${year}`);
     const seasonDoc = await seasonRef.get();
     if (!seasonDoc.exists) {
         res.status(404).send('Season not found');
@@ -265,11 +268,6 @@ exports.calendarFeed = functions.https.onRequest(async (req, res) => {
  * Generate a random token string
  */
 function generateRandomToken() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let token = '';
-    for (let i = 0; i < 32; i++) {
-        token += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return token;
+    return (0, node_crypto_1.randomUUID)();
 }
 //# sourceMappingURL=index.js.map
