@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { LibraryItem, LibrarySection, LibraryItemType } from '../../types';
 import type { IconName } from '../../components/Icon';
@@ -11,6 +11,7 @@ import { uploadLibraryFile } from '../../lib/repositories/media-repository';
 import { notifyError } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
+import { updateLibraryItem } from './libraryEditing';
 
 export function LibraryView() {
   const { library, updateLibrary, currentProject, dataLoading, dataError, connectionStatus, retryData } = useData();
@@ -28,7 +29,20 @@ export function LibraryView() {
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editingDraft, setEditingDraftState] = useState<LibraryItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef(library);
+  const libraryProjectRef = useRef(currentProject?.id);
+  const editingDraftRef = useRef<LibraryItem | null>(null);
+  const pendingDraftRef = useRef<LibraryItem | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  if (libraryProjectRef.current !== currentProject?.id) {
+    libraryProjectRef.current = currentProject?.id;
+    libraryRef.current = library;
+  } else if (library && (!libraryRef.current || (library.revision ?? 0) >= (libraryRef.current.revision ?? 0))) {
+    libraryRef.current = library;
+  }
 
   const persistLibrary = async (updatedLibrary: typeof library) => {
     if (!updatedLibrary) return false;
@@ -45,6 +59,71 @@ export function LibraryView() {
       return false;
     }
   };
+
+  const setEditingDraft = (draft: LibraryItem | null) => {
+    editingDraftRef.current = draft;
+    setEditingDraftState(draft);
+  };
+
+  const saveItemDraft = async (draft: LibraryItem): Promise<boolean> => {
+    const currentLibrary = libraryRef.current;
+    if (!currentLibrary || !editingItem) return false;
+
+    const updatedLibrary = updateLibraryItem(
+      currentLibrary,
+      editingItem.sectionId,
+      draft.id,
+      draft,
+    );
+    if (!updatedLibrary) return false;
+
+    const saved = await persistLibrary(updatedLibrary);
+    if (saved) {
+      // Keep queued saves on the revision produced by this save, even before
+      // the Firestore snapshot has caused the next render.
+      libraryRef.current = { ...updatedLibrary, revision: (updatedLibrary.revision ?? 0) + 1 };
+    }
+    return saved;
+  };
+
+  const enqueueDraftSave = (draft: LibraryItem): Promise<boolean> => {
+    const save = saveQueueRef.current.then(() => saveItemDraft(draft));
+    saveQueueRef.current = save.then(() => undefined, () => undefined);
+    return save;
+  };
+
+  const scheduleDraftSave = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      const draft = pendingDraftRef.current;
+      pendingDraftRef.current = null;
+      if (!draft) return;
+
+      void enqueueDraftSave(draft).then((saved) => {
+        if (!saved && !pendingDraftRef.current) pendingDraftRef.current = draft;
+        if (saved && pendingDraftRef.current) scheduleDraftSave();
+      });
+    }, 250);
+  };
+
+  const flushDraftSave = async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const draft = pendingDraftRef.current;
+    pendingDraftRef.current = null;
+    if (draft) {
+      const saved = await enqueueDraftSave(draft);
+      if (!saved) pendingDraftRef.current = draft;
+    }
+    await saveQueueRef.current;
+  };
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   if (dataLoading || dataError) {
     return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="library" />;
@@ -67,7 +146,9 @@ export function LibraryView() {
     return item || null;
   };
 
-  const currentEditingItem = getCurrentEditingItem();
+  const currentEditingItem = editingDraft && editingItem?.item.id === editingDraft.id
+    ? editingDraft
+    : getCurrentEditingItem();
 
   const handleAddSection = async () => {
     if (!isEditMode || !addingSectionName.trim()) return;
@@ -107,20 +188,23 @@ export function LibraryView() {
 
     section.items.push(newItem);
     if (await persistLibrary(updatedLibrary)) {
+      pendingDraftRef.current = null;
       setEditingItem({ sectionId, item: newItem });
+      setEditingDraft(newItem);
     }
   };
 
   const handleUpdateItem = (sectionId: string, itemId: string, updates: Partial<LibraryItem>) => {
-    const updatedLibrary = JSON.parse(JSON.stringify(library));
-    const section = updatedLibrary.sections.find((s) => s.id === sectionId);
-    if (!section) return;
+    const currentItem = editingDraftRef.current?.id === itemId
+      ? editingDraftRef.current
+      : libraryRef.current?.sections
+        .find((section) => section.id === sectionId)?.items.find((item) => item.id === itemId);
+    if (!currentItem) return;
 
-    const item = section.items.find((i) => i.id === itemId);
-    if (!item) return;
-
-    Object.assign(item, updates);
-    void persistLibrary(updatedLibrary);
+    const nextDraft = { ...currentItem, ...updates };
+    setEditingDraft(nextDraft);
+    pendingDraftRef.current = nextDraft;
+    scheduleDraftSave();
   };
 
   const handleFileUpload = async (
@@ -147,6 +231,11 @@ export function LibraryView() {
 
   const handleDeleteItem = async (sectionId: string, itemId: string) => {
     if (!isEditMode) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    pendingDraftRef.current = null;
     const updatedLibrary = JSON.parse(JSON.stringify(library));
     const section = updatedLibrary.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -154,8 +243,17 @@ export function LibraryView() {
     section.items = section.items.filter((i) => i.id !== itemId);
     if (!await persistLibrary(updatedLibrary)) return;
     setConfirmDelete(null);
+    pendingDraftRef.current = null;
     setEditingItem(null);
+    setEditingDraft(null);
     setSelectedItem(null);
+  };
+
+  const handleCloseEditing = () => {
+    void flushDraftSave().finally(() => {
+      setEditingItem(null);
+      setEditingDraft(null);
+    });
   };
 
   const getItemIcon = (type: LibraryItemType): IconName => {
@@ -350,7 +448,9 @@ export function LibraryView() {
                     s.items.some((i) => i.id === selectedItem.id)
                   );
                   if (section) {
+                    pendingDraftRef.current = null;
                     setEditingItem({ sectionId: section.id, item: selectedItem });
+                    setEditingDraft(selectedItem);
                     setSelectedItem(null);
                   }
                 }}
@@ -382,7 +482,7 @@ export function LibraryView() {
       {editingItem && currentEditingItem && (
         <Modal
           isOpen={true}
-          onClose={() => setEditingItem(null)}
+          onClose={handleCloseEditing}
           title={`Edit ${currentEditingItem.type.charAt(0).toUpperCase() + currentEditingItem.type.slice(1)}`}
         >
           <div className="space-y-4">
@@ -495,7 +595,7 @@ export function LibraryView() {
 
             <div className="flex gap-2 pt-2">
               <button
-                onClick={() => setEditingItem(null)}
+                onClick={handleCloseEditing}
                 className="flex-1 px-4 py-2 bg-burgundy text-white rounded-md font-semibold hover:bg-burgundy-deep transition-colors"
               >
                 Done
