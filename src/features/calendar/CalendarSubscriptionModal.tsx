@@ -57,8 +57,8 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
       const newToken = await generateCalendarToken();
       setToken(newToken);
       await loadExistingTokens();
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate token');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to generate token');
     } finally {
       setLoading(false);
     }
@@ -73,8 +73,8 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
       if (token === tokenId) {
         setToken(null);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to revoke token');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke token');
     } finally {
       setLoading(false);
     }

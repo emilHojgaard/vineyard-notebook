@@ -260,7 +260,7 @@ export const calendarFeed = functions.https.onRequest(async (req, res) => {
   const seasonData = seasonDoc.data();
 
   // Generate ICS calendar
-  const icsContent = generateCalendar(seasonData as any);
+  const icsContent = generateCalendar(seasonData as unknown as Parameters<typeof generateCalendar>[0]);
 
   if (!icsContent) {
     res.status(500).send('Error generating calendar');

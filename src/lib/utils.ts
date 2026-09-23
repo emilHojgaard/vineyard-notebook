@@ -233,7 +233,7 @@ export function createDefaultPhases(seasonYear = new Date().getFullYear()): Node
     { name: 'Bottling', startMonth: 9, startDay: 1, endMonth: 9, endDay: 30, year: nextYear },
   ];
 
-  return phases.map((p, idx) => ({
+  return phases.map((p) => ({
     id: uid('n'),
     name: p.name,
     start: `${p.year}-${String(p.startMonth).padStart(2, '0')}-${String(p.startDay).padStart(2, '0')}`,

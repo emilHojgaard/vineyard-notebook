@@ -23,10 +23,9 @@ function dateToArray(dateStr: string): DateArray {
 /**
  * Export calendar events to .ics format
  * @param events - Array of calendar events
- * @param seasonTitle - Title of the season (e.g., "2024")
  * @returns .ics file content as string, or null if error
  */
-export function generateICS(events: CalendarEvent[], seasonTitle: string): string | null {
+export function generateICS(events: CalendarEvent[]): string | null {
   if (events.length === 0) {
     return null;
   }

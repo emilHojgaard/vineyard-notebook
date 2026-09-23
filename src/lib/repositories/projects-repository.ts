@@ -7,7 +7,6 @@ import {
   query,
   runTransaction,
   Timestamp,
-  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';

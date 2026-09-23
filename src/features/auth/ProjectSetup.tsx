@@ -23,8 +23,8 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
       if (onComplete) {
         onComplete();
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to create project');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       setLoading(false);
     }

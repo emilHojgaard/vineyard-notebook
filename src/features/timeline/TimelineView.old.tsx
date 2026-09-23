@@ -78,7 +78,7 @@ function PhaseCard({ node, isFirst, isLast }: PhaseCardProps) {
     upcoming: { color: 'text-st-upcoming', icon: null, label: 'Upcoming' },
     active: { color: 'text-st-active', icon: 'dot', label: 'Active' },
     done: { color: 'text-st-done', icon: 'check', label: 'Done' },
-  };
+  } as const;
 
   const config = statusConfig[status];
 
@@ -116,7 +116,7 @@ function PhaseCard({ node, isFirst, isLast }: PhaseCardProps) {
               )}
             </div>
             <div className={`flex items-center gap-1 text-xs font-semibold ${config.color} flex-shrink-0`}>
-              {config.icon && <Icon name={config.icon as any} size={12} />}
+              {config.icon && <Icon name={config.icon} size={12} />}
               <span>{config.label}</span>
             </div>
           </div>

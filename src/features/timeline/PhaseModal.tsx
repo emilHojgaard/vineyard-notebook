@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Icon } from '../../components/Icon';
-import type { Node, Branch, Note, Event } from '../../types';
+import type { Node, Note, Event } from '../../types';
 import { fmtDate, todayISO, derivedStatus, uid, daysUntil } from '../../lib/utils';
 import { uploadPhasePhoto } from '../../lib/repositories/media-repository';
 import { useAuth } from '../../contexts/AuthContext';

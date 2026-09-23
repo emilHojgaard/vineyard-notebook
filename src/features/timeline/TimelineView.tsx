@@ -194,7 +194,7 @@ export function TimelineView() {
     return null;
   };
 
-  const renderNodeList = (nodes: Node[], accent: string = TRUNK_COLOR, parentNodeId: string | null = null, branchId: string | null = null) => {
+  const renderNodeList = (nodes: Node[], accent: string = TRUNK_COLOR, branchId: string | null = null) => {
     return nodes.map((node, index) => {
       const selectedBranch = node.branches
         ? node.branches.find((b) => b.id === appState.branchSelection[node.id]) || node.branches[0]
@@ -306,7 +306,6 @@ export function TimelineView() {
                     renderNodeList(
                       selectedBranch.nodes,
                       branchColor(accent, node.branches.indexOf(selectedBranch)),
-                      node.id,
                       selectedBranch.id
                     )
                   )}
@@ -569,7 +568,7 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
     upcoming: { color: 'var(--st-upcoming)', icon: null, label: 'Upcoming' },
     active: { color: 'var(--st-active)', icon: 'dot', label: 'Active' },
     done: { color: 'var(--st-done)', icon: 'check', label: 'Done' },
-  };
+  } as const;
 
   const config = statusConfig[status];
 
@@ -630,7 +629,7 @@ function PhaseCard({ node, isFirst, isLast, accent, onOpenModal, onDelete, onBra
                   className="flex items-center gap-1 text-xs font-semibold"
                   style={{ color: config.color }}
                 >
-                  {config.icon && <Icon name={config.icon as any} size={12} />}
+                  {config.icon && <Icon name={config.icon} size={12} />}
                   <span>{config.label}</span>
                 </div>
               )}

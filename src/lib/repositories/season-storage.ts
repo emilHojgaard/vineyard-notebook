@@ -1,4 +1,4 @@
-import type { Node, Season } from '../../types';
+import type { Node } from '../../types';
 
 type NodeContent = Pick<Node, 'start' | 'end' | 'status' | 'notes' | 'events' | 'invIds' | 'libIds'>;
 

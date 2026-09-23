@@ -9,20 +9,32 @@ interface Node {
   branches: Array<{ id: string; name: string; nodes: Node[] }> | null;
 }
 
+interface LegacyStructureNode {
+  id: string;
+  name: string;
+  branches: Array<LegacyStructureNodeBranch> | null;
+}
+
+interface LegacyStructureNodeBranch {
+  id: string;
+  name: string;
+  nodes: LegacyStructureNode[];
+}
+
 interface Season {
   title: string;
   root?: Node[];
-  structure?: Array<{ id: string; name: string; branches: Array<{ id: string; name: string; nodes: any[] }> | null }>;
+  structure?: LegacyStructureNode[];
   content?: Record<string, Omit<Node, 'id' | 'name' | 'branches'>>;
 }
 
 function seasonRoot(season: Season): Node[] {
   if (season.root) return season.root;
   const content = season.content || {};
-  const join = (nodes: any[]): Node[] => nodes.map((node) => ({
+  const join = (nodes: LegacyStructureNode[]): Node[] => nodes.map((node) => ({
     ...node,
     ...(content[node.id] || { start: '', end: '', events: [] }),
-    branches: node.branches?.map((branch: any) => ({
+    branches: node.branches?.map((branch) => ({
       ...branch,
       nodes: join(branch.nodes),
     })) || null,

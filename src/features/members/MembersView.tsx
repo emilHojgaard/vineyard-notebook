@@ -62,9 +62,9 @@ export function MembersView() {
       setInviteState('saved');
       setInviteEmail('');
       setShowInviteModal(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setInviteState('failed');
-      setInviteError(error.message || 'Failed to send invitation');
+      setInviteError(error instanceof Error ? error.message : 'Failed to send invitation');
     }
   };
 

@@ -138,7 +138,7 @@ export function DayEventsModal({
 
         // Walk branches
         if (node.branches) {
-          node.branches.forEach((branch, idx) => {
+          node.branches.forEach((branch) => {
             const newPath = [...branchPath, branch.name];
             walk(branch.nodes, newPath);
           });
@@ -307,7 +307,6 @@ export function DayEventsModal({
                 </h4>
                 <div className="space-y-2">
                   {checkEvents.map((event) => {
-                    const node = findNode(event.nodeId);
                     return (
                       <div
                         key={event.id}

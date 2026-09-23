@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import test from 'node:test';
-import assert from 'node:assert/strict';
 import {
   assertFails,
   assertSucceeds,
@@ -9,8 +8,6 @@ import {
 import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
-const projectRef = docId => `projects/${projectId}`;
-
 let testEnv;
 
 test.before(async () => {

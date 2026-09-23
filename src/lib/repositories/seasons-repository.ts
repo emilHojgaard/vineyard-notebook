@@ -13,16 +13,18 @@ export class ConcurrentWriteError extends Error {
   }
 }
 
-function hydrateSeason(data: Record<string, any>): Season {
-  const root = data.structure && data.content
-    ? joinSeasonRoot(data.structure as SeasonStructureNode[], data.content as SeasonContent)
-    : data.root || [];
+function hydrateSeason(data: Record<string, unknown>): Season {
+  const structure = data.structure as SeasonStructureNode[] | undefined;
+  const content = data.content as SeasonContent | undefined;
+  const root = structure && content
+    ? joinSeasonRoot(structure, content)
+    : (data.root as Season['root'] | undefined) || [];
   return {
-    status: data.status,
-    title: data.title,
+    status: data.status as Season['status'],
+    title: String(data.title),
     root,
-    locked: data.locked ?? true,
-    revision: data.revision || 0,
+    locked: data.locked as boolean | undefined ?? true,
+    revision: data.revision as number | undefined || 0,
   };
 }
 

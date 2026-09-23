@@ -6,7 +6,6 @@ import {
   getDocs,
   onSnapshot,
   query,
-  runTransaction,
   setDoc,
   Timestamp,
   where,
@@ -69,7 +68,7 @@ export async function loadPendingInvitations(email: string): Promise<PendingInvi
   return invitations;
 }
 
-export async function acceptInvitation(invitation: PendingInvitation, _userId: string): Promise<void> {
+export async function acceptInvitation(invitation: PendingInvitation): Promise<void> {
   // Membership addition is deliberately server-side. A Firestore client
   // cannot prove that a project update corresponds to this exact invitation.
   const callable = httpsCallable(functions, 'acceptInvitation');

@@ -15,7 +15,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { appState, updateAppState, currentProject, connectionStatus, dataError, retryData } = useData();
+  const { appState, updateAppState, connectionStatus, dataError, retryData } = useData();
   const [showSettings, setShowSettings] = React.useState(false);
   const [showMembers, setShowMembers] = React.useState(false);
 
@@ -123,23 +123,23 @@ export function AppShell({ children }: AppShellProps) {
 
             {/* Bottom navigation */}
             <div className="bg-burgundy flex items-center justify-around py-2 px-0 flex-shrink-0">
-              {[
+              {([
                 { id: 'timeline', icon: 'timeline', label: 'Timeline' },
                 { id: 'tree', icon: 'tree', label: 'Tree' },
                 { id: 'calendar', icon: 'calendar', label: 'Calendar' },
                 { id: 'inventory', icon: 'crate', label: 'Inventory' },
                 { id: 'library', icon: 'book', label: 'Library' },
-              ].map((tab) => (
+              ] as const).map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => handleTabChange(tab.id as any)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={`flex flex-col items-center gap-1 p-2 border-t-2 transition-colors min-h-[46px] ${
                     appState.tab === tab.id
                       ? 'border-white text-white'
                       : 'border-transparent text-white/55 hover:text-white/80'
                   }`}
                 >
-                  <Icon name={tab.icon as any} size={17} />
+                  <Icon name={tab.icon} size={17} />
                   <span className="text-[10px] font-semibold tracking-wide">
                     {tab.label}
                   </span>

@@ -11,7 +11,6 @@ import { auth } from '../lib/firebase';
 import {
   acceptInvitation as acceptInvitationInRepository,
   declineInvitation as declineInvitationInRepository,
-  ensureUserProfile,
   loadPendingInvitations,
   saveUserProfile,
 } from '../lib/repositories/auth-repository';
@@ -78,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Add user to project members and record when they joined. A transaction
     // avoids dropping a concurrent membership change.
-    await acceptInvitationInRepository(invitation, currentUser.uid);
+    await acceptInvitationInRepository(invitation);
 
     // Remove from local state
     setPendingInvitations(prev => prev.filter(inv => inv.id !== invitationId));

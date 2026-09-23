@@ -64,7 +64,7 @@ interface PinchState {
 }
 
 export function TreeView() {
-  const { seasons, appState, currentProject, updateAppState, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { seasons, appState, currentProject, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
@@ -770,7 +770,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
       return { minCol: 0, maxCol: 0, endY: startY };
     }
 
-    let y = startY;
+    const y = startY;
     let minCol: number;
     let maxCol: number;
 

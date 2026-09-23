@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
-import type { Node, Event } from '../../types';
-import { parseDate, fmtDate, walkNodes, branchColor, TRUNK_COLOR } from '../../lib/utils';
+import type { Node } from '../../types';
+import { branchColor, TRUNK_COLOR } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { generateICS, downloadICS } from '../../lib/calendar-export';
 import { CalendarSubscriptionModal } from './CalendarSubscriptionModal';
@@ -46,8 +46,6 @@ export function CalendarView() {
     if (!season) return [];
 
     const events: CalendarEvent[] = [];
-    let colorIndex = 0;
-
     function walkWithColor(nodes: Node[], parentColor: string) {
       nodes.forEach((node) => {
         // Add phase start/end as events
@@ -331,7 +329,7 @@ export function CalendarView() {
         {/* Export button */}
         <button
           onClick={() => {
-            const icsContent = generateICS(allEvents, season.title);
+            const icsContent = generateICS(allEvents);
             if (icsContent) {
               downloadICS(icsContent, `vineyard-calendar-${season.title}.ics`);
             } else {

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { LibraryItem, LibrarySection, LibraryItemType } from '../../types';
+import type { IconName } from '../../components/Icon';
 import { uid } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { Modal } from '../../components/Modal';
@@ -12,7 +13,7 @@ import { DataState } from '../../components/DataState';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 export function LibraryView() {
-  const { library, updateLibrary, currentProject, appState, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { library, updateLibrary, currentProject, dataLoading, dataError, connectionStatus, retryData } = useData();
   const { canEditContent, isLocked } = useSeasonPermissions();
   // Section mutations require explicit edit mode. Existing items can still be
   // browsed and their content edited while locked; adding items to an existing
@@ -157,7 +158,7 @@ export function LibraryView() {
     setSelectedItem(null);
   };
 
-  const getItemIcon = (type: LibraryItemType): string => {
+  const getItemIcon = (type: LibraryItemType): IconName => {
     switch (type) {
       case 'pdf':
         return 'filetext';
@@ -220,7 +221,7 @@ export function LibraryView() {
                         onClick={() => setSelectedItem(item)}
                         className="flex items-center gap-2 px-3 py-3 bg-parchment border border-border rounded-md text-left hover:bg-surface-2 transition-colors"
                       >
-                        <Icon name={getItemIcon(item.type) as any} size={16} color="var(--burgundy)" />
+                        <Icon name={getItemIcon(item.type)} size={16} color="var(--burgundy)" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold text-ink truncate">
                             {item.title}
@@ -240,7 +241,7 @@ export function LibraryView() {
                       onClick={() => handleAddItem(section.id, type)}
                       className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-md text-xs font-semibold text-ink-soft hover:text-burgundy hover:border-burgundy transition-colors capitalize"
                     >
-                      <Icon name={getItemIcon(type) as any} size={13} />
+                      <Icon name={getItemIcon(type)} size={13} />
                       {type}
                     </button>
                   ))}
