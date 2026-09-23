@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const projectId = 'demo-vineyard';
-const authUrl = 'http://127.0.0.1:9099';
-const firestoreUrl = 'http://127.0.0.1:8080';
-const functionsUrl = 'http://127.0.0.1:5001';
+const authUrl = process.env.AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099';
+const firestoreUrl = process.env.FIRESTORE_EMULATOR_URL ?? 'http://127.0.0.1:8080';
+const functionsUrl = process.env.FUNCTIONS_EMULATOR_URL ?? 'http://127.0.0.1:5001';
 
 async function createUser(email) {
   const response = await fetch(

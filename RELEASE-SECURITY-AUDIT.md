@@ -18,11 +18,15 @@
 
 ## Emulator and security checks
 
-- `npm test`: 21 tests passed.
-- `npm run test:rules`: 9 Firestore/Storage rules tests passed.
-- `npm run test:functions`: 3 callable emulator tests passed with Auth,
-  Firestore, and Functions emulators. Coverage includes unauthenticated calls,
-  authenticated token lifecycle calls, and non-member denial.
+- `npm test`: 22 tests passed.
+- `npm run test:rules` equivalent validation on isolated alternate ports: 9
+  Firestore/Storage rules tests passed.
+- `npm run test:functions` equivalent validation on isolated alternate ports:
+  3 callable emulator tests passed with Auth, Firestore, and Functions
+  emulators. The harness accepts emulator URL overrides so these checks remain
+  reproducible when another local emulator suite owns the default ports.
+  Coverage includes unauthenticated calls, authenticated token lifecycle calls,
+  and non-member denial.
 - `npm run build` and `npm --prefix functions run build`: passed.
 
 The callable failure was reproduced before the fix: the Auth emulator was not
