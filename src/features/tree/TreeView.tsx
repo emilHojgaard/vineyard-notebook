@@ -476,7 +476,7 @@ export function TreeView() {
             return (
               <div key={layoutNode.node.id}>
                 <div
-                  className={`absolute flex items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
+                  className={`absolute flex min-w-0 items-center gap-2 px-3 bg-surface border rounded-lg shadow-sm hover:shadow-md transition-all ${
                     status === 'done' ? 'opacity-60' : ''
                   } ${isDim ? 'opacity-25' : ''}`}
                   style={{
@@ -494,14 +494,14 @@ export function TreeView() {
                     type="button"
                     onClick={() => setSelectedNode(layoutNode.node)}
                     aria-label={`Open phase ${layoutNode.node.name}`}
-                    className="flex-1 min-w-0 self-stretch text-left"
+                    className="min-w-0 flex-1 self-stretch overflow-hidden text-left"
                   >
-                    <span className="text-xs font-semibold text-ink truncate">
+                    <span className="block truncate text-xs font-semibold text-ink">
                       {layoutNode.node.name}
                     </span>
                   </button>
                   {!isLocked && !isArchived && (
-                    <>
+                    <div className="flex flex-shrink-0 items-center gap-1">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -538,7 +538,7 @@ export function TreeView() {
                       >
                         <Icon name="trash" size={11} />
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
