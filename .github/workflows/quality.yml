@@ -17,9 +17,14 @@ jobs:
           java-version: '21'
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm --prefix functions ci
+      - run: npm run lint
       - run: npm test
       - run: npm run test:rules
+      - run: npm run test:functions
+      - run: npm audit --audit-level=high
+      - run: npm --prefix functions audit --audit-level=high
       - run: npm run build

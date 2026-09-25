@@ -170,72 +170,44 @@ Because `index.html` and the worker are no-cache, rollback is normally visible
 on the next navigation. Existing hashed assets are retained by Hosting; do not
 manually delete them while investigating.
 
-## Deploy to Vercel
+## Firebase Cloud Functions
 
-### Method 1: Vercel CLI
+The live calendar feed is deployed separately from Hosting. Functions run on
+Node.js 22, selected because the installed Firebase CLI supports `nodejs22` as
+a GA runtime. The same CLI reports Node.js 18 as deprecated, so do not restore
+that engine value.
 
-```bash
-# Install Vercel CLI
-npm install -g vercel
+The runtime decision was verified locally with the repository's installed
+Firebase CLI (`npx firebase --version` → `15.30.2`) and its deployment runtime
+registry (`nodejs22: GA`; `nodejs20: GA`; `nodejs18: deprecated`). The source of
+that installed evidence is
+`node_modules/firebase-tools/lib/deploy/functions/runtimes/supported/types.js`.
+`functions/package.json` and its lockfile are the runtime source of truth.
 
-# Deploy
-vercel
-
-# Follow prompts:
-# - Link to existing project or create new
-# - Set up environment variables when prompted
-```
-
-### Method 2: Vercel Dashboard
-
-1. Go to https://vercel.com
-2. Click "New Project"
-3. Import your Git repository
-4. Configure:
-   - **Framework Preset**: Vite
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-5. Add environment variables (from your `.env` file)
-6. Click "Deploy"
-
-## Deploy to Netlify
-
-### Method 1: Netlify CLI
+Build and deploy Functions after selecting the intended Firebase project:
 
 ```bash
-# Install Netlify CLI
-npm install -g netlify-cli
-
-# Login
-netlify login
-
-# Initialize
-netlify init
-
-# Deploy
-netlify deploy --prod
+npm --prefix functions ci
+npm --prefix functions run build
+firebase deploy --only functions --project YOUR_FIREBASE_PROJECT_ID
 ```
 
-### Method 2: Netlify Dashboard
+For local callable/feed validation, use the project-scoped emulator scripts:
 
-1. Go to https://app.netlify.com
-2. Click "Add new site" → "Import an existing project"
-3. Connect to your Git provider
-4. Select your repository
-5. Configure:
-   - **Build command**: `npm run build`
-   - **Publish directory**: `dist`
-6. Add environment variables:
-   - Go to Site settings → Environment variables
-   - Add all `VITE_FIREBASE_*` variables
-7. Click "Deploy site"
+```bash
+npm run test:functions
+npm --prefix functions run serve
+```
+
+The Functions emulator and callable tests use the same `functions/package.json`
+engine metadata; no production deployment is part of local validation.
 
 ## Post-Deployment
 
 ### 1. Update Firebase Auth Domain
 
 1. In Firebase Console, go to **Authentication** → **Settings** → **Authorized domains**
-2. Add your production domain (e.g., `your-app.vercel.app` or `your-app.netlify.app`)
+2. Add your Firebase Hosting domain (for example, `your-project.web.app` or `your-project.firebaseapp.com`)
 
 ### 2. Test the Deployment
 
@@ -247,27 +219,23 @@ netlify deploy --prod
 
 ### 3. Set Up Custom Domain (Optional)
 
-#### Vercel
-1. Go to Project Settings → Domains
-2. Add your custom domain
-3. Follow DNS configuration instructions
-
-#### Netlify
-1. Go to Site settings → Domain management
-2. Add custom domain
-3. Follow DNS configuration instructions
+1. In Firebase Console, open **Hosting** → **Add custom domain**.
+2. Follow the displayed DNS verification instructions.
+3. Add the verified domain to Firebase Authentication's authorized domains.
 
 ## Continuous Deployment
 
-Both Vercel and Netlify automatically deploy when you push to your main branch:
+Firebase Hosting deployments are intentionally explicit so the selected
+Firebase project is always clear:
 
 ```bash
-git add .
-git commit -m "Update feature"
-git push origin main
+npm ci
+npm run build
+firebase deploy --only hosting --project YOUR_FIREBASE_PROJECT_ID
 ```
 
-The deployment will start automatically.
+A CI or release job may run the same command after authenticating with a
+service account, but local validation never deploys.
 
 ## Monitoring
 
@@ -277,11 +245,11 @@ The deployment will start automatically.
 - **Firestore**: Check database usage and queries
 - **Storage**: Monitor file uploads and storage usage
 
-### Vercel/Netlify Dashboards
+### Firebase Hosting and Functions
 
-- View deployment logs
-- Monitor build times
-- Check analytics (if enabled)
+- View Hosting releases and logs in Firebase Console → Hosting
+- View function logs with `firebase functions:log`
+- Monitor Auth, Firestore, Storage, and Functions usage in Firebase Console
 
 ## Troubleshooting
 
@@ -310,7 +278,7 @@ The deployment will start automatically.
 - ✅ Storage security rules deployed
 - ✅ Environment variables not committed to Git
 - ✅ Firebase Auth domain restricted to your production URL
-- ✅ HTTPS enforced (Vercel/Netlify do this automatically)
+- ✅ HTTPS enforced by Firebase Hosting
 
 ## Scaling Considerations
 
@@ -330,16 +298,13 @@ Firebase Free Tier (Spark Plan):
 
 Should be sufficient for small vineyards (2-10 projects).
 
-Vercel/Netlify Free Tier:
-- Vercel: 100GB bandwidth/month
-- Netlify: 100GB bandwidth/month, 300 build minutes/month
-
-Both are generous for personal/small team use.
+Firebase Hosting and the Firebase services have plan-specific quotas; review
+current pricing, quotas, and budget alerts before enabling Cloud Functions.
 
 ## Support
 
 For issues, check:
 1. Firebase Console for errors
 2. Browser developer console
-3. Deployment platform logs (Vercel/Netlify)
+3. Firebase Console Hosting and Functions logs
 4. This project's GitHub issues (if applicable)

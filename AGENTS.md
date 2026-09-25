@@ -14,7 +14,7 @@ A collaborative winemaking management app for small vineyards (2-person teams). 
 - **Frontend**: React 18 + TypeScript + Vite
 - **Styling**: Tailwind CSS with wine-themed colors
 - **Backend**: Firebase (Auth + Firestore + Storage)
-- **Deployment**: Vercel or Netlify (free tier)
+- **Deployment**: Firebase Hosting (static SPA)
 
 ### Data Model
 
@@ -234,16 +234,15 @@ npm run preview      # Preview production build
 
 The app uses Firebase Cloud Functions for calendar subscription features:
 
-1. Install and build functions:
+1. Install and build functions (Node.js 22):
    ```bash
-   cd functions
-   npm install
-   npm run build
+   npm --prefix functions ci
+   npm --prefix functions run build
    ```
 
 2. Deploy functions:
    ```bash
-   firebase deploy --only functions
+   firebase deploy --only functions --project YOUR_FIREBASE_PROJECT_ID
    ```
 
 3. **CORS Configuration**: Functions use the `cors` package to handle cross-origin requests:
@@ -296,12 +295,13 @@ await revokeCalendarToken(token);
 
 ### Deployment
 ```bash
-# Install and build functions
-cd functions && npm install && npm run build
+# Install and build functions (Node.js 22)
+npm --prefix functions ci
+npm --prefix functions run build
 
 # Deploy functions and rules
-firebase deploy --only functions
-firebase deploy --only firestore:rules
+firebase deploy --only functions --project YOUR_FIREBASE_PROJECT_ID
+firebase deploy --only firestore:rules --project YOUR_FIREBASE_PROJECT_ID
 ```
 
 See `CALENDAR-SUBSCRIPTION.md` for complete documentation.

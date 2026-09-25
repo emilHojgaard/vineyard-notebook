@@ -90,17 +90,21 @@ The `ics-generator.ts` utility:
 npm install -g firebase-tools
 ```
 
-### 2. Install Function Dependencies
+### 2. Install and Build Functions
+Functions use the Node.js 22 runtime. Install from the lockfile and build
+before deploying:
+
 ```bash
-cd functions
-npm install
-cd ..
+npm --prefix functions ci
+npm --prefix functions run build
 ```
 
 ### 3. Deploy Functions and Rules
+Select the intended Firebase project explicitly:
+
 ```bash
-firebase deploy --only functions
-firebase deploy --only firestore:rules
+firebase deploy --only functions --project YOUR_FIREBASE_PROJECT_ID
+firebase deploy --only firestore:rules --project YOUR_FIREBASE_PROJECT_ID
 ```
 
 ### 4. Update Function URL in Code
