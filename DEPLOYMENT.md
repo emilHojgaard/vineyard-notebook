@@ -1,12 +1,28 @@
 # Vineyard Notebook - Deployment Guide
 
-This guide covers deploying the Vineyard Notebook to production.
+This guide covers deploying Vineyard Notebook to Firebase Hosting. Hosting is a
+static single-page app deployment; Firebase Auth, Firestore, Storage, and
+Functions keep their existing behavior.
 
 ## Prerequisites
 
-1. A Firebase project
-2. A Vercel or Netlify account
-3. Git repository
+1. A Firebase project with a registered web app.
+2. Firebase CLI installed (`npm install -g firebase-tools`) and authenticated
+   with `firebase login`.
+3. Firebase Hosting enabled for the project. Select the project with
+   `firebase use YOUR_FIREBASE_PROJECT_ID` (or pass `--project` to each command).
+   This repository already contains the Hosting configuration; do not overwrite
+   `firebase.json` with a new initialization.
+4. Email/Password Authentication, Firestore, and Storage enabled as described
+   below. Enable Functions only if using the live calendar feed.
+5. Billing: Hosting, Auth, Firestore, and Storage can be used on the Spark plan
+   within its quotas. Deploying or running the calendar Cloud Functions requires
+   the Blaze (pay-as-you-go) plan; review quotas and budget alerts before using it.
+6. The deployed Hosting domain must be listed in Firebase Console →
+   Authentication → Settings → Authorized domains. Add a custom domain there
+   too if one is used. `localhost` is needed for local development.
+
+No production deployment or data migration is part of local validation.
 
 ## Firebase Setup
 
@@ -80,7 +96,9 @@ firebase deploy --only storage:rules
 
 ## Environment Variables
 
-Create a `.env` file (don't commit this):
+Vite embeds these values into the browser bundle at build time. Create a local
+`.env` or a deployment-only `.env.production` (both are ignored by Git); never
+put secrets or a real production configuration in the repository:
 
 ```env
 VITE_FIREBASE_API_KEY=AIza...
@@ -90,6 +108,67 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abc123
 ```
+
+All six `VITE_FIREBASE_*` variables are required for a configured build. They
+identify the Firebase web app; access is still enforced by Firebase Auth and
+security rules.
+
+## Firebase Hosting
+
+Run the build locally before deploying so the `dist/` output and manifest can
+be checked without contacting Firebase:
+
+```bash
+npm ci
+npm run lint
+npm test
+npm run build
+npm run preview # optional local production preview
+```
+
+Deploy only Hosting after selecting the intended Firebase project:
+
+```bash
+firebase login
+firebase use YOUR_FIREBASE_PROJECT_ID
+firebase deploy --only hosting
+# Or avoid changing local project selection:
+firebase deploy --only hosting --project YOUR_FIREBASE_PROJECT_ID
+```
+
+`firebase.json` publishes `dist/`, ignores dotfiles and dependencies, and
+rewrites unknown paths to `index.html` for React Router. Vite fingerprints
+bundled assets under `dist/assets/`; Firebase serves those immutable assets
+for one year. `index.html` and `sw.js` are explicitly no-cache so a new shell
+and service-worker version can be discovered after release.
+
+### App-shell caching and limitations
+
+The production service worker caches only the static app shell, install icons,
+and hashed Vite assets. It uses the network first for navigations and falls
+back to the cached shell only when offline. It does **not** cache Firebase
+Auth, Firestore, Storage, Functions, or other API responses, and it does not
+make the authenticated app usable on a first visit without network access.
+Firestore's existing SDK persistence remains responsible for its own offline
+behavior; this PWA layer does not change that configuration.
+
+After a release, normal navigation discovers the no-cache `sw.js`. If a client
+is stuck on an old shell, close all app tabs and reload; as a last resort clear
+this site's service-worker/cache data in browser settings. Do not add broad
+cache rules to the service worker because authenticated or API data must not be
+retained there.
+
+### Rollback
+
+If a Hosting release is faulty, use Firebase Console → Hosting → Release
+history → the known-good release → **Rollback**, then verify the site and Auth
+sign-in. The Firebase CLI does not expose a general live-release rollback
+command; use a deliberate new deployment of the known-good commit if the
+console rollback is unavailable.
+
+Because `index.html` and the worker are no-cache, rollback is normally visible
+on the next navigation. Existing hashed assets are retained by Hosting; do not
+manually delete them while investigating.
 
 ## Deploy to Vercel
 

@@ -18,7 +18,7 @@ A collaborative winemaking management app for small vineyards. Track your vineya
 - **Frontend**: React 18 + TypeScript + Vite
 - **Styling**: Tailwind CSS
 - **Backend**: Firebase (Auth + Firestore + Storage)
-- **Hosting**: Vercel/Netlify (free tier)
+- **Hosting**: Firebase Hosting (static SPA)
 
 ## Project Structure
 
@@ -77,16 +77,15 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 ## Deployment
 
-### Vercel
-```bash
-npm install -g vercel
-vercel
-```
+Firebase Hosting serves the production build from `dist/` and provides the SPA
+fallback configured in `firebase.json`. See [DEPLOYMENT.md](DEPLOYMENT.md) for
+Firebase project prerequisites, environment variables, cache behavior, and
+rollback guidance.
 
-### Netlify
 ```bash
-npm install -g netlify-cli
-netlify deploy
+npm ci
+npm run build
+firebase deploy --only hosting --project YOUR_FIREBASE_PROJECT_ID
 ```
 
 ## License
