@@ -233,7 +233,28 @@ test('members cannot inject membership or mutate invitation ownership', async ()
   }));
 });
 
-test('project members can access project storage but outsiders cannot', async () => {
+test('a newly created project owner can immediately use both media paths', async () => {
+  const ownerId = 'created-owner';
+  const newProjectId = 'created-project';
+  const ownerDb = testEnv.authenticatedContext(ownerId).firestore();
+  await assertSucceeds(setDoc(doc(ownerDb, 'projects', newProjectId), {
+    name: 'Created Vineyard',
+    members: [ownerId],
+    owners: [ownerId],
+    createdBy: ownerId,
+    memberAddedAt: { [ownerId]: new Date() },
+  }));
+
+  const ownerStorage = testEnv.authenticatedContext(ownerId).storage();
+  const photo = ownerStorage.ref(`projects/${newProjectId}/photos/phase.jpg`);
+  const libraryFile = ownerStorage.ref(`projects/${newProjectId}/library/reference.pdf`);
+  await assertSucceeds(photo.putString('phase photo'));
+  await assertSucceeds(libraryFile.putString('library file'));
+  await assertSucceeds(photo.getDownloadURL());
+  await assertSucceeds(libraryFile.getDownloadURL());
+});
+
+test('project members can upload and read phase photos, but outsiders cannot', async () => {
   const memberStorage = testEnv.authenticatedContext('member-1').storage();
   const outsiderStorage = testEnv.authenticatedContext('outsider-1').storage();
   const memberFile = memberStorage.ref('projects/demo-vineyard/photos/member.txt');
@@ -242,6 +263,24 @@ test('project members can access project storage but outsiders cannot', async ()
   await assertSucceeds(memberFile.putString('member data'));
   await assertFails(outsiderFile.putString('outsider data'));
   await assertSucceeds(memberFile.getDownloadURL());
+  await assertFails(outsiderStorage.ref('projects/demo-vineyard/photos/member.txt').getDownloadURL());
+});
+
+test('project members can upload and read library files, but outsiders cannot', async () => {
+  const memberStorage = testEnv.authenticatedContext('member-1').storage();
+  const outsiderStorage = testEnv.authenticatedContext('outsider-1').storage();
+  const memberFile = memberStorage.ref('projects/demo-vineyard/library/member.pdf');
+  const outsiderFile = outsiderStorage.ref('projects/demo-vineyard/library/outsider.pdf');
+
+  await assertSucceeds(memberFile.putString('member library data'));
+  await assertFails(outsiderFile.putString('outsider library data'));
+  await assertSucceeds(memberFile.getDownloadURL());
+  await assertFails(outsiderStorage.ref('projects/demo-vineyard/library/member.pdf').getDownloadURL());
+});
+
+test('storage paths outside media collections are denied', async () => {
+  const memberStorage = testEnv.authenticatedContext('member-1').storage();
+  await assertFails(memberStorage.ref('projects/demo-vineyard/private/member.txt').putString('private data'));
 });
 
 test('only owners can create invitations and invited email can read its invitation', async () => {
