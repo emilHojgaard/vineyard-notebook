@@ -43,11 +43,16 @@ export function deleteNodeFromTree(root: Node[], nodeId: string): void {
 
   const { node, parent, siblings, index } = found;
   if (node.branches?.length) {
+    // A node inside a branch must promote its descendants into that same
+    // branch. Attaching the child branches to `parent` would make them
+    // siblings of the containing branch and lose the path that led to them.
     if (parent) {
-      parent.branches = parent.branches
-        ? [...parent.branches, ...node.branches]
-        : node.branches;
-    } else if (index > 0) {
+      const promotedNodes = node.branches.flatMap((branch) => branch.nodes);
+      siblings.splice(index, 1, ...promotedNodes);
+      return;
+    }
+
+    if (index > 0) {
       const previous = siblings[index - 1];
       previous.branches = previous.branches
         ? [...previous.branches, ...node.branches]
