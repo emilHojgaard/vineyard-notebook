@@ -4,6 +4,8 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  clearIndexedDbPersistence,
+  terminate,
   connectFirestoreEmulator,
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
@@ -29,6 +31,17 @@ export const db = initializeFirestore(app, {
 });
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+
+/**
+ * Clear a damaged or stale local Firestore cache. Termination is required by
+ * the SDK before IndexedDB can be deleted; callers should reload immediately
+ * afterwards so a fresh Firestore instance is created. This only affects the
+ * local cache and never changes Firestore rules or server data.
+ */
+export async function resetFirestoreCache(): Promise<void> {
+  await terminate(db);
+  await clearIndexedDbPersistence(db);
+}
 
 // Connect to emulators in development if needed
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {

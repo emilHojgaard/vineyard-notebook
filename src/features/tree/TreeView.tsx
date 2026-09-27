@@ -64,7 +64,7 @@ interface PinchState {
 }
 
 export function TreeView() {
-  const { seasons, appState, currentProject, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { seasons, appState, currentProject, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
   const season = seasons[appState.year];
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
@@ -300,7 +300,7 @@ export function TreeView() {
   }, [zoomAt]);
 
   if (dataLoading || dataError) {
-    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="tree" />;
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} onReset={() => { void resetData(); }} label="tree" />;
   }
 
   if (!season) {

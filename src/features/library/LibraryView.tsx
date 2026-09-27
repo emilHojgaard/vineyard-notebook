@@ -14,7 +14,7 @@ import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 import { updateLibraryItem } from './libraryEditing';
 
 export function LibraryView() {
-  const { library, updateLibrary, currentProject, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { library, updateLibrary, currentProject, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
   const { canEditContent, isLocked } = useSeasonPermissions();
   // Section mutations require explicit edit mode. Existing items can still be
   // browsed and their content edited while locked; adding items to an existing
@@ -126,7 +126,7 @@ export function LibraryView() {
   }, []);
 
   if (dataLoading || dataError) {
-    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="library" />;
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} onReset={() => { void resetData(); }} label="library" />;
   }
 
   if (!library) {

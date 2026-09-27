@@ -36,6 +36,7 @@ import {
   revokeCalendarToken as revokeCalendarTokenInRepository,
 } from '../lib/repositories/calendar-repository';
 import { statusForError, type ConnectionStatus } from '../lib/connection-status';
+import { resetFirestoreCache } from '../lib/firebase';
 
 interface DataContextType {
   currentProject: Project | null;
@@ -56,6 +57,7 @@ interface DataContextType {
   dataError: string | null;
   connectionStatus: ConnectionStatus;
   retryData: () => void;
+  resetData: () => Promise<void>;
   focusedBranchId: string | null;
   setFocusedBranchId: (branchId: string | null) => void;
   createProject: (name: string) => Promise<string>;
@@ -108,6 +110,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online',
   );
   const [dataRetryKey, setDataRetryKey] = useState(0);
+  const [projectRetryKey, setProjectRetryKey] = useState(0);
+  const pendingProjectIdRef = useRef<string | null>(null);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
   const [lastDeletion, setLastDeletionState] = useState<{
     projectId: string;
@@ -126,6 +130,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setDataLoading(true);
     setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting');
     setDataRetryKey((key) => key + 1);
+    setProjectRetryKey((key) => key + 1);
   };
 
   const handleDataError = (error: unknown) => {
@@ -133,6 +138,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setDataError(message);
     setDataLoading(false);
     setConnectionStatus(statusForError(error, typeof navigator === 'undefined' || navigator.onLine));
+  };
+
+  const resetData = async () => {
+    setDataError(null);
+    setDataLoading(true);
+    try {
+      await resetFirestoreCache();
+      // Firestore instances cannot be reused after terminate(). A reload is
+      // deliberate here: it recreates the SDK and leaves server data intact.
+      window.location.reload();
+    } catch (error: unknown) {
+      setDataLoading(false);
+      setDataError(error instanceof Error
+        ? `Could not reset the local cache. Close other Vineyard Notebook tabs and try again. (${error.message})`
+        : 'Could not reset the local cache. Close other Vineyard Notebook tabs and try again.');
+      setConnectionStatus('error');
+    }
   };
 
   const markDataLoaded = (loadedCollections: Set<string>, collectionName: string) => {
@@ -149,6 +171,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const handleOnline = () => {
       setConnectionStatus('reconnecting');
       setDataRetryKey((key) => key + 1);
+      setProjectRetryKey((key) => key + 1);
     };
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
@@ -189,7 +212,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setAppState((prev) => (prev.locked ? prev : { ...prev, locked: true }));
   }, [currentUser?.uid]);
 
-  // Load user's projects
+  // Load user's projects. A retry must recreate this listener too; otherwise a
+  // terminal snapshot error leaves the no-project screen stuck forever.
   useEffect(() => {
     if (!currentUser) {
       setProjects([]);
@@ -200,22 +224,60 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    return subscribeProjects(currentUser.uid, (loadedProjects) => {
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRetry = () => {
+      if (retryTimer !== null) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (active) setProjectRetryKey((key) => key + 1);
+      }, 1500);
+    };
+
+    const unsubscribe = subscribeProjects(currentUser.uid, (loadedProjects) => {
+      if (!active) return;
       setProjects(loadedProjects);
       // Auto-select the first project if none is selected, and keep the selected
       // project current when ownership or membership changes remotely.
       setCurrentProject((selectedProject) => {
-        if (selectedProject) {
-          return loadedProjects.find((project) => project.id === selectedProject.id) || null;
+        const loadedSelection = selectedProject
+          ? loadedProjects.find((project) => project.id === selectedProject.id)
+          : undefined;
+        if (loadedSelection) {
+          pendingProjectIdRef.current = null;
+          return loadedSelection;
+        }
+        // A successful create writes several documents atomically, but the
+        // projects listener may briefly deliver its cached empty result first.
+        // Keep the optimistic selection until that write appears in the list.
+        if (selectedProject && selectedProject.id === pendingProjectIdRef.current) {
+          return selectedProject;
         }
         return loadedProjects[0] || null;
       });
       setLoading(false);
+      // A successful project snapshot clears a prior project-list error. Do
+      // not clear a separate season/inventory error while an active project
+      // is still being synchronized.
+      if (!currentProjectRef.current) {
+        setDataError(null);
+        setConnectionStatus('online');
+      }
     }, (error) => {
+      if (!active) return;
       setLoading(false);
       handleDataError(error);
+      if (statusForError(error, typeof navigator === 'undefined' || navigator.onLine) === 'reconnecting') {
+        scheduleRetry();
+      }
     });
-  }, [currentUser]);
+
+    return () => {
+      active = false;
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      unsubscribe();
+    };
+  }, [currentUser, projectRetryKey]);
 
   // Auto-adjust year when switching projects
   useEffect(() => {
@@ -252,12 +314,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLastDeletion(null);
   }, [currentProject?.id, appState.year]);
 
-  // Load project data when project changes
+  // Load project data when project changes. Snapshot errors are terminal for a
+  // listener, so reconnect by replacing all listeners. Ignore callbacks from
+  // a listener that has already been cleaned up; otherwise a stale lease error
+  // can overwrite a successful retry.
   useEffect(() => {
     if (!currentProject) {
       setDataLoading(false);
       return;
     }
+
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRetry = () => {
+      if (retryTimer !== null) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (active) setDataRetryKey((key) => key + 1);
+      }, 1500);
+    };
+    const onSubscriptionError = (error: unknown) => {
+      if (!active) return;
+      handleDataError(error);
+      if (statusForError(error, typeof navigator === 'undefined' || navigator.onLine) === 'reconnecting') {
+        scheduleRetry();
+      }
+    };
 
     setDataLoading(true);
     setDataError(null);
@@ -266,32 +348,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // Load seasons
     unsubscribers.push(subscribeSeasons(currentProject.id, (loadedSeasons) => {
+      if (!active) return;
       Object.values(loadedSeasons).forEach((season) => syncStatuses(season.root));
       setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
       markDataLoaded(loadedCollections, 'seasons');
-    }, (error) => handleDataError(error)));
+    }, onSubscriptionError));
 
     // Load inventory
     unsubscribers.push(subscribeInventory(currentProject.id, (loadedInventory) => {
+      if (!active) return;
       setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
       markDataLoaded(loadedCollections, 'inventory');
-    }, (error) => handleDataError(error)));
+    }, onSubscriptionError));
 
     // Load library (project-wide, not per-year)
     unsubscribers.push(subscribeLibrary(currentProject.id, (lib) => {
+      if (!active) return;
       setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
       markDataLoaded(loadedCollections, 'library');
-    }, (error) => handleDataError(error)));
+    }, onSubscriptionError));
 
     // Load pending invitations
     unsubscribers.push(subscribeProjectInvitations(currentProject.id, (invites) => {
-      setPendingInvitations(invites as Invitation[]);
+      if (active) setPendingInvitations(invites as Invitation[]);
     }));
 
     // Load members
     void loadMembers(currentProject.id);
 
     return () => {
+      active = false;
+      if (retryTimer !== null) clearTimeout(retryTimer);
       unsubscribers.forEach((unsub) => unsub());
     };
   }, [currentProject, dataRetryKey]);
@@ -304,6 +391,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) throw new Error('Must be logged in');
 
     const projectId = uid('proj');
+    pendingProjectIdRef.current = projectId;
     const year = new Date().getFullYear();
     // Profile creation remains separate so an existing profile is never overwritten.
     await ensureUserProfile({
@@ -318,14 +406,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       locked: true,
     };
     syncStatuses(initialSeason.root);
-    await createProjectInRepository({
-      id: projectId,
-      name,
-      ownerId: currentUser.uid,
-      season: initialSeason,
-      inventory: defaultInventory(),
-      library: { sections: [] },
-    });
+    try {
+      await createProjectInRepository({
+        id: projectId,
+        name,
+        ownerId: currentUser.uid,
+        season: initialSeason,
+        inventory: defaultInventory(),
+        library: { sections: [] },
+      });
+    } catch (error) {
+      pendingProjectIdRef.current = null;
+      throw error;
+    }
 
     // Immediately set as current project (don't wait for snapshot)
     const newProject: Project = {
@@ -760,6 +853,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     dataError,
     connectionStatus,
     retryData,
+    resetData,
     focusedBranchId,
     setFocusedBranchId,
     createProject,

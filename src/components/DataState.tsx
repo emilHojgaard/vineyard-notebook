@@ -5,10 +5,11 @@ interface DataStateProps {
   error: string | null;
   connectionStatus?: ConnectionStatus;
   onRetry: () => void;
+  onReset?: () => void;
   label: string;
 }
 
-export function DataState({ loading, error, connectionStatus, onRetry, label }: DataStateProps) {
+export function DataState({ loading, error, connectionStatus, onRetry, onReset, label }: DataStateProps) {
   if (loading) {
     return (
       <div className="p-8 text-center" role="status" aria-live="polite">
@@ -32,13 +33,24 @@ export function DataState({ loading, error, connectionStatus, onRetry, label }: 
       <p className="mb-4 text-xs text-ink-soft">
         {connectionStatus === 'error' ? 'Check your connection, then try again.' : 'You can try again now or when your connection returns.'}
       </p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-lg bg-burgundy px-4 py-2 text-sm font-semibold text-white hover:bg-burgundy-deep"
-      >
-        Try again
-      </button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg bg-burgundy px-4 py-2 text-sm font-semibold text-white hover:bg-burgundy-deep"
+        >
+          Try again
+        </button>
+        {onReset && connectionStatus === 'reconnecting' && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-soft hover:bg-surface-2"
+          >
+            Reset local cache
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -42,6 +42,7 @@ export function InventoryView() {
     dataError,
     connectionStatus,
     retryData,
+    resetData,
   } = useData();
   const inv = inventory[appState.year];
   const { isArchived, isLocked, canEditContent } = useSeasonPermissions();
@@ -180,7 +181,7 @@ export function InventoryView() {
   };
 
   if (dataLoading || dataError) {
-    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="inventory" />;
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} onReset={() => { void resetData(); }} label="inventory" />;
   }
 
   if (!hasSeasons) {

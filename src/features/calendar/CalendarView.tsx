@@ -24,7 +24,7 @@ function formatMonth(date: Date): string {
 }
 
 export function CalendarView() {
-  const { seasons, appState, updateAppState, dataLoading, dataError, connectionStatus, retryData } = useData();
+  const { seasons, appState, updateAppState, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
   const season = seasons[appState.year];
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export function CalendarView() {
   }
 
   if (dataLoading || dataError) {
-    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="calendar" />;
+    return <DataState loading={dataLoading} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} onReset={() => { void resetData(); }} label="calendar" />;
   }
 
   if (!season) {

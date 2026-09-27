@@ -54,7 +54,7 @@ function InvitationNotifications() {
 
 function AppContent() {
   const { currentUser } = useAuth();
-  const { currentProject, loading, appState, dataError, connectionStatus, retryData } = useData();
+  const { currentProject, loading, appState, dataError, connectionStatus, retryData, resetData } = useData();
 
   if (!currentUser) {
     return <LoginPage />;
@@ -68,7 +68,7 @@ function AppContent() {
 
   if (!currentProject) {
     if (dataError) {
-      return <DataState loading={false} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} label="projects" />;
+      return <DataState loading={false} error={dataError} connectionStatus={connectionStatus} onRetry={retryData} onReset={() => { void resetData(); }} label="projects" />;
     }
     return <ProjectSetup />;
   }
