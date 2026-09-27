@@ -263,7 +263,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setPendingInvitations(null);
     setFocusedBranchId(null);
     setLastDeletion(null);
-    pendingProjectIdRef.current = null;
+    pendingProjectRef.current = null;
     seasonSaveQueuesRef.current = {};
     firstDataErrorRef.current = null;
     firstDataErrorSourceRef.current = null;
