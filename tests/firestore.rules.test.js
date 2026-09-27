@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 let testEnv;
@@ -63,6 +63,85 @@ test.beforeEach(seedTestData);
 
 test.after(async () => {
   await testEnv.cleanup();
+});
+
+test('a new signed-in user can create a project and its initial records atomically', async () => {
+  const userId = 'new-user';
+  const newProjectId = 'new-project';
+  const year = 2027;
+  const newUserDb = testEnv.authenticatedContext(userId).firestore();
+  const batch = writeBatch(newUserDb);
+  batch.set(doc(newUserDb, 'projects', newProjectId), {
+    name: 'New Vineyard',
+    members: [userId],
+    owners: [userId],
+    createdBy: userId,
+    createdAt: new Date(),
+    memberAddedAt: { [userId]: new Date() },
+  });
+  batch.set(doc(newUserDb, 'seasons', `${newProjectId}_${year}`), {
+    projectId: newProjectId,
+    status: 'current',
+    title: String(year),
+    structure: [],
+    content: {},
+    locked: false,
+    revision: 1,
+  });
+  batch.set(doc(newUserDb, 'inventory', `${newProjectId}_${year}`), {
+    projectId: newProjectId,
+    year,
+    sections: [],
+    structure: [],
+    revision: 1,
+  });
+  batch.set(doc(newUserDb, 'library', newProjectId), {
+    projectId: newProjectId,
+    sections: [],
+    revision: 1,
+  });
+
+  await assertSucceeds(batch.commit());
+});
+
+test('non-members cannot create or mutate project-scoped records', async () => {
+  const outsiderDb = testEnv.authenticatedContext('outsider-1').firestore();
+  const year = 2027;
+
+  await assertFails(setDoc(doc(outsiderDb, 'seasons', `${projectId}_${year}`), {
+    projectId,
+    status: 'current',
+    title: String(year),
+    structure: [],
+    content: {},
+    revision: 1,
+  }));
+  await assertFails(setDoc(doc(outsiderDb, 'inventory', `${projectId}_${year}`), {
+    projectId,
+    year,
+    sections: [],
+    structure: [],
+    revision: 1,
+  }));
+  await assertFails(setDoc(doc(outsiderDb, 'library', 'outsider-project'), {
+    projectId: 'outsider-project',
+    sections: [],
+    revision: 1,
+  }));
+
+  await assertFails(updateDoc(doc(outsiderDb, 'seasons', `${projectId}_2026`), {
+    content: { outsider: true },
+    revision: 2,
+  }));
+  await assertFails(updateDoc(doc(outsiderDb, 'inventory', `${projectId}_2026`), {
+    sections: [],
+    structure: [],
+    revision: 2,
+  }));
+  await assertFails(updateDoc(doc(outsiderDb, 'library', projectId), {
+    sections: [],
+    revision: 2,
+  }));
 });
 
 test('project members can read project-scoped data', async () => {

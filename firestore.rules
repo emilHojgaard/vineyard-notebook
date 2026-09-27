@@ -14,6 +14,17 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in project(projectId).members;
     }
 
+    // Atomic project creation writes the project and its initial records in one
+    // batch. get() sees only the committed database, while getAfter() includes
+    // the batch's final project document for these create checks.
+    function projectAfter(projectId) {
+      return getAfter(/databases/$(database)/documents/projects/$(projectId)).data;
+    }
+
+    function isProjectMemberAfter(projectId) {
+      return signedIn() && request.auth.uid in projectAfter(projectId).members;
+    }
+
     function isProjectOwner(projectId) {
       return isProjectMember(projectId) &&
         (request.auth.uid == project(projectId).createdBy ||
@@ -54,7 +65,7 @@ service cloud.firestore {
       allow read: if isProjectMember(resource.data.projectId);
       // A season is created only in the current state and its document ID is
       // bound to its project partition and year/title.
-      allow create: if isProjectMember(request.resource.data.projectId) &&
+      allow create: if isProjectMemberAfter(request.resource.data.projectId) &&
         request.resource.data.status == 'current' &&
         request.resource.data.revision == 1 &&
         seasonId == request.resource.data.projectId + '_' + request.resource.data.title;
@@ -82,14 +93,14 @@ service cloud.firestore {
       allow read: if isProjectMember(resource.data.projectId);
       // Inventory is partitioned by project and year. The season gate also
       // prevents writes after the corresponding season is archived.
-      allow create: if isProjectMember(request.resource.data.projectId) &&
-        inventoryId == request.resource.data.projectId + '_' + request.resource.data.year &&
+      allow create: if isProjectMemberAfter(request.resource.data.projectId) &&
+        inventoryId == request.resource.data.projectId + '_' + string(request.resource.data.year) &&
         request.resource.data.revision == 1 &&
         request.resource.data.keys().hasAll(['structure']) &&
-        get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
+        getAfter(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
       allow update: if isProjectMember(resource.data.projectId) &&
         resource.data.projectId == request.resource.data.projectId &&
-        inventoryId == request.resource.data.projectId + '_' + request.resource.data.year &&
+        inventoryId == request.resource.data.projectId + '_' + string(request.resource.data.year) &&
         ((!resource.data.keys().hasAll(['revision']) && request.resource.data.revision == 1) ||
          request.resource.data.revision == resource.data.revision + 1) &&
         (!resource.data.keys().hasAll(['structure']) ||
@@ -103,7 +114,7 @@ service cloud.firestore {
 
     match /library/{projectId} {
       allow read, delete: if isProjectMember(projectId);
-      allow create: if isProjectMember(projectId) &&
+      allow create: if isProjectMemberAfter(projectId) &&
         request.resource.data.projectId == projectId &&
         request.resource.data.revision == 1;
       allow update: if isProjectMember(projectId) &&
