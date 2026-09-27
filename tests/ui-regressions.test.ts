@@ -25,6 +25,15 @@ test('TreeView gives empty branches a browse message and an edit action', () => 
   assert.match(tree, /setAddingPhase\(\{ parentNodeId: label\.parentNodeId, branchId: label\.branchId \}\)/);
 });
 
+test('inventory item additions stay available outside edit mode', () => {
+  const inventory = read('src/features/inventory/InventoryView.tsx');
+
+  assert.match(inventory, /const handleAddItem = async \(sectionId: string\) => \{\s+if \(isArchived\) return;/);
+  assert.match(inventory, /\{!isArchived && \(\s+<button\s+onClick=\{\(\) => handleAddItem\(section\.id\)\}/);
+  assert.match(inventory, /const handleDeleteSection = async \(sectionId: string\) => \{\s+if \(isArchived \|\| !isEditMode\) return;/);
+  assert.match(inventory, /const handleDeleteItem = async \(sectionId: string, itemId: string, itemIndex: number\) => \{\s+if \(isArchived \|\| !isEditMode\) return;/);
+});
+
 test('phase and item creation fields opt into initial focus', () => {
   const phaseModal = read('src/features/timeline/PhaseModal.tsx');
   const timeline = read('src/features/timeline/TimelineView.tsx');

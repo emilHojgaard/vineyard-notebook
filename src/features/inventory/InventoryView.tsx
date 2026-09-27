@@ -46,8 +46,9 @@ export function InventoryView() {
   } = useData();
   const inv = inventory[appState.year];
   const { isArchived, isLocked, canEditContent } = useSeasonPermissions();
-  // Structural inventory mutations require the explicit edit mode. Item fields
-  // remain editable while locked, as defined by the season permissions policy.
+  // Section mutations require the explicit edit mode. Existing items can still
+  // be edited while locked; adding an item to an existing section is also
+  // available in browse mode, matching Library behavior.
   const isEditMode = canEditContent && !isLocked;
   const season = seasons[appState.year];
 
@@ -142,7 +143,7 @@ export function InventoryView() {
   };
 
   const handleSaveItem = async (identity: InventoryItemIdentity) => {
-    if (isArchived || !isEditMode) return;
+    if (isArchived) return;
     const itemKey = inventoryItemKey(identity);
     const draft = drafts[itemKey];
     if (!draft) return;
@@ -280,7 +281,7 @@ export function InventoryView() {
   };
 
   const handleAddItem = async (sectionId: string) => {
-    if (isArchived || !isEditMode) return;
+    if (isArchived) return;
     const updatedInv = JSON.parse(JSON.stringify(inv));
     const section = updatedInv.sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -610,7 +611,7 @@ export function InventoryView() {
                   </div>
                 )}
 
-                {!isArchived && isEditMode && (
+                {!isArchived && (
                   <button
                     onClick={() => handleAddItem(section.id)}
                     className="w-fit mx-auto px-3 py-2 border-2 border-dashed border-border rounded-md text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2"
