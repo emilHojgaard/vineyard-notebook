@@ -4,7 +4,9 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Keep media in the two application-owned collections. The project ID is
     // the only authorization boundary; do not grant access to arbitrary paths
-    // below projects/{projectId}.
+    // below projects/{projectId}. These Firestore lookups require the
+    // Firebase Rules Firestore Service Agent IAM role on the Storage service
+    // agent; deployment documentation calls out that prerequisite.
     function isProjectMember(projectId) {
       return request.auth != null &&
         firestore.exists(

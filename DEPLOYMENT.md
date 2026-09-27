@@ -86,6 +86,27 @@ firebase deploy --only firestore:rules
 firebase deploy --only storage:rules
 ```
 
+**Required Storage cross-service permission:** `storage.rules` authorizes media
+by looking up the live project membership document in Firestore. The Storage
+service agent must therefore have the Google-managed **Firebase Rules Firestore
+Service Agent** role (`roles/firebaserules.firestoreServiceAgent`). Without
+that role, Firebase can accept and publish the rules while every authenticated
+Storage request that reaches these Firestore lookups is denied with HTTP 403.
+
+If the deploy prompt does not grant it automatically, open Google Cloud
+Console → **IAM & Admin → IAM**, enable **Include Google-provided role grants**,
+and grant that role to:
+
+```text
+service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com
+```
+
+Then rerun the Storage rules deploy from an interactive, authenticated Firebase
+CLI session. Do not replace this check with a public or authenticated-user-wide
+Storage grant. The repository rule comment is intentionally updated whenever
+this prerequisite needs to be re-checked, so the CLI does not incorrectly skip
+an unchanged ruleset.
+
 ### 6. Get Firebase Configuration
 
 1. In Firebase Console, click the gear icon → **Project settings**
