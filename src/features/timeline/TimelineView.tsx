@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
-import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus } from '../../lib/utils';
+import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus, resolveSelectedNode } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -15,7 +15,7 @@ export function TimelineView() {
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [addingPhase, setAddingPhase] = useState(false);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [addingPhaseContext, setAddingPhaseContext] = useState<{ parentNodeId?: string | null; branchId?: string | null; afterNodeId?: string | null } | null>(null);
@@ -32,32 +32,9 @@ export function TimelineView() {
   useEffect(() => {
     if (!season || !appState.focusedNodeId) return;
 
-    // Helper function to find a node by ID
-    const findNodeById = (nodeId: string): Node | null => {
-      let found: Node | null = null;
-
-      const walk = (nodes: Node[]) => {
-        for (const node of nodes) {
-          if (node.id === nodeId) {
-            found = node;
-            return;
-          }
-          if (node.branches) {
-            for (const branch of node.branches) {
-              walk(branch.nodes);
-              if (found) return;
-            }
-          }
-        }
-      };
-
-      walk(season.root);
-      return found;
-    };
-
-    const node = findNodeById(appState.focusedNodeId);
+    const node = resolveSelectedNode(season.root, appState.focusedNodeId);
     if (node) {
-      setSelectedNode(node);
+      setSelectedNodeId(node.id);
     }
     // Clear the focusedNodeId after handling it
     updateAppState({ focusedNodeId: null });
@@ -149,6 +126,10 @@ export function TimelineView() {
   };
 
   const highlightedNodeIds = getHighlightedNodeIds(season.root, focusedBranchId);
+  // Keep the selection as an ID so Firestore snapshot rerenders replace the node
+  // object used by the modal. Mutating a stale selected node would otherwise
+  // make a later note save omit earlier photo/text changes.
+  const selectedNode = resolveSelectedNode(season.root, selectedNodeId);
 
   const getPhaseAlert = (node: Node): { text: string; type: 'event' | 'inv' } | null => {
     // Check for upcoming events first (higher priority)
@@ -210,7 +191,7 @@ export function TimelineView() {
             isFirst={index === 0}
             isLast={index === nodes.length - 1}
             accent={accent}
-            onOpenModal={() => setSelectedNode(node)}
+            onOpenModal={() => setSelectedNodeId(node.id)}
             onDelete={() => setConfirmDeletePhase({ id: node.id, name: node.name })}
             onBranch={() => setBranchingNode(node)}
             onAddPhase={() => {
@@ -413,7 +394,7 @@ export function TimelineView() {
         <PhaseModal
           node={selectedNode}
           isOpen={true}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => setSelectedNodeId(null)}
           onUpdate={() => updateSeason(appState.year, season)}
           isLocked={isLocked}
           isArchived={isArchived}

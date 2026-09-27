@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
-import { branchColor, TRUNK_COLOR, derivedStatus } from '../../lib/utils';
+import { branchColor, TRUNK_COLOR, derivedStatus, findNodeById, resolveSelectedNode } from '../../lib/utils';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -66,7 +66,7 @@ interface PinchState {
 export function TreeView() {
   const { seasons, appState, currentProject, updateSeason, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData } = useData();
   const season = seasons[appState.year];
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
   const [addingPhase, setAddingPhase] = useState<{ afterNodeId?: string; parentNodeId?: string; branchId?: string } | null>(null);
   const [newPhaseName, setNewPhaseName] = useState('');
@@ -320,6 +320,10 @@ export function TreeView() {
     );
   }
 
+  // Resolve the selected phase from the current season after every snapshot.
+  // Holding the node object itself can leave the modal editing stale data.
+  const selectedNode = resolveSelectedNode(season.root, selectedNodeId);
+
   const handleFocusBranch = (branchId: string | null) => {
     setFocusedBranchId(branchId);
   };
@@ -492,7 +496,7 @@ export function TreeView() {
                 >
                   <button
                     type="button"
-                    onClick={() => setSelectedNode(layoutNode.node)}
+                    onClick={() => setSelectedNodeId(layoutNode.node.id)}
                     aria-label={`Open phase ${layoutNode.node.name}`}
                     className="min-w-0 flex-1 self-stretch overflow-hidden text-left"
                   >
@@ -618,7 +622,7 @@ export function TreeView() {
         <PhaseModal
           node={selectedNode}
           isOpen={true}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => setSelectedNodeId(null)}
           onUpdate={() => updateSeason(appState.year, season)}
           isLocked={isLocked}
           isArchived={isArchived}
@@ -955,19 +959,6 @@ function isTextInput(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('input, textarea, select, [contenteditable]'),
   );
-}
-
-function findNodeById(nodes: Node[], id: string): Node | null {
-  for (const node of nodes) {
-    if (node.id === id) return node;
-    if (node.branches) {
-      for (const branch of node.branches) {
-        const found = findNodeById(branch.nodes, id);
-        if (found) return found;
-      }
-    }
-  }
-  return null;
 }
 
 function getBranchLabels(

@@ -139,6 +139,11 @@ export function findNodeById(nodes: Node[], id: string): Node | null {
   return found;
 }
 
+/** Resolve a modal selection against the latest season tree, not a stale node object. */
+export function resolveSelectedNode(nodes: Node[], selectedNodeId: string | null): Node | null {
+  return selectedNodeId ? findNodeById(nodes, selectedNodeId) : null;
+}
+
 // Image compression helper
 export function readAndCompress(
   file: File,

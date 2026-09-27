@@ -43,6 +43,16 @@ export function PhaseModal({
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const nodeRef = useRef(node);
+  const onUpdateRef = useRef(onUpdate);
+  const noteTextRef = useRef(noteText);
+  const photoPreviewRef = useRef(photoPreview);
+  // Async photo uploads can span a Firestore snapshot rerender. Keep the
+  // operation pointed at the latest node/callback and draft values.
+  nodeRef.current = node;
+  onUpdateRef.current = onUpdate;
+  noteTextRef.current = noteText;
+  photoPreviewRef.current = photoPreview;
 
   const ro = isLocked;
   const roEdit = isArchived;
@@ -62,8 +72,8 @@ export function PhaseModal({
     reader.readAsDataURL(file);
   };
 
-  const uploadPhoto = async (dataUrl: string): Promise<string | null> => {
-    if (!currentProject) return null;
+  const uploadPhoto = async (dataUrl: string): Promise<string> => {
+    if (!currentProject) throw new Error('Photo upload unavailable. Please try again.');
 
     try {
       const response = await fetch(dataUrl);
@@ -80,7 +90,7 @@ export function PhaseModal({
     setSaveState('saving');
     setSaveError(null);
     try {
-      await onUpdate();
+      await onUpdateRef.current();
       setSaveState('saved');
       return true;
     } catch (error) {
@@ -92,28 +102,30 @@ export function PhaseModal({
   };
 
   const handleAddNote = async () => {
-    if (!noteText.trim() && !photoPreview) return;
+    const draftPhoto = photoPreviewRef.current;
+    if (!noteTextRef.current.trim() && !draftPhoto) return;
 
     setUploading(true);
     try {
       let photoUrl: string | undefined;
-      if (photoPreview) photoUrl = (await uploadPhoto(photoPreview)) || undefined;
+      if (draftPhoto) photoUrl = await uploadPhoto(draftPhoto);
 
       const newNote: Note = {
         id: uid('note'),
         author: currentUser?.displayName || 'Unknown',
-        text: noteText.trim(),
+        text: noteTextRef.current.trim(),
         date: todayISO(),
         photo: photoUrl,
       };
 
-      node.notes.push(newNote);
+      const currentNode = nodeRef.current;
+      currentNode.notes.push(newNote);
       if (await persistChanges()) {
         setNoteText('');
         setPhotoPreview(null);
         if (photoInputRef.current) photoInputRef.current.value = '';
       } else {
-        node.notes.pop();
+        currentNode.notes.pop();
       }
     } catch (error) {
       setSaveState('failed');
