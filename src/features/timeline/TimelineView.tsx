@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
-import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, daysUntil, invStatus, resolveSelectedNode } from '../../lib/utils';
+import { fmtRange, derivedStatus, branchColor, TRUNK_COLOR, resolveSelectedNode } from '../../lib/utils';
+import { getPhaseAlert } from '../../lib/alerts';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from './PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -131,50 +132,6 @@ export function TimelineView() {
   // make a later note save omit earlier photo/text changes.
   const selectedNode = resolveSelectedNode(season.root, selectedNodeId);
 
-  const getPhaseAlert = (node: Node): { text: string; type: 'event' | 'inv' } | null => {
-    // Check for upcoming events first (higher priority)
-    const upcomingEvents = node.events.filter((ev) => {
-      const days = daysUntil(ev.date);
-      return node.status !== 'done' && days !== null && days <= appState.eventAlertDays;
-    });
-
-    if (upcomingEvents.length > 0) {
-      return {
-        text: upcomingEvents.length === 1
-          ? `"${upcomingEvents[0].name}" is coming up`
-          : `${upcomingEvents.length} checks coming up`,
-        type: 'event',
-      };
-    }
-
-    // Check for inventory shortages
-    if (inv && node.invIds.length > 0) {
-      const days = daysUntil(node.start);
-      if (node.status !== 'done' && days !== null && days <= appState.alertDays) {
-        const shortItems = node.invIds
-          .map((invId) => {
-            for (const section of inv.sections) {
-              const item = section.items.find((i) => i.id === invId);
-              if (item && invStatus(item) !== 'have') return item;
-            }
-            return null;
-          })
-          .filter(Boolean);
-
-        if (shortItems.length > 0) {
-          return {
-            text: shortItems.length === 1
-              ? `Short on ${shortItems[0]!.name}`
-              : `Short on ${shortItems.length} items`,
-            type: 'inv',
-          };
-        }
-      }
-    }
-
-    return null;
-  };
-
   const renderNodeList = (nodes: Node[], accent: string = TRUNK_COLOR, branchId: string | null = null) => {
     return nodes.map((node, index) => {
       const selectedBranch = node.branches
@@ -200,7 +157,7 @@ export function TimelineView() {
             }}
             isLocked={isLocked}
             isArchived={isArchived}
-            alert={getPhaseAlert(node)}
+            alert={getPhaseAlert(node, inv, appState.alertDays, appState.eventAlertDays)}
             isHighlighted={isHighlighted}
           />
 

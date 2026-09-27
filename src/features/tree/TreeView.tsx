@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } fr
 import { useData } from '../../contexts/DataContext';
 import type { Node } from '../../types';
 import { branchColor, TRUNK_COLOR, derivedStatus, findNodeById, resolveSelectedNode } from '../../lib/utils';
+import { getPhaseAlert } from '../../lib/alerts';
 import { Icon } from '../../components/Icon';
 import { PhaseModal } from '../timeline/PhaseModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -64,8 +65,9 @@ interface PinchState {
 }
 
 export function TreeView() {
-  const { seasons, appState, currentProject, updatePhaseNode, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
+  const { seasons, inventory, appState, currentProject, updatePhaseNode, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
   const season = seasons[appState.year];
+  const inv = inventory[appState.year];
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [confirmDeletePhase, setConfirmDeletePhase] = useState<{ id: string; name: string } | null>(null);
   const [addingPhase, setAddingPhase] = useState<{ afterNodeId?: string; parentNodeId?: string; branchId?: string } | null>(null);
@@ -476,6 +478,7 @@ export function TreeView() {
               : layoutNode.node.status;
             const isDim = getDimmed(layoutNode.node);
             const isActive = status === 'active';
+            const alert = getPhaseAlert(layoutNode.node, inv, appState.alertDays, appState.eventAlertDays);
 
             return (
               <div key={layoutNode.node.id}>
@@ -503,6 +506,16 @@ export function TreeView() {
                     <span className="block truncate text-xs font-semibold text-ink">
                       {layoutNode.node.name}
                     </span>
+                    {alert && (
+                      <span
+                        className="flex items-center gap-1 truncate text-[9px] font-semibold text-status-need"
+                        aria-label={`Alert: ${alert.text}`}
+                        title={alert.text}
+                      >
+                        <Icon name="alert" size={10} />
+                        {alert.text}
+                      </span>
+                    )}
                   </button>
                   {!isLocked && !isArchived && (
                     <div className="flex flex-shrink-0 items-center gap-1">

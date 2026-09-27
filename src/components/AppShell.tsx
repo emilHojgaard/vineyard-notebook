@@ -5,6 +5,7 @@ import { SeasonSelector } from './SeasonSelector';
 import { Modal } from './Modal';
 import { useData } from '../contexts/DataContext';
 import { LoadingSpinner } from './LoadingSpinner';
+import { ALERT_DAYS_MAX, ALERT_DAYS_MIN, normalizeAlertDays } from '../lib/alert-settings';
 
 const MembersView = lazy(() =>
   import('../features/members/MembersView').then(({ MembersView }) => ({ default: MembersView }))
@@ -18,6 +19,28 @@ export function AppShell({ children }: AppShellProps) {
   const { appState, updateAppState, connectionStatus, dataError, retryData } = useData();
   const [showSettings, setShowSettings] = React.useState(false);
   const [showMembers, setShowMembers] = React.useState(false);
+  const [alertDaysDraft, setAlertDaysDraft] = React.useState(String(appState.alertDays));
+  const [eventAlertDaysDraft, setEventAlertDaysDraft] = React.useState(String(appState.eventAlertDays));
+
+  // Keep an empty draft while a field is being edited, but start each opened
+  // settings dialog from the values currently held in app state.
+  React.useEffect(() => {
+    if (!showSettings) return;
+    setAlertDaysDraft(String(appState.alertDays));
+    setEventAlertDaysDraft(String(appState.eventAlertDays));
+  }, [showSettings, appState.alertDays, appState.eventAlertDays]);
+
+  const commitAlertDays = (value: string, current: number, setDraft: (draft: string) => void, key: 'alertDays' | 'eventAlertDays') => {
+    const normalized = normalizeAlertDays(value, current);
+    setDraft(String(normalized));
+    if (normalized !== current) updateAppState({ [key]: normalized });
+  };
+
+  const handleSettingsClose = () => {
+    commitAlertDays(alertDaysDraft, appState.alertDays, setAlertDaysDraft, 'alertDays');
+    commitAlertDays(eventAlertDaysDraft, appState.eventAlertDays, setEventAlertDaysDraft, 'eventAlertDays');
+    setShowSettings(false);
+  };
 
   const handleTabChange = (tab: typeof appState.tab) => {
     updateAppState({ tab });
@@ -80,7 +103,7 @@ export function AppShell({ children }: AppShellProps) {
             </Modal>
 
             {/* Settings dialog */}
-            <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="Alert settings" maxWidth="384px">
+            <Modal isOpen={showSettings} onClose={handleSettingsClose} title="Alert settings" maxWidth="384px">
               <div className="space-y-4">
                 <div>
                   <label htmlFor="inventory-alert-days" className="text-xs uppercase tracking-wider text-ink-faint block mb-2">
@@ -89,10 +112,13 @@ export function AppShell({ children }: AppShellProps) {
                   <input
                     id="inventory-alert-days"
                     type="number"
-                    value={appState.alertDays}
-                    onChange={(e) => updateAppState({ alertDays: parseInt(e.target.value) || 14 })}
+                    value={alertDaysDraft}
+                    onChange={(e) => setAlertDaysDraft(e.target.value)}
+                    onBlur={() => commitAlertDays(alertDaysDraft, appState.alertDays, setAlertDaysDraft, 'alertDays')}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
-                    min="1"
+                    min={ALERT_DAYS_MIN}
+                    max={ALERT_DAYS_MAX}
+                    step="1"
                   />
                 </div>
 
@@ -103,10 +129,13 @@ export function AppShell({ children }: AppShellProps) {
                   <input
                     id="event-alert-days"
                     type="number"
-                    value={appState.eventAlertDays}
-                    onChange={(e) => updateAppState({ eventAlertDays: parseInt(e.target.value) || 7 })}
+                    value={eventAlertDaysDraft}
+                    onChange={(e) => setEventAlertDaysDraft(e.target.value)}
+                    onBlur={() => commitAlertDays(eventAlertDaysDraft, appState.eventAlertDays, setEventAlertDaysDraft, 'eventAlertDays')}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-ink"
-                    min="1"
+                    min={ALERT_DAYS_MIN}
+                    max={ALERT_DAYS_MAX}
+                    step="1"
                   />
                 </div>
 

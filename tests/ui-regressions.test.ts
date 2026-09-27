@@ -4,6 +4,28 @@ import { readFileSync } from 'node:fs';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+test('alert settings keep transient text separate from saved values', () => {
+  const shell = read('src/components/AppShell.tsx');
+
+  assert.match(shell, /value=\{alertDaysDraft\}/);
+  assert.match(shell, /onChange=\{\(e\) => setAlertDaysDraft\(e\.target\.value\)\}/);
+  assert.match(shell, /onBlur=\{\(\) => commitAlertDays\(alertDaysDraft, appState\.alertDays/);
+  assert.match(shell, /min=\{ALERT_DAYS_MIN\}/);
+  assert.match(shell, /max=\{ALERT_DAYS_MAX\}/);
+  assert.doesNotMatch(shell, /parseInt\(e\.target\.value\) \|\| 14/);
+});
+
+test('timeline and tree use the shared alert settings and presentation', () => {
+  const timeline = read('src/features/timeline/TimelineView.tsx');
+  const tree = read('src/features/tree/TreeView.tsx');
+
+  assert.match(timeline, /import \{ getPhaseAlert \} from '\.\.\/\.\.\/lib\/alerts';/);
+  assert.match(tree, /import \{ getPhaseAlert \} from '\.\.\/\.\.\/lib\/alerts';/);
+  assert.match(timeline, /getPhaseAlert\(node, inv, appState\.alertDays, appState\.eventAlertDays\)/);
+  assert.match(tree, /getPhaseAlert\(layoutNode\.node, inv, appState\.alertDays, appState\.eventAlertDays\)/);
+  assert.match(tree, /aria-label=\{`Alert: \$\{alert\.text\}`\}/);
+});
+
 test('header overlays stay above the transformed season selector', () => {
   const header = read('src/components/Header.tsx');
   assert.match(header, /className="relative z-30 bg-burgundy/);
