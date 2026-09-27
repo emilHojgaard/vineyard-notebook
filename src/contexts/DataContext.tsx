@@ -36,6 +36,7 @@ import {
   revokeCalendarToken as revokeCalendarTokenInRepository,
 } from '../lib/repositories/calendar-repository';
 import { statusForError, type ConnectionStatus } from '../lib/connection-status';
+import { reconcileProjectSelection } from '../lib/project-selection';
 import { resetFirestoreCache } from '../lib/firebase';
 
 interface DataContextType {
@@ -129,7 +130,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [projectRetryKey, setProjectRetryKey] = useState(0);
   const firstDataErrorRef = useRef<string | null>(null);
   const firstDataErrorSourceRef = useRef<string | null>(null);
-  const pendingProjectIdRef = useRef<string | null>(null);
+  const pendingProjectRef = useRef<Project | null>(null);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
   const [lastDeletion, setLastDeletionState] = useState<{
     projectId: string;
@@ -304,36 +305,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!active) return;
       setProjects(loadedProjects);
       // Auto-select the first project if none is selected, and keep the selected
-      // project current when ownership or membership changes remotely.
+      // project current when ownership or membership changes remotely. A newly
+      // created project stays authoritative until the listener confirms it;
+      // Firestore may deliver a cached list that omits the atomic write first.
       setCurrentProject((selectedProject) => {
-        const loadedSelection = selectedProject
-          ? loadedProjects.find((project) => project.id === selectedProject.id)
-          : undefined;
-        if (loadedSelection) {
-          pendingProjectIdRef.current = null;
-          // Firestore commonly delivers a cached project followed by the
-          // server project. Keep the selected object stable when its identity
-          // did not change; otherwise the data listeners are torn down and
-          // recreated during the first-load handoff.
-          if (
-            selectedProject &&
-            selectedProject.id === loadedSelection.id &&
-            selectedProject.name === loadedSelection.name &&
-            selectedProject.createdBy === loadedSelection.createdBy &&
-            selectedProject.members.join(',') === loadedSelection.members.join(',') &&
-            JSON.stringify(selectedProject.owners || []) === JSON.stringify(loadedSelection.owners || [])
-          ) {
-            return selectedProject;
-          }
-          return loadedSelection;
-        }
-        // A successful create writes several documents atomically, but the
-        // projects listener may briefly deliver its cached empty result first.
-        // Keep the optimistic selection until that write appears in the list.
-        if (selectedProject && selectedProject.id === pendingProjectIdRef.current) {
-          return selectedProject;
-        }
-        return loadedProjects[0] || null;
+        const selection = reconcileProjectSelection(
+          loadedProjects,
+          selectedProject,
+          pendingProjectRef.current,
+        );
+        pendingProjectRef.current = selection.pendingProject;
+        return selection.project;
       });
       setLoading(false);
       // A successful project snapshot clears a prior project-list error. Do
@@ -488,7 +470,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) throw new Error('Must be logged in');
 
     const projectId = uid('proj');
-    pendingProjectIdRef.current = projectId;
     const year = new Date().getFullYear();
     // Profile creation remains separate so an existing profile is never overwritten.
     await ensureUserProfile({
@@ -513,11 +494,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         library: { sections: [] },
       });
     } catch (error) {
-      pendingProjectIdRef.current = null;
+      pendingProjectRef.current = null;
       throw error;
     }
 
-    // Immediately set as current project (don't wait for snapshot)
+    // Immediately set as current project (don't wait for snapshot). Keep this
+    // optimistic selection authoritative if a cached project-list snapshot
+    // arrives before the atomic write is visible to the listener.
     const newProject: Project = {
       id: projectId,
       name,
@@ -528,6 +511,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         [currentUser.uid]: new Date(),
       },
     };
+    pendingProjectRef.current = newProject;
     setCurrentProject(newProject);
 
     return projectId;

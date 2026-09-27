@@ -18,8 +18,7 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps = {}) {
     setLoading(true);
 
     try {
-      const projectId = await createProject(projectName);
-      selectProject(projectId);
+      await createProject(projectName);
       if (onComplete) {
         onComplete();
       }
