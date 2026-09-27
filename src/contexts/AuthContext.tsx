@@ -52,20 +52,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const notifiedInvitationIds = useRef(new Set<string>());
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // Load pending invitations when user logs in
-        await loadUserPendingInvitations(user);
-      }
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Auth restoration must not wait for a Firestore read. A stale cache,
+      // another tab's persistence lease, or a rules error in the optional
+      // invitation query otherwise leaves the whole app in its startup spinner.
       setCurrentUser(user);
       setLoading(false);
+
+      if (!user) {
+        setPendingInvitations([]);
+        return;
+      }
+
+      void loadUserPendingInvitations(user).catch((error: unknown) => {
+        if (!active) return;
+        // Invitations are auxiliary to the authenticated session. Keep the
+        // real error for diagnostics, but let the project listeners provide
+        // the user-facing data/retry state.
+        console.error('Failed to load pending invitations after auth restore', error);
+        setPendingInvitations([]);
+      });
     });
 
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const loadUserPendingInvitations = async (user: FirebaseUser) => {
-    if (!user.email) return;
+    if (!user.email) {
+      setPendingInvitations([]);
+      return;
+    }
     setPendingInvitations(await loadPendingInvitations(user.email));
   };
 

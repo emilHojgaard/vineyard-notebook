@@ -112,6 +112,7 @@ export function subscribeProjectInvitations(
     createdAt: string;
     status: 'pending' | 'accepted';
   }>) => void,
+  onError?: (error: Error) => void,
 ): () => void {
   return onSnapshot(query(
     invitationsCollection(),
@@ -130,5 +131,5 @@ export function subscribeProjectInvitations(
       createdAt: string;
       status: 'pending' | 'accepted';
     }>);
-  });
+  }, onError);
 }

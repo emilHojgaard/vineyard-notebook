@@ -112,6 +112,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
   const [dataRetryKey, setDataRetryKey] = useState(0);
   const [projectRetryKey, setProjectRetryKey] = useState(0);
+  const firstDataErrorRef = useRef<string | null>(null);
+  const firstDataErrorSourceRef = useRef<string | null>(null);
   const pendingProjectIdRef = useRef<string | null>(null);
   const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
   const [lastDeletion, setLastDeletionState] = useState<{
@@ -127,6 +129,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const retryData = () => {
+    firstDataErrorRef.current = null;
+    firstDataErrorSourceRef.current = null;
     setDataError(null);
     setDataLoading(true);
     setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting');
@@ -134,9 +138,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setProjectRetryKey((key) => key + 1);
   };
 
-  const handleDataError = (error: unknown) => {
+  const handleDataError = (error: unknown, source = 'project-data') => {
     const message = error instanceof Error ? error.message : 'Unable to load project data.';
-    setDataError(message);
+    // Keep the first failing listener visible to diagnostics. A later callback
+    // from another listener must not hide the primary failure or turn a real
+    // permission/cache error into a generic lease message.
+    console.error(`[data:${source}] initial load failed`, error);
+    if (firstDataErrorRef.current === null) {
+      firstDataErrorRef.current = message;
+      firstDataErrorSourceRef.current = source;
+      setDataError(message);
+    }
     setDataLoading(false);
     setConnectionStatus(statusForError(error, typeof navigator === 'undefined' || navigator.onLine));
   };
@@ -162,6 +174,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loadedCollections.add(collectionName);
     if (loadedCollections.size === 3) {
       setDataLoading(false);
+      firstDataErrorRef.current = null;
+      firstDataErrorSourceRef.current = null;
       setDataError(null);
       setConnectionStatus('online');
     }
@@ -261,6 +275,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           : undefined;
         if (loadedSelection) {
           pendingProjectIdRef.current = null;
+          // Firestore commonly delivers a cached project followed by the
+          // server project. Keep the selected object stable when its identity
+          // did not change; otherwise the data listeners are torn down and
+          // recreated during the first-load handoff.
+          if (
+            selectedProject &&
+            selectedProject.id === loadedSelection.id &&
+            selectedProject.name === loadedSelection.name &&
+            selectedProject.createdBy === loadedSelection.createdBy &&
+            selectedProject.members.join(',') === loadedSelection.members.join(',') &&
+            JSON.stringify(selectedProject.owners || []) === JSON.stringify(loadedSelection.owners || [])
+          ) {
+            return selectedProject;
+          }
           return loadedSelection;
         }
         // A successful create writes several documents atomically, but the
@@ -275,14 +303,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // A successful project snapshot clears a prior project-list error. Do
       // not clear a separate season/inventory error while an active project
       // is still being synchronized.
-      if (!currentProjectRef.current) {
+      if (!currentProjectRef.current && (
+        firstDataErrorSourceRef.current === null ||
+        firstDataErrorSourceRef.current === 'project-list'
+      )) {
+        firstDataErrorRef.current = null;
+        firstDataErrorSourceRef.current = null;
         setDataError(null);
         setConnectionStatus('online');
       }
     }, (error) => {
       if (!active) return;
       setLoading(false);
-      handleDataError(error);
+      handleDataError(error, 'project-list');
       if (statusForError(error, typeof navigator === 'undefined' || navigator.onLine) === 'reconnecting') {
         scheduleRetry();
       }
@@ -330,12 +363,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLastDeletion(null);
   }, [currentProject?.id, appState.year]);
 
-  // Load project data when project changes. Snapshot errors are terminal for a
-  // listener, so reconnect by replacing all listeners. Ignore callbacks from
-  // a listener that has already been cleaned up; otherwise a stale lease error
-  // can overwrite a successful retry.
+  // Load project data when the selected project ID changes. Snapshot errors
+  // are terminal for a listener, so reconnect by replacing all listeners.
+  // Depend on the ID rather than the project object: a cached project followed
+  // by its server version must not restart all three listeners during startup.
+  // Ignore callbacks from a listener that has already been cleaned up;
+  // otherwise a stale lease error can overwrite a successful retry.
   useEffect(() => {
-    if (!currentProject) {
+    const projectId = currentProject?.id;
+    if (!projectId) {
       setDataLoading(false);
       return;
     }
@@ -349,55 +385,64 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (active) setDataRetryKey((key) => key + 1);
       }, 1500);
     };
-    const onSubscriptionError = (error: unknown) => {
+    const onSubscriptionError = (source: string, error: unknown) => {
       if (!active) return;
-      handleDataError(error);
+      handleDataError(error, source);
       if (statusForError(error, typeof navigator === 'undefined' || navigator.onLine) === 'reconnecting') {
         scheduleRetry();
       }
     };
 
     setDataLoading(true);
+    firstDataErrorRef.current = null;
+    firstDataErrorSourceRef.current = null;
     setDataError(null);
     const loadedCollections = new Set<string>();
     const unsubscribers: (() => void)[] = [];
 
     // Load seasons
-    unsubscribers.push(subscribeSeasons(currentProject.id, (loadedSeasons) => {
+    unsubscribers.push(subscribeSeasons(projectId, (loadedSeasons) => {
       if (!active) return;
       Object.values(loadedSeasons).forEach((season) => syncStatuses(season.root));
-      setAllSeasons((prev) => ({ ...prev, [currentProject.id]: loadedSeasons }));
+      setAllSeasons((prev) => ({ ...prev, [projectId]: loadedSeasons }));
       markDataLoaded(loadedCollections, 'seasons');
-    }, onSubscriptionError));
+    }, (error) => onSubscriptionError('seasons', error)));
 
     // Load inventory
-    unsubscribers.push(subscribeInventory(currentProject.id, (loadedInventory) => {
+    unsubscribers.push(subscribeInventory(projectId, (loadedInventory) => {
       if (!active) return;
-      setAllInventory((prev) => ({ ...prev, [currentProject.id]: loadedInventory }));
+      setAllInventory((prev) => ({ ...prev, [projectId]: loadedInventory }));
       markDataLoaded(loadedCollections, 'inventory');
-    }, onSubscriptionError));
+    }, (error) => onSubscriptionError('inventory', error)));
 
     // Load library (project-wide, not per-year)
-    unsubscribers.push(subscribeLibrary(currentProject.id, (lib) => {
+    unsubscribers.push(subscribeLibrary(projectId, (lib) => {
       if (!active) return;
-      setAllLibrary((prev) => ({ ...prev, [currentProject.id]: lib }));
+      setAllLibrary((prev) => ({ ...prev, [projectId]: lib }));
       markDataLoaded(loadedCollections, 'library');
-    }, onSubscriptionError));
+    }, (error) => onSubscriptionError('library', error)));
 
     // Load pending invitations
-    unsubscribers.push(subscribeProjectInvitations(currentProject.id, (invites) => {
+    unsubscribers.push(subscribeProjectInvitations(projectId, (invites) => {
       if (active) setPendingInvitations(invites as Invitation[]);
+    }, (error) => {
+      if (active) console.error(`[data:invitations] failed to load project invitations`, error);
     }));
 
-    // Load members
-    void loadMembers(currentProject.id);
+    // Load members. This is auxiliary to the three data listeners and must not
+    // turn a missing user profile into a timeline startup failure.
+    void loadMembers(projectId).then((loadedMembers) => {
+      if (active) setMembers(loadedMembers);
+    }).catch((error: unknown) => {
+      if (active) console.error(`Failed to load members for project ${projectId}`, error);
+    });
 
     return () => {
       active = false;
       if (retryTimer !== null) clearTimeout(retryTimer);
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [currentProject, dataRetryKey]);
+  }, [currentProject?.id, dataRetryKey]);
 
   const refreshMembers = async (projectId: string) => {
     setMembers(await loadMembers(projectId));
