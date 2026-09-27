@@ -101,6 +101,26 @@ and grant that role to:
 service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com
 ```
 
+With an authenticated account authorized to change project IAM, the equivalent
+narrow `gcloud` grant is:
+
+```bash
+PROJECT_ID=your-firebase-project-id
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-firebasestorage.iam.gserviceaccount.com" \
+  --role=roles/firebaserules.firestoreServiceAgent
+```
+
+Verify that exact binding before rerunning the Storage rules deploy:
+
+```bash
+gcloud projects get-iam-policy "$PROJECT_ID" \
+  --flatten='bindings[].members' \
+  --filter="bindings.role:roles/firebaserules.firestoreServiceAgent AND bindings.members:service-${PROJECT_NUMBER}@gcp-sa-firebasestorage.iam.gserviceaccount.com" \
+  --format='table(bindings.role,bindings.members)'
+```
+
 Then rerun the Storage rules deploy from an interactive, authenticated Firebase
 CLI session. Do not replace this check with a public or authenticated-user-wide
 Storage grant. The repository rule comment is intentionally updated whenever
