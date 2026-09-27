@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import {
@@ -5,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 let testEnv;
@@ -102,6 +103,48 @@ test('a new signed-in user can create a project and its initial records atomical
   });
 
   await assertSucceeds(batch.commit());
+  const visibleProjects = await getDocs(query(
+    collection(newUserDb, 'projects'),
+    where('members', 'array-contains', userId),
+  ));
+  assert.deepEqual(visibleProjects.docs.map((project) => project.id), [newProjectId]);
+});
+
+test('an owner can delete a project and all of its partitioned records', async () => {
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  await assertSucceeds(setDoc(doc(ownerDb, 'invitations', 'delete-me'), {
+    projectId,
+    email: 'delete-me@example.com',
+    invitedBy: 'owner-1',
+    status: 'pending',
+  }));
+
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  await assertFails(deleteDoc(doc(memberDb, 'projects', projectId)));
+  await assertFails(deleteDoc(doc(ownerDb, 'seasons', `${projectId}_2026`)));
+  await assertSucceeds(updateDoc(doc(ownerDb, 'projects', projectId), { deleting: true }));
+
+  const batch = writeBatch(ownerDb);
+  batch.delete(doc(ownerDb, 'seasons', `${projectId}_2026`));
+  batch.delete(doc(ownerDb, 'inventory', `${projectId}_2026`));
+  batch.delete(doc(ownerDb, 'library', projectId));
+  batch.delete(doc(ownerDb, 'invitations', 'delete-me'));
+  batch.delete(doc(ownerDb, 'projects', projectId));
+  await assertSucceeds(batch.commit());
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await Promise.all([
+      getDoc(doc(db, 'projects', projectId)),
+      getDoc(doc(db, 'seasons', `${projectId}_2026`)),
+      getDoc(doc(db, 'inventory', `${projectId}_2026`)),
+      getDoc(doc(db, 'library', projectId)),
+      getDoc(doc(db, 'invitations', 'delete-me')),
+    ].map(async (snapshotPromise) => {
+      const snapshot = await snapshotPromise;
+      assert.equal(snapshot.exists(), false);
+    }));
+  });
 });
 
 test('non-members cannot create or mutate project-scoped records', async () => {
@@ -149,6 +192,15 @@ test('project members can read project-scoped data', async () => {
   await assertSucceeds(getDoc(doc(memberDb, 'seasons', `${projectId}_2026`)));
   await assertSucceeds(getDoc(doc(memberDb, 'inventory', `${projectId}_2026`)));
   await assertSucceeds(getDoc(doc(memberDb, 'library', projectId)));
+});
+
+test('member-scoped project and cleanup queries are provable', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  await assertSucceeds(getDocs(query(collection(memberDb, 'projects'), where('members', 'array-contains', 'member-1'))));
+  await assertSucceeds(getDocs(query(collection(memberDb, 'seasons'), where('projectId', '==', projectId))));
+  await assertSucceeds(getDocs(query(collection(memberDb, 'inventory'), where('projectId', '==', projectId))));
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  await assertSucceeds(getDocs(query(collection(ownerDb, 'invitations'), where('projectId', '==', projectId), where('status', '==', 'pending'))));
 });
 
 test('non-members cannot read project-scoped data', async () => {

@@ -31,6 +31,11 @@ service cloud.firestore {
          request.auth.uid in project(projectId).owners);
     }
 
+    function isProjectBeingDeleted(projectId) {
+      return project(projectId).keys().hasAll(['deleting']) &&
+        project(projectId).deleting == true;
+    }
+
     function validProjectMembershipDocument(data) {
       return data.members.size() > 0 &&
         data.createdBy in data.members &&
@@ -41,7 +46,10 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      allow read: if isProjectMember(projectId);
+      // This predicate is intentionally based on the document being listed.
+      // A query using array-contains can then be proven safe by Firestore;
+      // looking up the same document with get() is not query-provable.
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
       allow create: if signedIn() &&
         request.auth.uid == request.resource.data.createdBy &&
         request.auth.uid in request.resource.data.members &&
@@ -84,9 +92,13 @@ service cloud.firestore {
         resource.data.status == 'current' &&
         (request.resource.data.status == 'current' ||
          request.resource.data.status == 'completed');
-      allow delete: if isProjectMember(resource.data.projectId) &&
-        resource.data.status == 'current' &&
-        !resource.data.locked;
+      // Project owners may remove a season as part of deleting their project;
+      // ordinary season deletion still respects the season lock.
+      allow delete: if (isProjectOwner(resource.data.projectId) &&
+        isProjectBeingDeleted(resource.data.projectId)) ||
+        (isProjectMember(resource.data.projectId) &&
+         resource.data.status == 'current' &&
+         !resource.data.locked);
     }
 
     match /inventory/{inventoryId} {
@@ -107,9 +119,13 @@ service cloud.firestore {
          !get(/databases/$(database)/documents/seasons/$(inventoryId)).data.locked ||
          request.resource.data.structure == resource.data.structure) &&
         get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
-      allow delete: if isProjectMember(resource.data.projectId) &&
-        !get(/databases/$(database)/documents/seasons/$(inventoryId)).data.locked &&
-        get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current';
+      // The owner also needs to remove inventory while deleting the project,
+      // even when the corresponding season was locked.
+      allow delete: if (isProjectOwner(resource.data.projectId) &&
+        isProjectBeingDeleted(resource.data.projectId)) ||
+        (isProjectMember(resource.data.projectId) &&
+         !get(/databases/$(database)/documents/seasons/$(inventoryId)).data.locked &&
+         get(/databases/$(database)/documents/seasons/$(inventoryId)).data.status == 'current');
     }
 
     match /library/{projectId} {
@@ -126,7 +142,8 @@ service cloud.firestore {
 
     match /invitations/{invitationId} {
       allow read: if isProjectOwner(resource.data.projectId) ||
-        (signedIn() && request.auth.token.email == resource.data.email);
+        (signedIn() && request.auth.token.email != null &&
+         request.auth.token.email == resource.data.email);
       allow create: if isProjectOwner(request.resource.data.projectId) &&
         request.resource.data.status == 'pending' &&
         request.resource.data.invitedBy == request.auth.uid &&

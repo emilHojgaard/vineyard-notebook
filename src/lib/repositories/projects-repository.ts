@@ -159,6 +159,18 @@ export async function deleteProject(projectId: string): Promise<void> {
   const projectSnapshot = await getDoc(projectDocument(projectId));
   if (!projectSnapshot.exists()) return;
 
+  // Mark the project before removing its records. Rules use this marker to
+  // allow the owner to clean up locked seasons/inventory without granting
+  // ordinary owner operations a way around season-lock deletion rules.
+  const projectStillExists = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(projectDocument(projectId));
+    if (snapshot.exists() && snapshot.data().deleting !== true) {
+      transaction.update(projectDocument(projectId), { deleting: true });
+    }
+    return snapshot.exists();
+  });
+  if (!projectStillExists) return;
+
   // Gather only records explicitly owned by this project. Firestore batches
   // are atomic up to 500 writes; chunking keeps cleanup safe for larger
   // projects while preserving retry/idempotency (the project is deleted last).

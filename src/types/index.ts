@@ -111,6 +111,8 @@ export interface Project {
   owners?: string[]; // user IDs; createdBy remains the original owner for compatibility
   createdBy: string; // original owner user ID
   createdAt: Date;
+  // Set briefly while the owner retries project-wide cleanup.
+  deleting?: boolean;
   // Optional for backwards compatibility with projects created before membership ages were stored.
   memberAddedAt?: Record<string, Date>;
 }
