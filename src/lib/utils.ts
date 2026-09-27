@@ -144,6 +144,18 @@ export function resolveSelectedNode(nodes: Node[], selectedNodeId: string | null
   return selectedNodeId ? findNodeById(nodes, selectedNodeId) : null;
 }
 
+/** Apply a modal edit to a phase in the supplied (usually cloned) tree. */
+export function updateNodeById(
+  nodes: Node[],
+  nodeId: string,
+  update: (node: Node) => void,
+): boolean {
+  const node = findNodeById(nodes, nodeId);
+  if (!node) return false;
+  update(node);
+  return true;
+}
+
 // Image compression helper
 export function readAndCompress(
   file: File,

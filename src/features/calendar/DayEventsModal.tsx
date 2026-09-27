@@ -34,7 +34,7 @@ export function DayEventsModal({
   onUpdate,
   isArchived,
 }: DayEventsModalProps) {
-  const { seasons, appState, updateSeason } = useData();
+  const { seasons, appState, updateSeason, updatePhaseNode } = useData();
   const season = seasons[appState.year];
 
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<{
@@ -410,8 +410,8 @@ export function DayEventsModal({
           node={phaseModalNode}
           isOpen={isOpen}
           onClose={() => setPhaseModalNodeId(null)}
-          onUpdate={async () => {
-            await updateSeason(appState.year, season);
+          onUpdate={async (phaseId, update) => {
+            await updatePhaseNode(appState.year, phaseId, update);
             onUpdate();
           }}
           isLocked={appState.locked}

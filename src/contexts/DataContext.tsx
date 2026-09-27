@@ -11,7 +11,7 @@ import type {
   Node as PhaseNode,
   Branch,
 } from '../types';
-import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById } from '../lib/utils';
+import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById, updateNodeById } from '../lib/utils';
 import { hasBranchId, validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
 import {
@@ -66,6 +66,7 @@ interface DataContextType {
   completeSeason: (year: number) => Promise<void>;
   deleteSeason: (year: number) => Promise<void>;
   updateSeason: (year: number, season: Season) => Promise<void>;
+  updatePhaseNode: (year: number, phaseId: string, update: (node: PhaseNode) => void) => Promise<void>;
   addPhase: (year: number, name: string, options?: { parentNodeId?: string; branchId?: string; afterNodeId?: string }) => Promise<void>;
   updatePhase: (year: number, phaseId: string, updates: Partial<PhaseNode>) => Promise<void>;
   deletePhase: (year: number, phaseId: string) => Promise<void>;
@@ -188,8 +189,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Undo actions can outlive the render that created their notification.
   const seasonsRef = useRef(seasons);
   const currentProjectRef = useRef(currentProject);
+  const seasonSaveQueuesRef = useRef<Record<string, Promise<void>>>({});
   seasonsRef.current = seasons;
   currentProjectRef.current = currentProject;
+
+  // Serialize edits to a season. Modal edits can overlap with uploads and
+  // Firestore snapshots; each queued operation resolves the latest season
+  // immediately before saving instead of replaying a stale object.
+  const enqueueSeasonSave = (year: number, operation: () => Promise<void>): Promise<void> => {
+    const projectId = currentProjectRef.current?.id;
+    if (!projectId) return Promise.resolve();
+
+    const key = `${projectId}:${year}`;
+    const previous = seasonSaveQueuesRef.current[key] || Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    seasonSaveQueuesRef.current[key] = next.then(() => undefined, () => undefined);
+    return next;
+  };
 
   // Default app state
   const [appState, setAppState] = useState<AppState>({
@@ -464,23 +480,62 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateSeason = async (year: number, season: Season) => {
-    if (!currentProject) return;
-    const validation = validateTree(season.root);
-    if (!validation.valid) {
-      throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
-    }
-    syncStatuses(season.root);
-    const savedSeason = await saveSeason(currentProject.id, year, season, season.revision);
-    // Reflect a confirmed write immediately; the snapshot listener will still
-    // reconcile remote edits as before. The revision is retained so a later
-    // save rejects stale collaborative edits instead of overwriting them.
-    setAllSeasons((prev) => ({
-      ...prev,
-      [currentProject.id]: {
-        ...(prev[currentProject.id] || {}),
+    const projectId = currentProjectRef.current?.id;
+    await enqueueSeasonSave(year, async () => {
+      const project = currentProjectRef.current;
+      if (!project || project.id !== projectId) return;
+      const validation = validateTree(season.root);
+      if (!validation.valid) {
+        throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
+      }
+      syncStatuses(season.root);
+      const savedSeason = await saveSeason(project.id, year, season, season.revision);
+      // Keep the ref in sync before the next queued operation starts. Waiting
+      // for React to render here would let a quick photo/comment save reuse a
+      // stale revision or omit the prior note.
+      const nextSeasons = {
+        ...seasonsRef.current,
         [year]: savedSeason,
-      },
-    }));
+      };
+      seasonsRef.current = nextSeasons;
+      setAllSeasons((prev) => ({
+        ...prev,
+        [project.id]: nextSeasons,
+      }));
+    });
+  };
+
+  const updatePhaseNode = async (
+    year: number,
+    phaseId: string,
+    update: (node: PhaseNode) => void,
+  ) => {
+    const projectId = currentProjectRef.current?.id;
+    await enqueueSeasonSave(year, async () => {
+      const project = currentProjectRef.current;
+      const season = seasonsRef.current[year];
+      if (!project || project.id !== projectId || !season) return;
+
+      const updatedSeason = JSON.parse(JSON.stringify(season)) as Season;
+      const found = updateNodeById(updatedSeason.root, phaseId, update);
+      if (!found) return;
+
+      const validation = validateTree(updatedSeason.root);
+      if (!validation.valid) {
+        throw new Error(`Cannot save invalid season tree: ${validation.errors.join('; ')}`);
+      }
+      syncStatuses(updatedSeason.root);
+      const savedSeason = await saveSeason(project.id, year, updatedSeason, season.revision);
+      const nextSeasons = {
+        ...seasonsRef.current,
+        [year]: savedSeason,
+      };
+      seasonsRef.current = nextSeasons;
+      setAllSeasons((prev) => ({
+        ...prev,
+        [project.id]: nextSeasons,
+      }));
+    });
   };
 
 
@@ -862,6 +917,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     completeSeason,
     deleteSeason,
     updateSeason,
+    updatePhaseNode,
     addPhase,
     updatePhase,
     deletePhase,

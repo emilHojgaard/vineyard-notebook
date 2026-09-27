@@ -11,7 +11,7 @@ import { DataState } from '../../components/DataState';
 import { getHighlightedNodeIds } from '../../lib/tree';
 
 export function TimelineView() {
-  const { seasons, appState, updateAppState, updateSeason, inventory, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
+  const { seasons, appState, updateAppState, updatePhaseNode, inventory, deletePhase, addPhase, addBranch, deleteBranch, undoLastDeletion, focusedBranchId, setFocusedBranchId, dataLoading, dataError, connectionStatus, retryData, resetData } = useData();
   const season = seasons[appState.year];
   const inv = inventory[appState.year];
 
@@ -395,7 +395,7 @@ export function TimelineView() {
           node={selectedNode}
           isOpen={true}
           onClose={() => setSelectedNodeId(null)}
-          onUpdate={() => updateSeason(appState.year, season)}
+          onUpdate={(phaseId, update) => updatePhaseNode(appState.year, phaseId, update)}
           isLocked={isLocked}
           isArchived={isArchived}
         />

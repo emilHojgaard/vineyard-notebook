@@ -13,7 +13,7 @@ interface PhaseModalProps {
   node: Node;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: () => Promise<void>;
+  onUpdate: (phaseId: string, update: (node: Node) => void) => Promise<void>;
   onDelete?: () => void;
   isLocked: boolean;
   isArchived: boolean;
@@ -86,11 +86,14 @@ export function PhaseModal({
     }
   };
 
-  const persistChanges = async () => {
+  const persistChanges = async (
+    phaseId: string,
+    update: (currentNode: Node) => void,
+  ) => {
     setSaveState('saving');
     setSaveError(null);
     try {
-      await onUpdateRef.current();
+      await onUpdateRef.current(phaseId, update);
       setSaveState('saved');
       return true;
     } catch (error) {
@@ -102,8 +105,10 @@ export function PhaseModal({
   };
 
   const handleAddNote = async () => {
+    const targetPhaseId = node.id;
     const draftPhoto = photoPreviewRef.current;
-    if (!noteTextRef.current.trim() && !draftPhoto) return;
+    const draftText = noteTextRef.current.trim();
+    if (!draftText && !draftPhoto) return;
 
     setUploading(true);
     try {
@@ -113,19 +118,20 @@ export function PhaseModal({
       const newNote: Note = {
         id: uid('note'),
         author: currentUser?.displayName || 'Unknown',
-        text: noteTextRef.current.trim(),
+        text: draftText,
         date: todayISO(),
         photo: photoUrl,
       };
 
-      const currentNode = nodeRef.current;
-      currentNode.notes.push(newNote);
-      if (await persistChanges()) {
-        setNoteText('');
-        setPhotoPreview(null);
-        if (photoInputRef.current) photoInputRef.current.value = '';
-      } else {
-        currentNode.notes.pop();
+      if (await persistChanges(targetPhaseId, (currentNode) => {
+        currentNode.notes.push(newNote);
+      })) {
+        // Do not clear a draft that belongs to a newly selected phase.
+        if (nodeRef.current.id === targetPhaseId) {
+          setNoteText('');
+          setPhotoPreview(null);
+          if (photoInputRef.current) photoInputRef.current.value = '';
+        }
       }
     } catch (error) {
       setSaveState('failed');
@@ -136,12 +142,15 @@ export function PhaseModal({
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    const idx = node.notes.findIndex((n) => n.id === noteId);
-    if (idx !== -1) {
-      const [removed] = node.notes.splice(idx, 1);
-      if (await persistChanges()) setConfirmDeleteNote(null);
-      else node.notes.splice(idx, 0, removed);
-    } else {
+    const phaseId = node.id;
+    if (!node.notes.some((note) => note.id === noteId)) {
+      setConfirmDeleteNote(null);
+      return;
+    }
+
+    if (await persistChanges(phaseId, (currentNode) => {
+      currentNode.notes = currentNode.notes.filter((note) => note.id !== noteId);
+    })) {
       setConfirmDeleteNote(null);
     }
   };
@@ -155,30 +164,35 @@ export function PhaseModal({
       date: eventDate,
     };
 
-    node.events.push(newEvent);
-    if (await persistChanges()) {
+    if (await persistChanges(node.id, (currentNode) => {
+      currentNode.events.push(newEvent);
+    })) {
       setEventName('');
       setEventDate('');
-    } else {
-      node.events.pop();
     }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    const idx = node.events.findIndex((e) => e.id === eventId);
-    if (idx !== -1) {
-      const [removed] = node.events.splice(idx, 1);
-      if (await persistChanges()) setConfirmDeleteEvent(null);
-      else node.events.splice(idx, 0, removed);
-    } else {
+    const phaseId = node.id;
+    if (!node.events.some((event) => event.id === eventId)) {
+      setConfirmDeleteEvent(null);
+      return;
+    }
+
+    if (await persistChanges(phaseId, (currentNode) => {
+      currentNode.events = currentNode.events.filter((event) => event.id !== eventId);
+    })) {
       setConfirmDeleteEvent(null);
     }
   };
 
   const handleStatusChange = async (status: 'upcoming' | 'active' | 'done') => {
+    const phaseId = node.id;
     const previousStatus = node.status;
     node.status = status;
-    if (!await persistChanges()) node.status = previousStatus;
+    if (!await persistChanges(phaseId, (currentNode) => {
+      currentNode.status = status;
+    })) node.status = previousStatus;
   };
 
   const sortedEvents = [...node.events].sort((a, b) =>
@@ -197,8 +211,11 @@ export function PhaseModal({
             type="text"
             value={node.name}
             onChange={(e) => {
-              node.name = e.target.value || 'Untitled phase';
-              void persistChanges();
+              const name = e.target.value || 'Untitled phase';
+              node.name = name;
+              void persistChanges(node.id, (currentNode) => {
+                currentNode.name = name;
+              });
             }}
             autoFocus
             data-autofocus
@@ -217,8 +234,11 @@ export function PhaseModal({
               type="date"
               value={node.start}
               onChange={(e) => {
-                node.start = e.target.value;
-                void persistChanges();
+                const start = e.target.value;
+                node.start = start;
+                void persistChanges(node.id, (currentNode) => {
+                  currentNode.start = start;
+                });
               }}
               className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
             />
@@ -227,8 +247,11 @@ export function PhaseModal({
               type="date"
               value={node.end}
               onChange={(e) => {
-                node.end = e.target.value;
-                void persistChanges();
+                const end = e.target.value;
+                node.end = end;
+                void persistChanges(node.id, (currentNode) => {
+                  currentNode.end = end;
+                });
               }}
               className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
             />
