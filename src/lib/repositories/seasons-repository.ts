@@ -63,18 +63,27 @@ export async function saveSeason(
   const ref = seasonDocument(projectId, year);
   let saved: Season;
   await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    const current = snapshot.exists() ? snapshot.data() : {};
-    const currentRevision = snapshot.exists() ? (current.revision || 0) : 0;
-    if (snapshot.exists() && expectedRevision !== currentRevision) {
-      throw new ConcurrentWriteError(`Season ${year}`);
-    }
-    if (!snapshot.exists() && expectedRevision !== undefined) {
-      throw new ConcurrentWriteError(`Season ${year}`);
+    // A missing document cannot be read under the season rules because its
+    // projectId is not available to the read predicate. Use a write-only
+    // transaction for creates; Firestore evaluates the write against the
+    // create rule without requiring a preliminary get. Existing documents
+    // always provide a revision and continue through the guarded read path.
+    let current: Record<string, unknown> = {};
+    let currentRevision = 0;
+    if (expectedRevision !== undefined) {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) {
+        throw new ConcurrentWriteError(`Season ${year}`);
+      }
+      current = snapshot.data();
+      currentRevision = (current.revision as number | undefined) || 0;
+      if (expectedRevision !== currentRevision) {
+        throw new ConcurrentWriteError(`Season ${year}`);
+      }
     }
     const { structure, content } = splitSeasonRoot(season.root);
     const nextRevision = currentRevision + 1;
-    saved = { ...season, revision: nextRevision, locked: season.locked ?? current.locked ?? true };
+    saved = { ...season, revision: nextRevision, locked: season.locked ?? (current.locked as boolean | undefined) ?? true };
     transaction.set(ref, {
       projectId,
       status: saved.status,

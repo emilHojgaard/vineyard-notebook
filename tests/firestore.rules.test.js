@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 let testEnv;
@@ -192,6 +192,91 @@ test('project members can read project-scoped data', async () => {
   await assertSucceeds(getDoc(doc(memberDb, 'seasons', `${projectId}_2026`)));
   await assertSucceeds(getDoc(doc(memberDb, 'inventory', `${projectId}_2026`)));
   await assertSucceeds(getDoc(doc(memberDb, 'library', projectId)));
+});
+
+test('members can create a missing season in a transaction without reading it first', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const season = doc(memberDb, 'seasons', `${projectId}_2027`);
+
+  await assertSucceeds(runTransaction(memberDb, async (transaction) => {
+    transaction.set(season, {
+      projectId,
+      status: 'current',
+      title: '2027',
+      structure: [],
+      content: {},
+      locked: true,
+      revision: 1,
+    });
+  }));
+  await assertSucceeds(getDoc(season));
+
+  const crossProjectSeason = doc(memberDb, 'seasons', 'other-project_2027');
+  await assertFails(runTransaction(memberDb, async (transaction) => {
+    transaction.set(crossProjectSeason, {
+      projectId: 'other-project',
+      status: 'current',
+      title: '2027',
+      structure: [],
+      content: {},
+      locked: true,
+      revision: 1,
+    });
+  }));
+  await assertFails(runTransaction(memberDb, async (transaction) => {
+    transaction.set(crossProjectSeason, {
+      projectId,
+      status: 'current',
+      title: '2027',
+      structure: [],
+      content: {},
+      locked: true,
+      revision: 1,
+    });
+  }));
+
+  const outsiderDb = testEnv.authenticatedContext('outsider-1').firestore();
+  await assertFails(runTransaction(outsiderDb, async (transaction) => {
+    transaction.set(doc(outsiderDb, 'seasons', `${projectId}_2028`), {
+      projectId,
+      status: 'current',
+      title: '2028',
+      structure: [],
+      content: {},
+      locked: true,
+      revision: 1,
+    });
+  }));
+});
+
+test('existing season updates still require a transaction read and revision', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const season = doc(memberDb, 'seasons', `${projectId}_2026`);
+
+  await assertSucceeds(runTransaction(memberDb, async (transaction) => {
+    const snapshot = await transaction.get(season);
+    transaction.set(season, {
+      projectId,
+      status: 'current',
+      title: '2026',
+      structure: snapshot.data().structure,
+      content: { note: { start: '2026-01-01', end: '' } },
+      locked: true,
+      revision: snapshot.data().revision + 1,
+    });
+  }));
+  await assertFails(runTransaction(memberDb, async (transaction) => {
+    const snapshot = await transaction.get(season);
+    transaction.set(season, {
+      projectId,
+      status: 'current',
+      title: '2026',
+      structure: [{ id: 'tampered' }],
+      content: snapshot.data().content,
+      locked: true,
+      revision: snapshot.data().revision + 1,
+    });
+  }));
 });
 
 test('member-scoped project and cleanup queries are provable', async () => {

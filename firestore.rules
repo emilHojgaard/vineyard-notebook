@@ -70,6 +70,9 @@ service cloud.firestore {
     }
 
     match /seasons/{seasonId} {
+      // Missing season documents intentionally are not readable: there is no
+      // resource projectId to authorize. The repository therefore creates a
+      // season with a write-only transaction and reads only existing seasons.
       allow read: if isProjectMember(resource.data.projectId);
       // A season is created only in the current state and its document ID is
       // bound to its project partition and year/title.
@@ -102,6 +105,8 @@ service cloud.firestore {
     }
 
     match /inventory/{inventoryId} {
+      // As with seasons, creation uses a write-only transaction because a
+      // missing document has no projectId available to the read predicate.
       allow read: if isProjectMember(resource.data.projectId);
       // Inventory is partitioned by project and year. The season gate also
       // prevents writes after the corresponding season is archived.

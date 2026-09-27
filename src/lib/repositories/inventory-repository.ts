@@ -46,13 +46,19 @@ export async function saveInventory(
   const ref = inventoryDocument(projectId, year);
   let saved: Inventory;
   await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    const currentRevision = snapshot.exists() ? (snapshot.data().revision || 0) : 0;
-    if (snapshot.exists() && expectedRevision !== currentRevision) {
-      throw new ConcurrentWriteError(`Inventory ${year}`);
-    }
-    if (!snapshot.exists() && expectedRevision !== undefined) {
-      throw new ConcurrentWriteError(`Inventory ${year}`);
+    // Missing inventory documents have the same read rule shape as seasons:
+    // the project partition is only available on the write. Keep creation
+    // write-only and reserve the read for revision-checked updates.
+    let currentRevision = 0;
+    if (expectedRevision !== undefined) {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) {
+        throw new ConcurrentWriteError(`Inventory ${year}`);
+      }
+      currentRevision = snapshot.data().revision || 0;
+      if (expectedRevision !== currentRevision) {
+        throw new ConcurrentWriteError(`Inventory ${year}`);
+      }
     }
     saved = { sections: inventory.sections, revision: currentRevision + 1 };
     transaction.set(ref, {
