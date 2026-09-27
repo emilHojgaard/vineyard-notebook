@@ -278,9 +278,11 @@ test('project members can upload and read library files, but outsiders cannot', 
   await assertFails(outsiderStorage.ref('projects/demo-vineyard/library/member.pdf').getDownloadURL());
 });
 
-test('storage paths outside media collections are denied', async () => {
+test('storage paths outside media collections and unknown projects are denied', async () => {
   const memberStorage = testEnv.authenticatedContext('member-1').storage();
   await assertFails(memberStorage.ref('projects/demo-vineyard/private/member.txt').putString('private data'));
+  await assertFails(memberStorage.ref('projects/missing-project/photos/member.txt').putString('private data'));
+  await assertFails(memberStorage.ref('projects/missing-project/library/member.pdf').putString('private data'));
 });
 
 test('only owners can create invitations and invited email can read its invitation', async () => {

@@ -7,6 +7,9 @@ service firebase.storage {
     // below projects/{projectId}.
     function isProjectMember(projectId) {
       return request.auth != null &&
+        firestore.exists(
+          /databases/(default)/documents/projects/$(projectId)
+        ) &&
         request.auth.uid in firestore.get(
           /databases/(default)/documents/projects/$(projectId)
         ).data.members;
