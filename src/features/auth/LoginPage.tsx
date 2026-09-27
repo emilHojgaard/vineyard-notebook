@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatAuthError } from '../../lib/auth-errors';
 
 export function LoginPage() {
   const [isSignup, setIsSignup] = useState(false);
@@ -28,7 +29,7 @@ export function LoginPage() {
         await login(email, password);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(formatAuthError(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }

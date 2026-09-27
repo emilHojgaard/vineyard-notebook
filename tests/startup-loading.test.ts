@@ -9,7 +9,8 @@ test('auth restoration does not block the application on optional invitation rea
 
   assert.match(auth, /onAuthStateChanged\(auth, \(user\) =>/);
   assert.doesNotMatch(auth, /onAuthStateChanged\(auth, async \(user\) =>/);
-  assert.match(auth, /loadUserPendingInvitations\(user\)\.catch/);
+  assert.match(auth, /loadUserPendingInvitations\(user, sessionId\)\.catch/);
+  assert.match(auth, /authSessionRef/);
   assert.match(auth, /setCurrentUser\(user\);\s*setLoading\(false\);/);
 });
 
@@ -17,7 +18,12 @@ test('cached project snapshots do not restart data listeners during startup', ()
   const data = read('src/contexts/DataContext.tsx');
 
   assert.match(data, /Depend on the ID rather than the project object/);
-  assert.match(data, /\}, \[currentProject\?\.id, dataRetryKey\]\);/);
+  assert.match(data, /\}, \[userId, dataUserId, currentProject\?\.id, dataRetryKey\]\);/);
+  assert.match(data, /setAllSeasons\(\{\}\)/);
+  assert.match(data, /setAllInventory\(\{\}\)/);
+  assert.match(data, /setAllLibrary\(\{\}\)/);
+  assert.match(data, /sessionStateReady = dataUserId === userId/);
+  assert.match(data, /if \(!userId \|\| !sessionStateReady \|\| !projectId\)/);
   assert.match(data, /subscribeSeasons\(projectId/);
   assert.match(data, /subscribeInventory\(projectId/);
   assert.match(data, /subscribeLibrary\(projectId/);
@@ -33,4 +39,15 @@ test('the first listener failure is retained while stale callbacks are ignored',
   assert.match(data, /onSubscriptionError\('seasons'/);
   assert.match(data, /onSubscriptionError\('inventory'/);
   assert.match(data, /onSubscriptionError\('library'/);
+});
+
+test('auth errors retain Firebase diagnostics and stale invitation reads cannot cross sessions', () => {
+  const auth = read('src/contexts/AuthContext.tsx');
+  const login = read('src/features/auth/LoginPage.tsx');
+
+  assert.match(auth, /authPersistenceReady/);
+  assert.match(auth, /getAuthErrorCode\(error\)/);
+  assert.match(auth, /Firebase Auth sign-in failed/);
+  assert.match(auth, /authSessionRef\.current !== sessionId/);
+  assert.match(login, /formatAuthError\(err/);
 });

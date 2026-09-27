@@ -7,7 +7,8 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, authPersistenceReady } from '../lib/firebase';
+import { getAuthErrorCode } from '../lib/auth-errors';
 import {
   acceptInvitation as acceptInvitationInRepository,
   declineInvitation as declineInvitationInRepository,
@@ -50,10 +51,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [invitationNotifications, setInvitationNotifications] = useState<InvitationNotification[]>([]);
   const notifiedInvitationIds = useRef(new Set<string>());
+  const authSessionRef = useRef(0);
 
   useEffect(() => {
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const sessionId = ++authSessionRef.current;
       // Auth restoration must not wait for a Firestore read. A stale cache,
       // another tab's persistence lease, or a rules error in the optional
       // invitation query otherwise leaves the whole app in its startup spinner.
@@ -62,11 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!user) {
         setPendingInvitations([]);
+        setInvitationNotifications([]);
+        notifiedInvitationIds.current.clear();
         return;
       }
 
-      void loadUserPendingInvitations(user).catch((error: unknown) => {
-        if (!active) return;
+      void loadUserPendingInvitations(user, sessionId).catch((error: unknown) => {
+        if (!active || authSessionRef.current !== sessionId) return;
         // Invitations are auxiliary to the authenticated session. Keep the
         // real error for diagnostics, but let the project listeners provide
         // the user-facing data/retry state.
@@ -81,12 +86,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loadUserPendingInvitations = async (user: FirebaseUser) => {
+  const loadUserPendingInvitations = async (user: FirebaseUser, sessionId = authSessionRef.current) => {
     if (!user.email) {
-      setPendingInvitations([]);
+      if (authSessionRef.current === sessionId) setPendingInvitations([]);
       return;
     }
-    setPendingInvitations(await loadPendingInvitations(user.email));
+    const invitations = await loadPendingInvitations(user.email);
+    // A slow invitation query from the previous account must not repopulate
+    // user-scoped state after a sign-out/sign-in switch.
+    if (authSessionRef.current === sessionId) setPendingInvitations(invitations);
   };
 
   const acceptInvitation = async (invitationId: string) => {
@@ -129,7 +137,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signup = async (email: string, password: string, displayName: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    await authPersistenceReady;
+    let userCredential;
+    try {
+      userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    } catch (error: unknown) {
+      console.error('Firebase Auth sign-up failed', { code: getAuthErrorCode(error), error });
+      throw error;
+    }
     if (userCredential.user) {
       await updateProfile(userCredential.user, { displayName });
       
@@ -140,7 +155,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    await authPersistenceReady;
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: unknown) {
+      // The HTTP request may only show 400 in the network panel. Firebase's
+      // Auth code is the actionable diagnosis and is safe to retain in logs.
+      console.error('Firebase Auth sign-in failed', { code: getAuthErrorCode(error), error });
+      throw error;
+    }
   };
 
   const logout = async () => {

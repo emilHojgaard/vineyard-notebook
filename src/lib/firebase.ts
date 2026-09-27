@@ -1,5 +1,10 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  connectAuthEmulator,
+  getAuth,
+  setPersistence,
+} from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -23,6 +28,29 @@ const firebaseConfig = {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Auth emulator wiring must happen before persistence initializes the Auth
+// instance. Other emulators are connected after their services are created.
+if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+  connectAuthEmulator(auth, 'http://localhost:9099');
+}
+
+// Keep the normal browser session persistent across reloads. Login waits for
+// this configuration so an auth switch cannot race persistence initialization.
+// Some privacy-restricted clients reject local persistence; authentication must
+// still work in that case, using Firebase's in-memory fallback.
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((error: unknown) => {
+  console.warn('Firebase Auth local persistence is unavailable; using session-only auth', {
+    code: getFirebaseErrorCode(error),
+  });
+});
+
+function getFirebaseErrorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
 // User-entered optional fields can be absent; omit undefined values rather than
 // failing an entire season write.
 export const db = initializeFirestore(app, {
@@ -45,7 +73,6 @@ export async function resetFirestoreCache(): Promise<void> {
 
 // Connect to emulators in development if needed
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
-  connectAuthEmulator(auth, 'http://localhost:9099');
   connectFirestoreEmulator(db, 'localhost', 8080);
   connectStorageEmulator(storage, 'localhost', 9199);
   connectFunctionsEmulator(functions, 'localhost', 5001);

@@ -87,6 +87,19 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+const initialAppState = (): AppState => ({
+  year: new Date().getFullYear(),
+  tab: 'timeline',
+  branchSelection: {},
+  invFilter: 'all',
+  calMonth: null,
+  locked: true,
+  alertDays: 14,
+  eventAlertDays: 7,
+  treeFocus: null,
+  focusedNodeId: null,
+});
+
 export function useData() {
   const context = useContext(DataContext);
   if (!context) {
@@ -97,6 +110,8 @@ export function useData() {
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
+  const userId = currentUser?.uid ?? null;
+  const [dataUserId, setDataUserId] = useState<string | null>(userId);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [allSeasons, setAllSeasons] = useState<Record<string, Record<number, Season>>>({});
@@ -197,9 +212,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Computed values for current project (for backward compatibility with existing views)
-  const seasons = currentProject ? (allSeasons[currentProject.id] || {}) : {};
-  const inventory = currentProject ? (allInventory[currentProject.id] || {}) : {};
-  const library = currentProject ? (allLibrary[currentProject.id] || null) : null;
+  // During the render where Firebase reports a new account, effects have not
+  // cleared the previous account's state yet. Hide that state synchronously so
+  // a fast account switch cannot briefly render the old project.
+  const sessionStateReady = dataUserId === userId;
+  const visibleCurrentProject = sessionStateReady ? currentProject : null;
+  const visibleProjects = sessionStateReady ? projects : [];
+  const visibleAllSeasons = sessionStateReady ? allSeasons : {};
+  const visibleAllInventory = sessionStateReady ? allInventory : {};
+  const visibleAllLibrary = sessionStateReady ? allLibrary : {};
+  const seasons = visibleCurrentProject ? (visibleAllSeasons[visibleCurrentProject.id] || {}) : {};
+  const inventory = visibleCurrentProject ? (visibleAllInventory[visibleCurrentProject.id] || {}) : {};
+  const library = visibleCurrentProject ? (visibleAllLibrary[visibleCurrentProject.id] || null) : null;
   // Undo actions can outlive the render that created their notification.
   const seasonsRef = useRef(seasons);
   const currentProjectRef = useRef(currentProject);
@@ -222,32 +246,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Default app state
-  const [appState, setAppState] = useState<AppState>({
-    year: new Date().getFullYear(),
-    tab: 'timeline',
-    branchSelection: {},
-    invFilter: 'all',
-    calMonth: null,
-    locked: true,
-    alertDays: 14,
-    eventAlertDays: 7,
-    treeFocus: null,
-    focusedNodeId: null,
-  });
+  const [appState, setAppState] = useState<AppState>(initialAppState);
+
+  // AuthProvider stays mounted across sign-out/sign-in. Clear every piece of
+  // user-scoped state immediately so the next account cannot see the previous
+  // account's projects while its listeners are being established.
+  useEffect(() => {
+    setDataUserId(userId);
+    setProjects([]);
+    setCurrentProject(null);
+    setAllSeasons({});
+    setAllInventory({});
+    setAllLibrary({});
+    setMembers([]);
+    setPendingInvitations(null);
+    setFocusedBranchId(null);
+    setLastDeletion(null);
+    pendingProjectIdRef.current = null;
+    seasonSaveQueuesRef.current = {};
+    firstDataErrorRef.current = null;
+    firstDataErrorSourceRef.current = null;
+    setDataError(null);
+    setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online');
+    setLoading(userId !== null);
+    setDataLoading(userId !== null);
+    setAppState(initialAppState());
+  }, [userId]);
 
   // Start each authenticated session in view-only mode. This effect only runs
   // when authentication changes, so project/season changes and ordinary renders
   // preserve an explicit edit-mode toggle made during the current session.
   useEffect(() => {
     setAppState((prev) => (prev.locked ? prev : { ...prev, locked: true }));
-  }, [currentUser?.uid]);
+  }, [userId]);
 
   // Load user's projects. A retry must recreate this listener too; otherwise a
   // terminal snapshot error leaves the no-project screen stuck forever.
   useEffect(() => {
-    if (!currentUser) {
-      setProjects([]);
-      setCurrentProject(null);
+    if (!userId) {
       setDataLoading(false);
       setDataError(null);
       setLoading(false);
@@ -264,7 +300,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }, 1500);
     };
 
-    const unsubscribe = subscribeProjects(currentUser.uid, (loadedProjects) => {
+    const unsubscribe = subscribeProjects(userId, (loadedProjects) => {
       if (!active) return;
       setProjects(loadedProjects);
       // Auto-select the first project if none is selected, and keep the selected
@@ -326,7 +362,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (retryTimer !== null) clearTimeout(retryTimer);
       unsubscribe();
     };
-  }, [currentUser, projectRetryKey]);
+  }, [userId, projectRetryKey]);
 
   // Auto-adjust year when switching projects
   useEffect(() => {
@@ -371,7 +407,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // otherwise a stale lease error can overwrite a successful retry.
   useEffect(() => {
     const projectId = currentProject?.id;
-    if (!projectId) {
+    if (!userId || !sessionStateReady || !projectId) {
       setDataLoading(false);
       return;
     }
@@ -442,7 +478,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (retryTimer !== null) clearTimeout(retryTimer);
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [currentProject?.id, dataRetryKey]);
+  }, [userId, dataUserId, currentProject?.id, dataRetryKey]);
 
   const refreshMembers = async (projectId: string) => {
     setMembers(await loadMembers(projectId));
@@ -937,11 +973,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = {
-    currentProject,
-    projects,
-    allSeasons,
-    allInventory,
-    allLibrary,
+    currentProject: visibleCurrentProject,
+    projects: visibleProjects,
+    allSeasons: visibleAllSeasons,
+    allInventory: visibleAllInventory,
+    allLibrary: visibleAllLibrary,
     seasons,
     inventory,
     library,
