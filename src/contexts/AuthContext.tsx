@@ -14,8 +14,10 @@ import {
   declineInvitation as declineInvitationInRepository,
   loadPendingInvitations,
   saveUserProfile,
+  subscribeUserPendingInvitations,
 } from '../lib/repositories/auth-repository';
 import type { PendingInvitation } from '../lib/repositories/auth-repository';
+import { normalizeEmail } from '../lib/utils';
 
 export interface InvitationNotification {
   id: string;
@@ -55,33 +57,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let invitationUnsubscribe = () => undefined;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const sessionId = ++authSessionRef.current;
+      invitationUnsubscribe();
+      invitationUnsubscribe = () => undefined;
+
       // Auth restoration must not wait for a Firestore read. A stale cache,
       // another tab's persistence lease, or a rules error in the optional
       // invitation query otherwise leaves the whole app in its startup spinner.
       setCurrentUser(user);
       setLoading(false);
+      setPendingInvitations([]);
 
-      if (!user) {
-        setPendingInvitations([]);
+      if (!user?.email) {
         setInvitationNotifications([]);
         notifiedInvitationIds.current.clear();
         return;
       }
 
-      void loadUserPendingInvitations(user, sessionId).catch((error: unknown) => {
-        if (!active || authSessionRef.current !== sessionId) return;
-        // Invitations are auxiliary to the authenticated session. Keep the
-        // real error for diagnostics, but let the project listeners provide
-        // the user-facing data/retry state.
-        console.error('Failed to load pending invitations after auth restore', error);
-        setPendingInvitations([]);
-      });
+      // Keep this listener scoped to the authenticated email. It both refreshes
+      // after auth restoration and makes an invitation appear if the owner
+      // sends it while the invitee is already signed in.
+      invitationUnsubscribe = subscribeUserPendingInvitations(
+        normalizeEmail(user.email),
+        (invitations) => {
+          if (active && authSessionRef.current === sessionId) setPendingInvitations(invitations);
+        },
+        (error) => {
+          if (!active || authSessionRef.current !== sessionId) return;
+          console.error('Failed to load pending invitations after auth restore', error);
+        },
+      );
     });
 
     return () => {
       active = false;
+      invitationUnsubscribe();
       unsubscribe();
     };
   }, []);
@@ -138,9 +150,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = async (email: string, password: string, displayName: string) => {
     await authPersistenceReady;
+    const normalizedEmail = normalizeEmail(email);
     let userCredential;
     try {
-      userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (error: unknown) {
       console.error('Firebase Auth sign-up failed', { code: getAuthErrorCode(error), error });
       throw error;
@@ -148,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userCredential.user) {
       await updateProfile(userCredential.user, { displayName });
       
-      await saveUserProfile(userCredential.user, email, displayName);
+      await saveUserProfile(userCredential.user, normalizedEmail, displayName);
       // Load any pending invitations for this email
       await loadUserPendingInvitations(userCredential.user);
     }
@@ -157,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     await authPersistenceReady;
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
     } catch (error: unknown) {
       // The HTTP request may only show 400 in the network panel. Firebase's
       // Auth code is the actionable diagnosis and is safe to retain in logs.

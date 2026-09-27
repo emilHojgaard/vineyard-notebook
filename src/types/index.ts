@@ -134,6 +134,7 @@ export interface Member {
 export interface Invitation {
   id: string;
   projectId: string;
+  projectName: string;
   email: string;
   invitedBy: string; // user ID
   createdAt: string; // ISO date

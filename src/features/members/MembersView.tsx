@@ -6,6 +6,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Member } from '../../types';
 import { notifyError } from '../../lib/notifications';
+import { normalizeEmail } from '../../lib/utils';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
 
 export function MembersView() {
@@ -31,34 +32,35 @@ export function MembersView() {
 
   const handleInvite = async () => {
     setInviteError('');
-    
-    if (!inviteEmail.trim()) {
+    const normalizedEmail = normalizeEmail(inviteEmail);
+
+    if (!normalizedEmail) {
       setInviteError('Please enter an email address');
       return;
     }
 
-    // Basic email validation
+    // Basic email validation after trimming/canonicalizing user input.
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(inviteEmail)) {
+    if (!emailRegex.test(normalizedEmail)) {
       setInviteError('Please enter a valid email address');
       return;
     }
 
     // Check if already a member
-    if (members.some(m => m.email.toLowerCase() === inviteEmail.toLowerCase())) {
+    if (members.some(m => normalizeEmail(m.email) === normalizedEmail)) {
       setInviteError('This user is already a member');
       return;
     }
 
     // Check if already invited
-    if (pendingInvitations?.some(inv => inv.email.toLowerCase() === inviteEmail.toLowerCase())) {
+    if (pendingInvitations?.some(inv => normalizeEmail(inv.email) === normalizedEmail)) {
       setInviteError('This user has already been invited');
       return;
     }
 
     setInviteState('saving');
     try {
-      await inviteMember(inviteEmail.trim());
+      await inviteMember(normalizedEmail);
       setInviteState('saved');
       setInviteEmail('');
       setShowInviteModal(false);

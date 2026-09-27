@@ -9,11 +9,15 @@ import {
   setDoc,
   Timestamp,
   where,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { db, functions } from '../firebase';
-import { invitationsCollection, projectDocument } from '../firestore-repositories';
+import { invitationsCollection } from '../firestore-repositories';
 import { httpsCallable } from 'firebase/functions';
+import { normalizeEmail } from '../utils';
 
 export interface PendingInvitation {
   id: string;
@@ -23,13 +27,26 @@ export interface PendingInvitation {
   invitedBy: string;
 }
 
+function pendingInvitationFromDoc(inviteDoc: Pick<QueryDocumentSnapshot<DocumentData>, 'id' | 'data'>): PendingInvitation {
+  const invitation = inviteDoc.data();
+  return {
+    id: inviteDoc.id,
+    projectId: invitation.projectId,
+    projectName: typeof invitation.projectName === 'string' && invitation.projectName.trim()
+      ? invitation.projectName
+      : 'Unknown Project',
+    email: invitation.email,
+    invitedBy: invitation.invitedBy,
+  };
+}
+
 /** Firestore operations owned by authentication and invitation flows. */
 export async function ensureUserProfile(user: Pick<FirebaseUser, 'uid' | 'email'> & { displayName?: string | null }) {
   const userRef = doc(db, 'users', user.uid);
   const snapshot = await getDoc(userRef);
   if (!snapshot.exists()) {
     await setDoc(userRef, {
-      email: user.email,
+      email: normalizeEmail(user.email),
       displayName: user.displayName || 'User',
     });
   }
@@ -37,35 +54,41 @@ export async function ensureUserProfile(user: Pick<FirebaseUser, 'uid' | 'email'
 
 export async function saveUserProfile(user: Pick<FirebaseUser, 'uid'>, email: string, displayName: string): Promise<void> {
   await setDoc(doc(db, 'users', user.uid), {
-    email: email.toLowerCase(),
+    email: normalizeEmail(email),
     displayName,
   });
 }
 
-export async function loadPendingInvitations(email: string): Promise<PendingInvitation[]> {
-  const invitationsQuery = query(
+function pendingInvitationsQuery(email: string) {
+  return query(
     collection(db, 'invitations'),
-    where('email', '==', email.toLowerCase()),
+    where('email', '==', normalizeEmail(email)),
     where('status', '==', 'pending'),
   );
-  const snapshot = await getDocs(invitationsQuery);
-  const invitations: PendingInvitation[] = [];
+}
 
-  for (const inviteDoc of snapshot.docs) {
-    const invitation = inviteDoc.data();
-    const projectSnapshot = await getDoc(projectDocument(invitation.projectId));
-    if (projectSnapshot.exists()) {
-      invitations.push({
-        id: inviteDoc.id,
-        projectId: invitation.projectId,
-        projectName: projectSnapshot.data().name || 'Unknown Project',
-        email: invitation.email,
-        invitedBy: invitation.invitedBy,
-      });
-    }
-  }
+function pendingInvitationsFromSnapshot(snapshot: QuerySnapshot<DocumentData>): PendingInvitation[] {
+  return snapshot.docs.map(pendingInvitationFromDoc);
+}
 
-  return invitations;
+export async function loadPendingInvitations(email: string): Promise<PendingInvitation[]> {
+  if (!normalizeEmail(email)) return [];
+  const snapshot = await getDocs(pendingInvitationsQuery(email));
+  return pendingInvitationsFromSnapshot(snapshot);
+}
+
+/** Keep a signed-in invitee's prompt current without exposing other invitations. */
+export function subscribeUserPendingInvitations(
+  email: string,
+  onInvitations: (invitations: PendingInvitation[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (!normalizeEmail(email)) return () => undefined;
+  return onSnapshot(
+    pendingInvitationsQuery(email),
+    (snapshot) => onInvitations(pendingInvitationsFromSnapshot(snapshot)),
+    onError,
+  );
 }
 
 export async function acceptInvitation(invitation: PendingInvitation): Promise<void> {
@@ -79,8 +102,9 @@ export async function declineInvitation(invitationId: string): Promise<void> {
   await deleteDoc(doc(db, 'invitations', invitationId));
 }
 
-export async function createInvitation(projectId: string, email: string, invitedBy: string): Promise<void> {
-  const normalizedEmail = email.toLowerCase().trim();
+export async function createInvitation(projectId: string, email: string, invitedBy: string, projectName: string): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw new Error('Email address is required');
   const existingInvites = await getDocs(query(
     invitationsCollection(),
     where('projectId', '==', projectId),
@@ -91,6 +115,7 @@ export async function createInvitation(projectId: string, email: string, invited
 
   await setDoc(doc(invitationsCollection()), {
     projectId,
+    projectName: projectName.trim() || 'Unknown Project',
     email: normalizedEmail,
     invitedBy,
     createdAt: Timestamp.now(),
@@ -107,6 +132,7 @@ export function subscribeProjectInvitations(
   onInvitations: (invitations: Array<{
     id: string;
     projectId: string;
+    projectName: string;
     email: string;
     invitedBy: string;
     createdAt: string;
@@ -126,6 +152,7 @@ export function subscribeProjectInvitations(
     })) as Array<{
       id: string;
       projectId: string;
+      projectName: string;
       email: string;
       invitedBy: string;
       createdAt: string;

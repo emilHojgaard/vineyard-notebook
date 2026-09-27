@@ -9,9 +9,10 @@ test('auth restoration does not block the application on optional invitation rea
 
   assert.match(auth, /onAuthStateChanged\(auth, \(user\) =>/);
   assert.doesNotMatch(auth, /onAuthStateChanged\(auth, async \(user\) =>/);
-  assert.match(auth, /loadUserPendingInvitations\(user, sessionId\)\.catch/);
+  assert.match(auth, /subscribeUserPendingInvitations\(/);
   assert.match(auth, /authSessionRef/);
   assert.match(auth, /setCurrentUser\(user\);\s*setLoading\(false\);/);
+  assert.match(auth, /setPendingInvitations\(\[\]\);/);
 });
 
 test('cached project snapshots do not restart data listeners during startup', () => {

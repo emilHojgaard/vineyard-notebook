@@ -8,6 +8,10 @@ import { isActiveCalendarTokenOwner } from './security';
 admin.initializeApp();
 const firestore = getFirestore();
 
+function normalizeEmail(email: unknown): string {
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
 /**
  * Generate a new calendar token for a project
  */
@@ -70,10 +74,9 @@ export const acceptInvitation = functions.https.onCall(async (data, context) => 
       throw new functions.https.HttpsError('not-found', 'Invitation not found');
     }
     const invitation = invitationSnapshot.data()!;
-    const authEmail = (context.auth!.token.email || '').toLowerCase();
+    const authEmail = normalizeEmail(context.auth!.token.email);
     if (invitation.status !== 'pending' ||
-        typeof invitation.email !== 'string' ||
-        invitation.email.toLowerCase() !== authEmail) {
+        normalizeEmail(invitation.email) !== authEmail) {
       throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
     }
 

@@ -447,3 +447,38 @@ test('only owners can create invitations and invited email can read its invitati
   }));
   await assertSucceeds(deleteDoc(doc(invitedDb, 'invitations/invite-1')));
 });
+
+test('invitee invitation queries normalize auth casing without exposing other invitations', async () => {
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  await assertSucceeds(setDoc(doc(ownerDb, 'invitations', 'invite-cased'), {
+    projectId,
+    email: 'invitee@example.com',
+    invitedBy: 'owner-1',
+    status: 'pending',
+  }));
+  await assertSucceeds(setDoc(doc(ownerDb, 'invitations', 'invite-other'), {
+    projectId,
+    email: 'other@example.com',
+    invitedBy: 'owner-1',
+    status: 'pending',
+  }));
+  await assertFails(setDoc(doc(ownerDb, 'invitations', 'invite-whitespace'), {
+    projectId,
+    email: ' invitee@example.com ',
+    invitedBy: 'owner-1',
+    status: 'pending',
+  }));
+
+  const invitedDb = testEnv.authenticatedContext('invitee-user', { email: ' Invitee@Example.COM ' }).firestore();
+  const visible = await assertSucceeds(getDocs(query(
+    collection(invitedDb, 'invitations'),
+    where('email', '==', 'invitee@example.com'),
+    where('status', '==', 'pending'),
+  )));
+  assert.deepEqual(visible.docs.map((invitation) => invitation.id), ['invite-cased']);
+  await assertFails(getDocs(query(
+    collection(invitedDb, 'invitations'),
+    where('status', '==', 'pending'),
+  )));
+  await assertFails(getDoc(doc(invitedDb, 'invitations', 'invite-other')));
+});

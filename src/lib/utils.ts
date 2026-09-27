@@ -1,5 +1,13 @@
 import type { Node, PhaseStatus, InventoryItem, InventoryStatus, Season } from '../types';
 
+// Firebase Auth treats email addresses case-insensitively. Keep the value used
+// in invitation documents stable so owner and invitee queries address the same
+// record even when either person enters surrounding whitespace or different
+// casing.
+export function normalizeEmail(email: string | null | undefined): string {
+  return (email || '').trim().toLowerCase();
+}
+
 // Date utilities
 export function parseDate(s: string): Date {
   const [year, month, day] = s.split('-').map(Number);

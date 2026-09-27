@@ -42,6 +42,9 @@ const ics_generator_1 = require("./ics-generator");
 const security_1 = require("./security");
 admin.initializeApp();
 const firestore = (0, firestore_1.getFirestore)();
+function normalizeEmail(email) {
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
 /**
  * Generate a new calendar token for a project
  */
@@ -96,10 +99,9 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
             throw new functions.https.HttpsError('not-found', 'Invitation not found');
         }
         const invitation = invitationSnapshot.data();
-        const authEmail = (context.auth.token.email || '').toLowerCase();
+        const authEmail = normalizeEmail(context.auth.token.email);
         if (invitation.status !== 'pending' ||
-            typeof invitation.email !== 'string' ||
-            invitation.email.toLowerCase() !== authEmail) {
+            normalizeEmail(invitation.email) !== authEmail) {
             throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
         }
         const projectRef = projectRefForInvitation.doc(invitation.projectId);

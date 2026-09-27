@@ -47,6 +47,7 @@ users/{userId}
 
 invitations/{invitationId}
   - projectId: string
+  - projectName: string  // copied so invitees can read without project membership
   - email: string
   - invitedBy: string
   - createdAt: Timestamp
@@ -179,6 +180,7 @@ Two read-only states:
 - **Security Rules**: Comprehensive Firestore rules for invitations collection
 - **UI Integration**: Accessible via header button, clean modal interface
 - **Real-time Updates**: Members and invitations update via Firestore snapshots
+- **Invitation Visibility**: Invitee queries are scoped to normalized email; invitation documents carry projectName because invitees cannot read projects until acceptance
 
 ✅ **Repository Extraction** (Completed):
 - Typed repositories isolate auth/invitations, projects/members, seasons, inventory, library, media, and calendar operations.

@@ -35,6 +35,14 @@ async function writeFirestoreDocument(collection, id, fields, idToken) {
   assert.equal(response.ok, true, await response.text());
 }
 
+async function readFirestoreDocument(collection, id, idToken) {
+  const response = await fetch(
+    `${firestoreUrl}/v1/projects/${projectId}/databases/(default)/documents/${collection}/${id}`,
+    { headers: { authorization: `Bearer ${idToken}` } },
+  );
+  return { response, body: await response.json() };
+}
+
 async function callFunction(name, data, idToken) {
   const headers = { 'content-type': 'application/json' };
   if (idToken) headers.authorization = `Bearer ${idToken}`;
@@ -92,4 +100,37 @@ test('callable membership checks reject authenticated non-members', async () => 
   const result = await callFunction('generateCalendarToken', { projectId: 'not-their-project' }, user.idToken);
   assert.equal(result.response.status, 404);
   assert.equal(result.body.error.status, 'NOT_FOUND');
+});
+
+test('invitee can accept a canonical invitation with a differently cased auth email', async () => {
+  const suffix = Date.now();
+  const owner = await createUser(`owner-${suffix}@example.com`);
+  const invitee = await createUser(`Invitee-${suffix}@Example.com`);
+  const scopedProjectId = `invite-project-${suffix}`;
+  const invitationId = `invite-${suffix}`;
+
+  await writeFirestoreDocument('projects', scopedProjectId, {
+    name: { stringValue: 'Invite Vineyard' },
+    members: { arrayValue: { values: [{ stringValue: owner.localId }] } },
+    owners: { arrayValue: { values: [{ stringValue: owner.localId }] } },
+    createdBy: { stringValue: owner.localId },
+  }, owner.idToken);
+  await writeFirestoreDocument('invitations', invitationId, {
+    projectId: { stringValue: scopedProjectId },
+    projectName: { stringValue: 'Invite Vineyard' },
+    email: { stringValue: `invitee-${suffix}@example.com` },
+    invitedBy: { stringValue: owner.localId },
+    status: { stringValue: 'pending' },
+  }, owner.idToken);
+
+  const accepted = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  assert.deepEqual(accepted.body.data, { success: true });
+
+  const project = await readFirestoreDocument('projects', scopedProjectId, invitee.idToken);
+  assert.equal(project.response.status, 200, JSON.stringify(project.body));
+  const members = project.body.fields.members.arrayValue.values.map((value) => value.stringValue);
+  assert.deepEqual(members.sort(), [owner.localId, invitee.localId].sort());
+  const invitation = await readFirestoreDocument('invitations', invitationId, invitee.idToken);
+  assert.equal(invitation.response.status, 403);
 });

@@ -917,7 +917,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const inviteMember = async (email: string) => {
     if (!currentProject || !currentUser) throw new Error('Not authenticated');
 
-    await createInvitation(currentProject.id, email, currentUser.uid);
+    await createInvitation(currentProject.id, email, currentUser.uid, currentProject.name);
     
     // Real-time listener will automatically update pendingInvitations
   };

@@ -36,6 +36,11 @@ service cloud.firestore {
         project(projectId).deleting == true;
     }
 
+    function isInvitationRecipient(invitation) {
+      return signedIn() && request.auth.token.email != null &&
+        request.auth.token.email.trim().lower() == invitation.email;
+    }
+
     function validProjectMembershipDocument(data) {
       return data.members.size() > 0 &&
         data.createdBy in data.members &&
@@ -147,12 +152,11 @@ service cloud.firestore {
 
     match /invitations/{invitationId} {
       allow read: if isProjectOwner(resource.data.projectId) ||
-        (signedIn() && request.auth.token.email != null &&
-         request.auth.token.email == resource.data.email);
+        isInvitationRecipient(resource.data);
       allow create: if isProjectOwner(request.resource.data.projectId) &&
         request.resource.data.status == 'pending' &&
         request.resource.data.invitedBy == request.auth.uid &&
-        request.resource.data.email == request.resource.data.email.lower();
+        request.resource.data.email == request.resource.data.email.trim().lower();
       // Invitation state is not a client-controlled membership operation.
       // Owners can only cancel; invitees can only decline their own invite.
       allow update: if isProjectOwner(resource.data.projectId) &&
@@ -161,7 +165,7 @@ service cloud.firestore {
         request.resource.data.invitedBy == resource.data.invitedBy &&
         request.resource.data.status == 'pending';
       allow delete: if isProjectOwner(resource.data.projectId) ||
-        (signedIn() && request.auth.token.email == resource.data.email);
+        isInvitationRecipient(resource.data);
     }
 
     // Calendar token documents are server-managed; the HTTP feed performs a
