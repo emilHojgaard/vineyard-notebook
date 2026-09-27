@@ -441,6 +441,8 @@ export function InventoryView() {
                                 type="text"
                                 value={draft.name}
                                 onChange={(e) => updateDraft(itemKey, { name: e.target.value })}
+                                autoFocus
+                                data-autofocus
                                 className="w-full px-3 py-2 text-sm font-semibold border border-border rounded-md bg-surface text-ink"
                               />
                               <div className="grid grid-cols-2 gap-2">

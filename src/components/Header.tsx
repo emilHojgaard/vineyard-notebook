@@ -58,7 +58,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
 
   return (
     <>
-      <div className="relative bg-burgundy text-white px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="relative z-30 bg-burgundy text-white px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0">
         {/* Lock control stays on the left. */}
         <button
           onClick={toggleLock}

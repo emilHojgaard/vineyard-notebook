@@ -655,6 +655,7 @@ export function TreeView() {
           onChange={(e) => setNewPhaseName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
           placeholder="Phase name"
+          autoFocus
           data-autofocus
           className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
         />

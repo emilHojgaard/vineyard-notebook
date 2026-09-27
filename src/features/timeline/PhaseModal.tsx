@@ -188,6 +188,8 @@ export function PhaseModal({
               node.name = e.target.value || 'Untitled phase';
               void persistChanges();
             }}
+            autoFocus
+            data-autofocus
             className="w-full px-3 py-2 text-lg font-semibold border border-border rounded-md bg-surface text-ink mb-2"
           />
         )}
