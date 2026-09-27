@@ -589,26 +589,37 @@ export function TreeView() {
                     </button>
                   )}
                 </div>
-                {/* Show + button for empty branches (positioned below label like a phase would be) */}
-                {!isLocked && !isArchived && label.isEmpty && (
-                  <button
-                    type="button"
-                    onClick={() => setAddingPhase({ parentNodeId: label.parentNodeId, branchId: label.branchId })}
-                    aria-label={`Add phase to ${label.name}`}
-                    className="absolute flex items-center justify-center gap-2 px-3 bg-surface border-2 border-dashed rounded-lg shadow-sm hover:shadow-md transition-all"
+                {/* Empty branches remain visible in browse mode. Editing users get
+                    an actionable add-phase control in the same card. */}
+                {label.isEmpty && (
+                  <div
+                    role="status"
+                    aria-label={`${label.name}: Empty branch`}
+                    className="absolute flex items-center justify-center gap-2 px-2 bg-surface border-2 border-dashed rounded-lg shadow-sm"
                     style={{
                       left: label.x - NODE_WIDTH / 2,
                       top: label.emptyButtonY,
                       width: NODE_WIDTH,
-                      height: NODE_HEIGHT,
+                      minHeight: NODE_HEIGHT,
                       borderColor: label.color,
                       opacity: isDim ? 0.4 : 1,
                     }}
-                    title="Add phase to this branch"
                   >
-                    <Icon name="plus" size={14} />
-                    <span className="text-xs text-ink-faint">Add Phase</span>
-                  </button>
+                    {!isLocked && !isArchived ? (
+                      <button
+                        type="button"
+                        onClick={() => setAddingPhase({ parentNodeId: label.parentNodeId, branchId: label.branchId })}
+                        aria-label={`Add phase to ${label.name}`}
+                        className="flex items-center justify-center gap-2 py-2 text-xs text-ink-faint hover:text-burgundy"
+                        title="Add phase to this branch"
+                      >
+                        <Icon name="plus" size={14} />
+                        <span>Add phase</span>
+                      </button>
+                    ) : (
+                      <span className="py-2 text-center text-xs text-ink-faint">Empty branch</span>
+                    )}
+                  </div>
                 )}
               </div>
             );

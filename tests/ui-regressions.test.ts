@@ -15,6 +15,16 @@ test('mobile web app metadata keeps both standard and Apple declarations', () =>
   assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes" \/>/);
 });
 
+test('TreeView gives empty branches a browse message and an edit action', () => {
+  const tree = read('src/features/tree/TreeView.tsx');
+
+  assert.match(tree, /role="status"/);
+  assert.match(tree, /aria-label=\{`\$\{label\.name\}: Empty branch`\}/);
+  assert.match(tree, /<span className="py-2 text-center text-xs text-ink-faint">Empty branch<\/span>/);
+  assert.match(tree, /aria-label=\{`Add phase to \$\{label\.name\}`\}/);
+  assert.match(tree, /setAddingPhase\(\{ parentNodeId: label\.parentNodeId, branchId: label\.branchId \}\)/);
+});
+
 test('phase and item creation fields opt into initial focus', () => {
   const phaseModal = read('src/features/timeline/PhaseModal.tsx');
   const timeline = read('src/features/timeline/TimelineView.tsx');

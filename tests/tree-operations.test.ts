@@ -21,7 +21,7 @@ const node = (id: string, branches: Node['branches'] = null): Node => ({
   branches,
 });
 
-test('deleting a nested phase keeps promoted nodes in their containing branch', () => {
+test('deleting a nested phase preserves promoted branch identities', () => {
   const root = [
     node('grandparent', [
       { id: 'red', name: 'Red', nodes: [node('target', [
@@ -35,12 +35,16 @@ test('deleting a nested phase keeps promoted nodes in their containing branch', 
   deleteNodeFromTree(root, 'target');
 
   const grandparent = root[0];
-  assert.deepEqual(grandparent.branches?.map(branch => branch.name), ['Red', 'White']);
-  assert.deepEqual(grandparent.branches?.[0].nodes.map(item => item.id), ['red-child', 'white-child']);
+  assert.deepEqual(grandparent.branches?.map(branch => branch.name), ['Still Red', 'Still White', 'White']);
+  assert.deepEqual(grandparent.branches?.map(branch => branch.nodes.map(item => item.id)), [
+    ['red-child'],
+    ['white-child'],
+    ['white-after'],
+  ]);
   assert.equal(validateTree(root).valid, true);
 });
 
-test('deleting the first phase in a branch inserts promotions at that branch position', () => {
+test('deleting the first phase in a branch preserves promoted branches at the grandparent', () => {
   const root = [
     node('grandparent', [
       { id: 'red', name: 'Red', nodes: [node('target', [
@@ -53,16 +57,22 @@ test('deleting the first phase in a branch inserts promotions at that branch pos
 
   deleteNodeFromTree(root, 'target');
 
-  assert.deepEqual(root[0].branches?.[0].nodes.map(item => item.id), [
-    'red-child',
-    'white-child',
-    'red-after',
+  assert.deepEqual(root[0].branches?.map(branch => branch.name), [
+    'Red subbranch',
+    'White subbranch',
+    'Red',
+    'White',
   ]);
-  assert.deepEqual(root[0].branches?.map(branch => branch.name), ['Red', 'White']);
+  assert.deepEqual(root[0].branches?.map(branch => branch.nodes.map(item => item.id)), [
+    ['red-child'],
+    ['white-child'],
+    ['red-after'],
+    ['white-after'],
+  ]);
   assert.equal(validateTree(root).valid, true);
 });
 
-test('deleting a nested phase preserves every node from multiple subbranches', () => {
+test('deleting a nested phase preserves every branch identity and descendants', () => {
   const root = [node('grandparent', [
     { id: 'red', name: 'Red', nodes: [node('target', [
       { id: 'one', name: 'One', nodes: [node('one-child'), node('one-after')] },
@@ -74,16 +84,17 @@ test('deleting a nested phase preserves every node from multiple subbranches', (
 
   deleteNodeFromTree(root, 'target');
 
-  assert.deepEqual(root[0].branches?.[0].nodes.map(item => item.id), [
-    'one-child',
-    'one-after',
-    'two-child',
-    'three-child',
+  assert.deepEqual(root[0].branches?.map(branch => branch.id), ['one', 'two', 'three', 'white']);
+  assert.deepEqual(root[0].branches?.map(branch => branch.nodes.map(item => item.id)), [
+    ['one-child', 'one-after'],
+    ['two-child'],
+    ['three-child'],
+    ['white-child'],
   ]);
   assert.equal(validateTree(root).valid, true);
 });
 
-test('deleting a phase with an empty subbranch does not discard populated siblings', () => {
+test('deleting a phase preserves empty sibling branches instead of flattening them', () => {
   const root = [node('grandparent', [
     { id: 'red', name: 'Red', nodes: [node('target', [
       { id: 'empty', name: 'Empty', nodes: [] },
@@ -94,8 +105,8 @@ test('deleting a phase with an empty subbranch does not discard populated siblin
 
   deleteNodeFromTree(root, 'target');
 
-  assert.deepEqual(root[0].branches?.[0].nodes.map(item => item.id), ['child']);
-  assert.deepEqual(root[0].branches?.map(branch => branch.name), ['Red', 'White']);
+  assert.deepEqual(root[0].branches?.map(branch => branch.name), ['Empty', 'Populated', 'White']);
+  assert.deepEqual(root[0].branches?.map(branch => branch.nodes.map(item => item.id)), [[], ['child'], ['white-child']]);
   assert.equal(validateTree(root).valid, true);
 });
 

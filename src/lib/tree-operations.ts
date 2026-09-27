@@ -43,30 +43,71 @@ export function deleteNodeFromTree(root: Node[], nodeId: string): void {
 
   const { node, parent, siblings, index } = found;
   if (node.branches?.length) {
-    // A node inside a branch must promote its descendants into that same
-    // branch. Attaching the child branches to `parent` would make them
-    // siblings of the containing branch and lose the path that led to them.
     if (parent) {
-      const promotedNodes = node.branches.flatMap((branch) => branch.nodes);
-      siblings.splice(index, 1, ...promotedNodes);
+      const containingBranchIndex = parent.branches?.findIndex((branch) => branch.nodes === siblings) ?? -1;
+
+      if (containingBranchIndex !== -1) {
+        const containingBranch = parent.branches![containingBranchIndex];
+        const before = siblings.slice(0, index);
+        const after = siblings.slice(index + 1);
+
+        if (before.length > 0) {
+          // The containing branch still has a path before the deleted phase.
+          // Make that last phase the new fork point instead of flattening the
+          // promoted branch paths into its sibling list.
+          const continuation = after.length > 0
+            ? [{ id: uid('b'), name: 'Original', nodes: after }]
+            : [];
+          const anchor = before[before.length - 1];
+          anchor.branches = [
+            ...(anchor.branches || []),
+            ...node.branches,
+            ...continuation,
+          ];
+          siblings.splice(index, after.length + 1);
+        } else {
+          // The deleted phase is the first phase in its branch. Replace the
+          // containing branch at the branch point, preserving every promoted
+          // Branch object (and therefore its identity and descendants).
+          const replacement = after.length > 0
+            ? [...node.branches, { ...containingBranch, nodes: after }]
+            : node.branches;
+          parent.branches!.splice(containingBranchIndex, 1, ...replacement);
+        }
+        return;
+      }
+
+      // This is a defensive fallback for malformed/non-canonical trees where
+      // the parent does not directly own the array containing the node.
+      siblings.splice(index, 1, ...node.branches.flatMap((branch) => branch.nodes));
       return;
     }
 
     if (index > 0) {
+      // A root phase has the preceding root phase as its only possible owner.
+      // Preserve the branch objects there, and move any following trunk path
+      // into an explicit continuation branch rather than flattening it.
       const previous = siblings[index - 1];
-      previous.branches = previous.branches
-        ? [...previous.branches, ...node.branches]
-        : node.branches;
-    } else {
-      // There is no preceding trunk node to own the deleted root's branches.
-      // Promote every branch path to the root rather than rejecting the
-      // deletion (or, worse, dropping descendants). Branch labels belong to
-      // the deleted fork, so the surviving node/branch IDs are retained while
-      // the paths are flattened into the only available trunk sequence.
-      const promotedNodes = node.branches.flatMap((branch) => branch.nodes);
-      siblings.splice(index, 1, ...promotedNodes);
+      const continuation = siblings.length > index + 1
+        ? [{ id: uid('b'), name: 'Original', nodes: siblings.slice(index + 1) }]
+        : [];
+      previous.branches = [
+        ...(previous.branches || []),
+        ...node.branches,
+        ...continuation,
+      ];
+      siblings.splice(index);
       return;
     }
+
+    // There is no preceding trunk phase to own a deleted root phase's
+    // branches. The root array has no branch container, so retain each branch
+    // path's nodes (including all nested descendants) in their original order.
+    // This is the only promotion that necessarily loses the deleted fork's
+    // top-level Branch IDs; no independent branch is merged with another.
+    const promotedNodes = node.branches.flatMap((branch) => branch.nodes);
+    siblings.splice(index, 1, ...promotedNodes);
+    return;
   }
 
   siblings.splice(index, 1);
