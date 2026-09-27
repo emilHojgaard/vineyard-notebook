@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +20,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
   const isEditMode = !appState.locked;
   const canDeleteProject = (project: typeof projects[number]) =>
     currentUser?.uid === project.createdBy ||
@@ -46,6 +47,18 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const toggleLock = () => {
     updateAppState({ locked: !appState.locked });
   };
+
+  useEffect(() => {
+    if (!showProjectDropdown) return;
+    const closeProjectMenuOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && projectMenuRef.current && !projectMenuRef.current.contains(target)) {
+        setShowProjectDropdown(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeProjectMenuOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeProjectMenuOnOutsidePointer);
+  }, [showProjectDropdown]);
 
   useEffect(() => {
     if (!showProjectDropdown && !showUserMenu) return;
@@ -79,7 +92,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
         {/* The single project-name presentation is centered in both modes. */}
         <div className="absolute left-1/2 -translate-x-1/2 max-w-[45%] sm:max-w-[55%]">
           {isEditMode ? (
-            <div className="relative">
+            <div ref={projectMenuRef} className="relative">
               <button
                 onClick={() => setShowProjectDropdown(!showProjectDropdown)}
                 className="flex items-center gap-1 max-w-full px-2 py-1 rounded hover:bg-white/10 transition-colors text-xs font-bold tracking-widest uppercase"
@@ -91,9 +104,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                 <Icon name="chevronDown" size={10} />
               </button>
               {showProjectDropdown && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowProjectDropdown(false)} />
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
                     <div className="py-1">
                       {projects.map((project) => (
                         <div key={project.id} className="flex items-center group">
@@ -126,8 +137,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                         Create New Project
                       </button>
                     </div>
-                  </div>
-                </>
+                </div>
               )}
             </div>
           ) : (

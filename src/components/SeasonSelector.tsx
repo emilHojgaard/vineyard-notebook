@@ -106,6 +106,31 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
     setIsExpanded(false);
   }, [currentProject, canManageSeasons]);
 
+  // Close the season list when a pointer lands outside its trigger or panel.
+  // The listener is installed only after expansion, so the opening pointer
+  // cannot immediately close the list again.
+  useEffect(() => {
+    if (!isExpanded) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && selectorRef.current && !selectorRef.current.contains(target)) {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [isExpanded]);
+
+  // Escape provides the same dismissal behavior for keyboard users.
+  useEffect(() => {
+    if (!isExpanded) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsExpanded(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [isExpanded]);
+
   // Never leave season-management dialogs open in read-only mode.
   useEffect(() => {
     if (!canManageSeasons) {

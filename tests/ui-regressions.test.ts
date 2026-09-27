@@ -9,6 +9,21 @@ test('header overlays stay above the transformed season selector', () => {
   assert.match(header, /className="relative z-30 bg-burgundy/);
 });
 
+test('project and season lists dismiss on outside pointers without closing internal controls', () => {
+  const header = read('src/components/Header.tsx');
+  const seasonSelector = read('src/components/SeasonSelector.tsx');
+
+  assert.match(header, /const projectMenuRef = useRef<HTMLDivElement>\(null\);/);
+  assert.match(header, /document\.addEventListener\('pointerdown', closeProjectMenuOnOutsidePointer\)/);
+  assert.match(header, /projectMenuRef\.current\.contains\(target\)/);
+  assert.match(header, /document\.removeEventListener\('pointerdown', closeProjectMenuOnOutsidePointer\)/);
+  assert.match(seasonSelector, /const selectorRef = useRef<HTMLDivElement>\(null\);/);
+  assert.match(seasonSelector, /document\.addEventListener\('pointerdown', closeOnOutsidePointer\)/);
+  assert.match(seasonSelector, /selectorRef\.current\.contains\(target\)/);
+  assert.match(seasonSelector, /document\.removeEventListener\('pointerdown', closeOnOutsidePointer\)/);
+  assert.match(seasonSelector, /document\.addEventListener\('keydown', closeOnEscape\)/);
+});
+
 test('mobile web app metadata keeps both standard and Apple declarations', () => {
   const html = read('index.html');
   assert.match(html, /<meta name="mobile-web-app-capable" content="yes" \/>/);
