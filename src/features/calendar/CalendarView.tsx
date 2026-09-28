@@ -267,7 +267,7 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full">
         {/* Calendar grid */}
         <div className="mb-6">
           <div className="grid grid-cols-7 gap-1 mb-2">
@@ -320,7 +320,7 @@ export function CalendarView() {
         {/* Calendar subscription button */}
         <button
           onClick={() => setShowSubscriptionModal(true)}
-          className="w-full mt-6 px-4 py-3 bg-surface border border-border rounded-lg text-ink font-semibold text-sm hover:bg-surface-2 transition-colors flex items-center justify-center gap-2"
+          className="w-full lg:max-w-md lg:mx-auto mt-6 px-4 py-3 bg-surface border border-border rounded-lg text-ink font-semibold text-sm hover:bg-surface-2 transition-colors flex items-center justify-center gap-2"
         >
           <Icon name="link" size={14} />
           Subscribe to Calendar
@@ -337,7 +337,7 @@ export function CalendarView() {
             }
           }}
           disabled={allEvents.length === 0}
-          className="w-full mt-3 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
+          className="w-full lg:max-w-md lg:mx-auto mt-3 px-4 py-3 border-2 border-dashed border-border rounded-lg text-ink-faint font-semibold text-sm hover:text-ink-soft hover:border-barrel transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:border-border"
         >
           <Icon name="download" size={14} />
           Download .ics file

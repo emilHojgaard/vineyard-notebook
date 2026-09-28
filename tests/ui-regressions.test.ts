@@ -60,8 +60,32 @@ test('project and season lists dismiss on outside pointers without closing inter
 
 test('mobile web app metadata keeps both standard and Apple declarations', () => {
   const html = read('index.html');
+  assert.match(html, /<meta name="viewport" content="width=device-width, initial-scale=1\.0" \/>/);
   assert.match(html, /<meta name="mobile-web-app-capable" content="yes" \/>/);
   assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes" \/>/);
+});
+
+test('application shell uses desktop viewport space without losing mobile breakpoints', () => {
+  const shell = read('src/components/AppShell.tsx');
+  const styles = read('src/index.css');
+
+  assert.match(shell, /min-h-\[100dvh\]/);
+  assert.match(shell, /max-w-\[1440px\]/);
+  assert.match(shell, /hidden sm:flex/);
+  assert.match(shell, /h-\[100dvh\]/);
+  assert.match(shell, /sm:h-\[calc\(100dvh-3rem\)\]/);
+  assert.match(shell, /lg:h-\[calc\(100dvh-4rem\)\]/);
+  assert.match(styles, /@media \(max-width: 639px\)/);
+});
+
+test('desktop content columns expand for collection views', () => {
+  const inventory = read('src/features/inventory/InventoryView.tsx');
+  const library = read('src/features/library/LibraryView.tsx');
+  const calendar = read('src/features/calendar/CalendarView.tsx');
+
+  assert.match(inventory, /lg:grid-cols-2/);
+  assert.match(library, /lg:grid-cols-2/);
+  assert.match(calendar, /max-w-6xl mx-auto/);
 });
 
 test('TreeView gives empty branches a browse message and an edit action', () => {

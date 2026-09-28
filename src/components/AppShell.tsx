@@ -47,17 +47,17 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   return (
-    <div className="min-h-screen bg-page-bg flex items-center justify-center p-4 md:p-10">
-      <div className="w-full max-w-md">
-        {/* Phone frame */}
-        <div className="bg-surface border border-border rounded-[20px] shadow-phone overflow-hidden">
-          {/* Notch */}
-          <div className="h-4 flex items-center justify-center">
+    <div className="min-h-[100dvh] bg-page-bg flex items-center justify-center p-0 sm:p-4 lg:p-6 xl:p-8">
+      <div className="w-full max-w-[1440px]">
+        {/* Responsive application frame: full-width on phones, spacious on desktop. */}
+        <div className="bg-surface border-0 sm:border sm:border-border rounded-none sm:rounded-[20px] shadow-none sm:shadow-phone overflow-hidden">
+          {/* Keep the phone notch only for the small-screen presentation. */}
+          <div className="hidden sm:flex h-4 items-center justify-center">
             <div className="w-16 h-1 bg-border rounded-full" />
           </div>
 
-          {/* Phone screen */}
-          <div className="bg-parchment h-[792px] max-h-[90vh] rounded-[14px] flex flex-col overflow-hidden">
+          {/* Application screen uses the available viewport height at every breakpoint. */}
+          <div className="bg-parchment h-[100dvh] sm:h-[calc(100dvh-3rem)] lg:h-[calc(100dvh-4rem)] xl:h-[calc(100dvh-5rem)] rounded-none sm:rounded-[14px] flex flex-col overflow-hidden">
             {/* Header */}
             {connectionStatus !== 'online' && (
               <div

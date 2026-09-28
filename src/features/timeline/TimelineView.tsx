@@ -321,7 +321,7 @@ export function TimelineView() {
       )}
 
       {/* Phase list */}
-      <div className="p-4">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto w-full">
         {season.root.length === 0 && !addingPhase ? (
           <div className="text-center py-8">
             <p className="text-ink-faint mb-3">No phases yet</p>

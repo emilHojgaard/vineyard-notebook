@@ -34,8 +34,15 @@
     --focus-ring: #2F6FB0;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
     margin: 0;
+    background: var(--page-bg);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -62,9 +69,26 @@
   }
 }
 
-/* Custom scrollbar styling */
+/* Keep desktop scrolling discoverable while preserving the clean mobile canvas. */
 ::-webkit-scrollbar {
-  width: 0;
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--barrel);
+}
+
+@media (max-width: 639px) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }
 
 /* Ensure proper focus visibility */

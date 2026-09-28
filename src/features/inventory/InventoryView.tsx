@@ -373,7 +373,7 @@ export function InventoryView() {
         </p>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
         <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {isArchived && (
           <div className="mb-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-soft">
@@ -393,7 +393,7 @@ export function InventoryView() {
             )}
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
             {inv.sections.map((section) => (
               <div key={section.id} className="bg-surface border border-border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">

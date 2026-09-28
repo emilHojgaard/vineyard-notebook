@@ -279,7 +279,7 @@ export function LibraryView() {
         </p>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
         <SaveStatus state={saveState} error={saveError} className="mb-3 block" />
         {library.sections.length === 0 && !addingSection ? (
           <div className="text-center py-8">
@@ -294,7 +294,7 @@ export function LibraryView() {
             )}
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
             {library.sections.map((section) => (
               <div key={section.id} className="bg-surface border border-border rounded-lg p-4">
                 <div className="relative flex items-center justify-center mb-3">
