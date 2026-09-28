@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { formatInvitationError } from '../lib/auth-errors';
 import { notifyError } from '../lib/notifications';
 import { Icon } from './Icon';
 
@@ -36,7 +37,7 @@ export function InvitationPrompt() {
       await acceptInvitation(invitationId);
     } catch (error) {
       console.error('Failed to accept invitation:', error);
-      notifyError('Failed to accept invitation. Please try again.');
+      notifyError(formatInvitationError(error));
     } finally {
       setProcessingAction(invitationId, null);
     }

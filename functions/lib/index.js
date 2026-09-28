@@ -45,6 +45,36 @@ const firestore = (0, firestore_1.getFirestore)();
 function normalizeEmail(email) {
     return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+/**
+ * Callable functions run with Admin SDK privileges, so validate the project
+ * shape before changing it. This also turns old/corrupt documents into a
+ * useful FAILED_PRECONDITION response instead of an opaque INTERNAL error.
+ */
+function parseProjectMembership(data) {
+    const members = data.members;
+    if (!Array.isArray(members) || members.length === 0 ||
+        members.some((member) => typeof member !== 'string' || !member.trim()) ||
+        new Set(members).size !== members.length) {
+        throw new functions.https.HttpsError('failed-precondition', 'Project membership data is invalid');
+    }
+    const memberIds = members;
+    if (typeof data.createdBy !== 'string' || !memberIds.includes(data.createdBy)) {
+        throw new functions.https.HttpsError('failed-precondition', 'Project owner data is invalid');
+    }
+    if (data.owners !== undefined &&
+        (!Array.isArray(data.owners) || data.owners.length === 0 ||
+            data.owners.some((owner) => typeof owner !== 'string' || !memberIds.includes(owner)))) {
+        throw new functions.https.HttpsError('failed-precondition', 'Project owner data is invalid');
+    }
+    const memberAddedAt = data.memberAddedAt === undefined ? {} : data.memberAddedAt;
+    if (!isRecord(memberAddedAt) || Object.keys(memberAddedAt).some((member) => !memberIds.includes(member))) {
+        throw new functions.https.HttpsError('failed-precondition', 'Project membership timestamps are invalid');
+    }
+    return { members: memberIds, memberAddedAt };
+}
 /**
  * Generate a new calendar token for a project
  */
@@ -87,38 +117,83 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const invitationId = typeof (data === null || data === void 0 ? void 0 : data.invitationId) === 'string' ? data.invitationId : '';
+    const invitationId = typeof (data === null || data === void 0 ? void 0 : data.invitationId) === 'string' ? data.invitationId.trim() : '';
     if (!invitationId) {
         throw new functions.https.HttpsError('invalid-argument', 'invitationId is required');
     }
+    const userId = context.auth.uid;
+    const authEmail = normalizeEmail(context.auth.token.email);
+    if (!authEmail) {
+        throw new functions.https.HttpsError('permission-denied', 'Your account does not have an email address');
+    }
     const invitationRef = firestore.collection('invitations').doc(invitationId);
-    const projectRefForInvitation = firestore.collection('projects');
-    await firestore.runTransaction(async (transaction) => {
-        const invitationSnapshot = await transaction.get(invitationRef);
-        if (!invitationSnapshot.exists) {
-            throw new functions.https.HttpsError('not-found', 'Invitation not found');
-        }
-        const invitation = invitationSnapshot.data();
-        const authEmail = normalizeEmail(context.auth.token.email);
-        if (invitation.status !== 'pending' ||
-            normalizeEmail(invitation.email) !== authEmail) {
-            throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
-        }
-        const projectRef = projectRefForInvitation.doc(invitation.projectId);
-        const projectSnapshot = await transaction.get(projectRef);
-        if (!projectSnapshot.exists) {
-            throw new functions.https.HttpsError('not-found', 'Project not found');
-        }
-        const project = projectSnapshot.data();
-        const members = Array.isArray(project.members) ? project.members : [];
-        if (!members.includes(context.auth.uid)) {
-            transaction.update(projectRef, {
-                members: [...members, context.auth.uid],
-                memberAddedAt: Object.assign(Object.assign({}, (project.memberAddedAt || {})), { [context.auth.uid]: firestore_1.Timestamp.now() }),
+    try {
+        await firestore.runTransaction(async (transaction) => {
+            // Every read is intentionally completed before either document is written.
+            const invitationSnapshot = await transaction.get(invitationRef);
+            if (!invitationSnapshot.exists) {
+                throw new functions.https.HttpsError('not-found', 'Invitation not found');
+            }
+            const invitation = invitationSnapshot.data();
+            const projectId = typeof invitation.projectId === 'string' ? invitation.projectId.trim() : '';
+            if (!projectId || projectId.includes('/')) {
+                throw new functions.https.HttpsError('failed-precondition', 'Invitation project data is invalid');
+            }
+            if (normalizeEmail(invitation.email) !== authEmail) {
+                throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
+            }
+            if (invitation.status !== 'pending' && invitation.status !== 'accepted') {
+                throw new functions.https.HttpsError('failed-precondition', 'Invitation status is invalid');
+            }
+            const projectRef = firestore.collection('projects').doc(projectId);
+            const projectSnapshot = await transaction.get(projectRef);
+            if (!projectSnapshot.exists) {
+                throw new functions.https.HttpsError('not-found', 'Project not found');
+            }
+            const project = parseProjectMembership(projectSnapshot.data());
+            const owners = Array.isArray(projectSnapshot.data().owners)
+                ? projectSnapshot.data().owners
+                : [projectSnapshot.data().createdBy];
+            if (typeof invitation.invitedBy !== 'string' || !owners.includes(invitation.invitedBy)) {
+                throw new functions.https.HttpsError('failed-precondition', 'Invitation sender is not a project owner');
+            }
+            // Keep the accepted invitation as an audit/idempotency record. A retry
+            // after a successful commit is a no-op for the same authenticated user.
+            if (invitation.status === 'accepted') {
+                if (invitation.acceptedBy && invitation.acceptedBy !== userId) {
+                    throw new functions.https.HttpsError('permission-denied', 'Invitation was accepted by another account');
+                }
+                if (!project.members.includes(userId)) {
+                    throw new functions.https.HttpsError('failed-precondition', 'This invitation has already been accepted');
+                }
+                return;
+            }
+            const acceptedAt = firestore_1.Timestamp.now();
+            if (!project.members.includes(userId)) {
+                transaction.update(projectRef, {
+                    members: [...project.members, userId],
+                    memberAddedAt: Object.assign(Object.assign({}, project.memberAddedAt), { [userId]: acceptedAt }),
+                });
+            }
+            transaction.update(invitationRef, {
+                status: 'accepted',
+                acceptedBy: userId,
+                acceptedAt,
             });
-        }
-        transaction.delete(invitationRef);
-    });
+        });
+    }
+    catch (error) {
+        if (error instanceof functions.https.HttpsError)
+            throw error;
+        console.error('acceptInvitation failed', {
+            invitationId,
+            userId,
+            authEmail,
+            runtime: process.version,
+            error,
+        });
+        throw new functions.https.HttpsError('internal', 'The invitation could not be accepted right now. Please try again.');
+    }
     return { success: true };
 });
 /**

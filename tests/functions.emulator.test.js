@@ -127,10 +127,82 @@ test('invitee can accept a canonical invitation with a differently cased auth em
   assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
   assert.deepEqual(accepted.body.data, { success: true });
 
+  const retried = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
+  assert.equal(retried.response.status, 200, JSON.stringify(retried.body));
+  assert.deepEqual(retried.body.data, { success: true });
+
   const project = await readFirestoreDocument('projects', scopedProjectId, invitee.idToken);
   assert.equal(project.response.status, 200, JSON.stringify(project.body));
   const members = project.body.fields.members.arrayValue.values.map((value) => value.stringValue);
   assert.deepEqual(members.sort(), [owner.localId, invitee.localId].sort());
   const invitation = await readFirestoreDocument('invitations', invitationId, invitee.idToken);
-  assert.equal(invitation.response.status, 403);
+  assert.equal(invitation.response.status, 200, JSON.stringify(invitation.body));
+  assert.equal(invitation.body.fields.status.stringValue, 'accepted');
+  assert.equal(invitation.body.fields.acceptedBy.stringValue, invitee.localId);
+});
+
+test('wrong account cannot accept an invitation', async () => {
+  const suffix = Date.now();
+  const owner = await createUser(`owner-wrong-${suffix}@example.com`);
+  const invitee = await createUser(`invitee-wrong-${suffix}@example.com`);
+  const wrongAccount = await createUser(`wrong-${suffix}@example.com`);
+  const scopedProjectId = `invite-wrong-project-${suffix}`;
+  const invitationId = `invite-wrong-${suffix}`;
+
+  await writeFirestoreDocument('projects', scopedProjectId, {
+    members: { arrayValue: { values: [{ stringValue: owner.localId }] } },
+    owners: { arrayValue: { values: [{ stringValue: owner.localId }] } },
+    createdBy: { stringValue: owner.localId },
+  }, owner.idToken);
+  await writeFirestoreDocument('invitations', invitationId, {
+    projectId: { stringValue: scopedProjectId },
+    email: { stringValue: invitee.email.toLowerCase() },
+    invitedBy: { stringValue: owner.localId },
+    status: { stringValue: 'pending' },
+  }, owner.idToken);
+
+  const result = await callFunction('acceptInvitation', { invitationId }, wrongAccount.idToken);
+  assert.equal(result.response.status, 403, JSON.stringify(result.body));
+  assert.equal(result.body.error.status, 'PERMISSION_DENIED');
+
+  const project = await readFirestoreDocument('projects', scopedProjectId, owner.idToken);
+  assert.deepEqual(project.body.fields.members.arrayValue.values.map((value) => value.stringValue), [owner.localId]);
+  const invitation = await readFirestoreDocument('invitations', invitationId, owner.idToken);
+  assert.equal(invitation.body.fields.status.stringValue, 'pending');
+});
+
+test('missing invitation returns NOT_FOUND instead of INTERNAL', async () => {
+  const user = await createUser(`missing-invite-${Date.now()}@example.com`);
+  const result = await callFunction('acceptInvitation', { invitationId: `does-not-exist-${Date.now()}` }, user.idToken);
+  assert.equal(result.response.status, 404, JSON.stringify(result.body));
+  assert.equal(result.body.error.status, 'NOT_FOUND');
+});
+
+test('malformed project membership data is rejected without granting access', async () => {
+  const suffix = Date.now();
+  const owner = await createUser(`owner-malformed-${suffix}@example.com`);
+  const invitee = await createUser(`invitee-malformed-${suffix}@example.com`);
+  const scopedProjectId = `invite-malformed-project-${suffix}`;
+  const invitationId = `invite-malformed-${suffix}`;
+
+  // This shape passes the legacy Firestore rule but is not a valid membership
+  // list for trusted server code: a member ID must always be a string.
+  await writeFirestoreDocument('projects', scopedProjectId, {
+    members: { arrayValue: { values: [{ stringValue: owner.localId }, { integerValue: '7' }] } },
+    owners: { arrayValue: { values: [{ stringValue: owner.localId }] } },
+    createdBy: { stringValue: owner.localId },
+  }, owner.idToken);
+  await writeFirestoreDocument('invitations', invitationId, {
+    projectId: { stringValue: scopedProjectId },
+    email: { stringValue: invitee.email.toLowerCase() },
+    invitedBy: { stringValue: owner.localId },
+    status: { stringValue: 'pending' },
+  }, owner.idToken);
+
+  const result = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
+  assert.equal(result.response.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.error.status, 'FAILED_PRECONDITION');
+
+  const invitation = await readFirestoreDocument('invitations', invitationId, owner.idToken);
+  assert.equal(invitation.body.fields.status.stringValue, 'pending');
 });
