@@ -4,6 +4,18 @@ import { readFileSync } from 'node:fs';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+test('pending invitations are an optional inbox, not a blocking modal', () => {
+  const prompt = read('src/components/InvitationPrompt.tsx');
+
+  assert.doesNotMatch(prompt, /aria-modal/);
+  assert.doesNotMatch(prompt, /useModalKeyboard/);
+  assert.doesNotMatch(prompt, /document\.body\.style\.overflow/);
+  assert.match(prompt, /setIsExpanded\(false\)/);
+  assert.match(prompt, /Invitations \(\{pendingInvitations\.length\}\)/);
+  assert.match(prompt, /notifyError\('Failed to (accept|decline) invitation/);
+  assert.match(prompt, /pendingInvitations\.map/);
+});
+
 test('alert settings keep transient text separate from saved values', () => {
   const shell = read('src/components/AppShell.tsx');
 
