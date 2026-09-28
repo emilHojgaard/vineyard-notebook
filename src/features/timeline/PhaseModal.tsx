@@ -8,6 +8,7 @@ import { uploadPhasePhoto } from '../../lib/repositories/media-repository';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { SaveStatus, type SaveState } from '../../components/SaveStatus';
+import { NotePhotoLightbox } from './NotePhotoLightbox';
 
 interface PhaseModalProps {
   node: Node;
@@ -36,6 +37,7 @@ export function PhaseModal({
   const [confirmDeleteNote, setConfirmDeleteNote] = useState<string | null>(null);
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -319,12 +321,19 @@ export function PhaseModal({
                   </div>
                   {note.text && <div className="text-sm text-ink leading-relaxed">{note.text}</div>}
                   {note.photo && (
-                    <img
-                      src={note.photo}
-                      alt="Note attachment"
-                      className="mt-2 rounded-md max-w-full cursor-pointer"
-                      onClick={() => window.open(note.photo, '_blank')}
-                    />
+                    <button
+                      type="button"
+                      className="mt-2 block h-20 w-24 rounded-md border border-border bg-surface-2 p-1 transition-shadow hover:shadow-md"
+                      onClick={() => setLightboxPhoto(note.photo ?? null)}
+                      aria-haspopup="dialog"
+                      aria-label={`Open note attachment from ${fmtDate(note.date)}`}
+                    >
+                      <img
+                        src={note.photo}
+                        alt="Note attachment thumbnail"
+                        className="h-full w-full rounded object-contain"
+                      />
+                    </button>
                   )}
                 </div>
               ))}
@@ -335,7 +344,11 @@ export function PhaseModal({
             <div className="space-y-2">
               {photoPreview && (
                 <div className="relative inline-block">
-                  <img src={photoPreview} alt="Preview" className="rounded-md max-w-full max-h-48" />
+                  <img
+                    src={photoPreview}
+                    alt="Preview"
+                    className="h-20 w-24 rounded-md border border-border bg-surface-2 p-1 object-contain"
+                  />
                   <button
                     type="button"
                     onClick={() => {
@@ -491,6 +504,8 @@ export function PhaseModal({
           </button>
         )}
       </Modal>
+
+      <NotePhotoLightbox photo={isOpen ? lightboxPhoto : null} onClose={() => setLightboxPhoto(null)} />
 
       <ConfirmDialog
         isOpen={confirmDelete}

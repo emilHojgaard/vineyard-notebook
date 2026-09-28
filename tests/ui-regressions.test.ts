@@ -71,6 +71,24 @@ test('inventory item additions stay available outside edit mode', () => {
   assert.match(inventory, /const handleDeleteItem = async \(sectionId: string, itemId: string, itemIndex: number\) => \{\s+if \(isArchived \|\| !isEditMode\) return;/);
 });
 
+test('note photos use compact thumbnails and an accessible in-app lightbox', () => {
+  const phaseModal = read('src/features/timeline/PhaseModal.tsx');
+  const lightbox = read('src/features/timeline/NotePhotoLightbox.tsx');
+
+  assert.doesNotMatch(phaseModal, /window\.open\(note\.photo/);
+  assert.match(phaseModal, /aria-haspopup="dialog"/);
+  assert.match(phaseModal, /Note attachment thumbnail/);
+  assert.match(phaseModal, /object-contain/);
+  assert.match(phaseModal, /<NotePhotoLightbox photo=\{isOpen \? lightboxPhoto : null\}/);
+  assert.match(lightbox, /createPortal\(/);
+  assert.match(lightbox, /role="dialog"/);
+  assert.match(lightbox, /aria-modal="true"/);
+  assert.match(lightbox, /event\.target === overlayRef\.current/);
+  assert.match(lightbox, /useModalKeyboard\(isOpen, onClose, dialogRef\)/);
+  assert.match(lightbox, /aria-label="Close image"/);
+  assert.match(lightbox, /document\.body\.style\.overflow = 'hidden'/);
+});
+
 test('phase and item creation fields opt into initial focus', () => {
   const phaseModal = read('src/features/timeline/PhaseModal.tsx');
   const timeline = read('src/features/timeline/TimelineView.tsx');
