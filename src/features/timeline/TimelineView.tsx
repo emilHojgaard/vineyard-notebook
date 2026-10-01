@@ -257,7 +257,17 @@ export function TimelineView() {
                             type="text"
                             value={newPhaseName}
                             onChange={(e) => setNewPhaseName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddPhase();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setAddingPhase(false);
+                                setNewPhaseName('');
+                                setAddingPhaseContext(null);
+                              }
+                            }}
                             placeholder="Phase name"
                             autoFocus
                             data-autofocus
@@ -379,7 +389,12 @@ export function TimelineView() {
               type="text"
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSplitPhase(branchingNode)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSplitPhase(branchingNode);
+                }
+              }}
               placeholder="Branch name (e.g. Red Wine)"
               data-autofocus
               className="w-full px-3 py-2 mb-4 border border-border rounded-md bg-surface text-ink text-sm"
@@ -454,7 +469,12 @@ export function TimelineView() {
           type="text"
           value={newPhaseName}
           onChange={(e) => setNewPhaseName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAddPhase()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddPhase();
+            }
+          }}
           placeholder="Phase name"
           autoFocus
           data-autofocus

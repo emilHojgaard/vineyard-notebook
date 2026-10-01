@@ -438,7 +438,15 @@ export function InventoryView() {
                           }`}
                         >
                           {isEditing ? (
-                            <div className="space-y-2">
+                            <div
+                              className="space-y-2"
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  handleCancelEdit(itemKey);
+                                }
+                              }}
+                            >
                               <input
                                 type="text"
                                 value={draft.name}
@@ -572,9 +580,11 @@ export function InventoryView() {
                               </div>
                             </div>
                           ) : (
-                            <div
+                            <button
+                              type="button"
                               onClick={() => startEditingItem(identity, item)}
-                              className="cursor-pointer"
+                              className="block w-full cursor-pointer text-left"
+                              aria-label={`Edit inventory item ${item.name}`}
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1 min-w-0">
@@ -603,7 +613,7 @@ export function InventoryView() {
                                   </div>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           )}
                         </div>
                       );
@@ -632,9 +642,19 @@ export function InventoryView() {
                       type="text"
                       value={addingSectionName}
                       onChange={(e) => setAddingSectionName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSection();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setAddingSection(false);
+                          setAddingSectionName('');
+                        }
+                      }}
                       placeholder="Section name (e.g. Equipment)"
                       autoFocus
+                      data-autofocus
                       className="w-full px-3 py-2 mb-3 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
                     />
                     <div className="flex gap-2">

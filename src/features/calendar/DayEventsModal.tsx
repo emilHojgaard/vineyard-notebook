@@ -192,6 +192,12 @@ export function DayEventsModal({
                       value={newEventName}
                       aria-label="New check name"
                       onChange={(e) => setNewEventName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEvent();
+                        }
+                      }}
                       placeholder="e.g. pH check"
                       className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
                     />
@@ -387,6 +393,12 @@ export function DayEventsModal({
                       value={newEventName}
                       aria-label="New check name"
                       onChange={(e) => setNewEventName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEvent();
+                        }
+                      }}
                       placeholder="e.g. pH check"
                       className="flex-1 px-3 py-2 border border-border rounded-md bg-surface text-ink text-sm"
                     />

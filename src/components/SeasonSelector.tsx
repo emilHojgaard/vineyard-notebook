@@ -24,6 +24,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   const lastScrollY = useRef(0);
   const hideOnScrollRef = useRef(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const seasonTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Keep the visual state idempotent so repeated boundary scroll events do not
   // schedule redundant renders or reverse an in-progress transition.
@@ -125,11 +126,41 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
   useEffect(() => {
     if (!isExpanded) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsExpanded(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsExpanded(false);
+        seasonTriggerRef.current?.focus();
+      }
     };
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    selectorRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [isExpanded]);
+
+  const handleSeasonMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+    );
+    if (!items.length) return;
+
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsExpanded(false);
+      seasonTriggerRef.current?.focus();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      items[(currentIndex + direction + items.length) % items.length].focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1].focus();
+    }
+  };
 
   // Never leave season-management dialogs open in read-only mode.
   useEffect(() => {
@@ -206,6 +237,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
               <label className="text-xs uppercase tracking-wider text-ink-soft">Season</label>
               {canManageSeasons ? (
                 <button
+                  ref={seasonTriggerRef}
                   onClick={() => {
                     setIsExpanded(!isExpanded);
                     setSelectorHidden(false); // Ensure it's visible when expanding
@@ -229,6 +261,9 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
 
             {/* Season list: keep the panel mounted so its layout footprint can animate to zero. */}
             <div
+              role="menu"
+              aria-label="Seasons"
+              onKeyDown={handleSeasonMenuKeyDown}
               className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
                 isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
               }`}
@@ -250,6 +285,8 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                       <button
                         onClick={() => handleYearChange(year)}
                         className="flex-1 text-left"
+                        role="menuitem"
+                        tabIndex={isExpanded ? 0 : -1}
                       >
                         {year}
                         {seasons[year]?.status !== 'current' && (
@@ -265,6 +302,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                               if (!blockReason) setConfirmCompleteSeason(year);
                             }}
                             disabled={Boolean(blockReason)}
+                            tabIndex={isExpanded ? 0 : -1}
                             className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-have hover:bg-status-have/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             title={blockReason || 'Complete season'}
                             aria-label={blockReason || `Complete season ${year}`}
@@ -279,6 +317,7 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                             e.stopPropagation();
                             setConfirmDeleteSeason(year);
                           }}
+                          tabIndex={isExpanded ? 0 : -1}
                           className="w-6 h-6 rounded-md flex items-center justify-center text-ink-soft hover:text-status-need hover:bg-status-need/10 transition-colors"
                           title="Delete season"
                         >
@@ -294,6 +333,8 @@ export function SeasonSelector({ showAddButton = false }: SeasonSelectorProps) {
                     <button
                       onClick={handleAddSeasonClick}
                       className="w-full px-3 py-2 border-t border-border text-sm font-semibold text-burgundy hover:bg-surface transition-colors flex items-center justify-center gap-2"
+                      role="menuitem"
+                      tabIndex={isExpanded ? 0 : -1}
                     >
                       <Icon name="plus" size={14} />
                       <span>Add Season</span>

@@ -354,9 +354,19 @@ export function LibraryView() {
                   type="text"
                   value={addingSectionName}
                   onChange={(e) => setAddingSectionName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddSection();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setAddingSection(false);
+                      setAddingSectionName('');
+                    }
+                  }}
                   placeholder="Section name (e.g. Techniques)"
                   autoFocus
+                  data-autofocus
                   className="w-full px-3 py-2 mb-3 border border-border rounded-md bg-surface text-ink text-sm font-semibold"
                 />
                 <div className="flex gap-2">

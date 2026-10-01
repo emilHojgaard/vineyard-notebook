@@ -22,6 +22,8 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const projectTriggerRef = useRef<HTMLButtonElement>(null);
+  const userMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const isEditMode = !appState.locked;
   const canDeleteProject = (project: typeof projects[number]) =>
     currentUser?.uid === project.createdBy ||
@@ -65,13 +67,43 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
     if (!showProjectDropdown && !showUserMenu) return;
     const closeMenus = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        const restoreFocus = showProjectDropdown ? projectTriggerRef : userMenuTriggerRef;
         setShowProjectDropdown(false);
         setShowUserMenu(false);
+        restoreFocus.current?.focus();
       }
     };
     document.addEventListener('keydown', closeMenus);
     return () => document.removeEventListener('keydown', closeMenus);
   }, [showProjectDropdown, showUserMenu]);
+
+  useEffect(() => {
+    if (!showProjectDropdown) return;
+    projectMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [showProjectDropdown]);
+
+  const handleProjectMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+    );
+    if (!items.length) return;
+
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setShowProjectDropdown(false);
+      projectTriggerRef.current?.focus();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      items[(currentIndex + direction + items.length) % items.length].focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1].focus();
+    }
+  };
 
   return (
     <>
@@ -95,6 +127,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
           {isEditMode ? (
             <div ref={projectMenuRef} className="relative">
               <button
+                ref={projectTriggerRef}
                 onClick={() => setShowProjectDropdown(!showProjectDropdown)}
                 className="flex items-center gap-1 max-w-full px-2 py-1 rounded hover:bg-white/10 transition-colors text-xs font-bold tracking-widest uppercase"
                 title="Manage projects"
@@ -105,7 +138,12 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
                 <Icon name="chevronDown" size={10} />
               </button>
               {showProjectDropdown && (
-                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden" role="menu">
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] bg-parchment border border-border rounded-lg shadow-phone z-50 overflow-hidden"
+                  role="menu"
+                  aria-label="Projects"
+                  onKeyDown={handleProjectMenuKeyDown}
+                >
                     <div className="py-1">
                       {projects.map((project) => (
                         <div key={project.id} className="flex items-center group">
@@ -153,6 +191,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
           <InvitationPrompt />
           <div className="relative">
           <button
+            ref={userMenuTriggerRef}
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
             title="More options"

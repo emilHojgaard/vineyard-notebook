@@ -1,6 +1,7 @@
 import { useEffect, type RefObject, type KeyboardEvent } from 'react';
 
-const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+const AUTOFOCUS = '[data-autofocus]:not([disabled])';
 
 /** Adds Escape handling, focus restoration, and a small focus trap to a modal root. */
 export function useModalKeyboard(
@@ -12,11 +13,11 @@ export function useModalKeyboard(
     if (!isOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const root = rootRef.current;
-    const first = root?.querySelector<HTMLElement>('[data-autofocus], ' + FOCUSABLE);
+    const first = root?.querySelector<HTMLElement>(AUTOFOCUS + ', ' + FOCUSABLE);
     first?.focus();
 
     return () => {
-      if (previous && previous.isConnected) previous.focus();
+      if (previous && previous.isConnected && previous !== document.body) previous.focus();
     };
   }, [isOpen, rootRef]);
 

@@ -16,6 +16,7 @@ export function InvitationPrompt() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [processing, setProcessing] = useState<Record<string, InvitationAction>>({});
   const inboxRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -26,7 +27,11 @@ export function InvitationPrompt() {
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsExpanded(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsExpanded(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer);
     document.addEventListener('keydown', closeOnEscape);
@@ -74,6 +79,7 @@ export function InvitationPrompt() {
   return (
     <div ref={inboxRef} className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition-colors hover:bg-white/20"
         onClick={() => setIsExpanded((expanded) => !expanded)}
@@ -96,6 +102,14 @@ export function InvitationPrompt() {
           aria-labelledby="invitations-title"
           aria-live="polite"
           role="dialog"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              setIsExpanded(false);
+              triggerRef.current?.focus();
+            }
+          }}
         >
           <div className="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-xl border-b border-border bg-parchment p-3">
             <div>
