@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import admin from '../functions/node_modules/firebase-admin/lib/index.js';
 
 const projectId = 'demo-vineyard';
+admin.initializeApp({ projectId });
+const adminDb = admin.firestore();
 const authUrl = process.env.AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099';
 const firestoreUrl = process.env.FIRESTORE_EMULATOR_URL ?? 'http://127.0.0.1:8080';
 const functionsUrl = process.env.FUNCTIONS_EMULATOR_URL ?? 'http://127.0.0.1:5001';
@@ -169,6 +172,38 @@ test('wrong account cannot accept an invitation', async () => {
   assert.deepEqual(project.body.fields.members.arrayValue.values.map((value) => value.stringValue), [owner.localId]);
   const invitation = await readFirestoreDocument('invitations', invitationId, owner.idToken);
   assert.equal(invitation.body.fields.status.stringValue, 'pending');
+});
+
+test('already-accepted invitation cannot be claimed by a different account', async () => {
+  const suffix = Date.now();
+  const owner = await createUser(`owner-accepted-${suffix}@example.com`);
+  const invitee = await createUser(`invitee-accepted-${suffix}@example.com`);
+  const acceptedBy = await createUser(`accepted-by-${suffix}@example.com`);
+  const scopedProjectId = `invite-accepted-project-${suffix}`;
+  const invitationId = `invite-accepted-${suffix}`;
+
+  await adminDb.collection('projects').doc(scopedProjectId).set({
+    members: [owner.localId, acceptedBy.localId],
+    owners: [owner.localId],
+    createdBy: owner.localId,
+  });
+  await adminDb.collection('invitations').doc(invitationId).set({
+    projectId: scopedProjectId,
+    email: invitee.email.toLowerCase(),
+    invitedBy: owner.localId,
+    status: 'accepted',
+    acceptedBy: acceptedBy.localId,
+  });
+
+  const result = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
+  assert.equal(result.response.status, 403, JSON.stringify(result.body));
+  assert.equal(result.body.error.status, 'PERMISSION_DENIED');
+
+  const project = await readFirestoreDocument('projects', scopedProjectId, owner.idToken);
+  assert.deepEqual(project.body.fields.members.arrayValue.values.map((value) => value.stringValue), [owner.localId, acceptedBy.localId]);
+  const invitation = await readFirestoreDocument('invitations', invitationId, owner.idToken);
+  assert.equal(invitation.body.fields.status.stringValue, 'accepted');
+  assert.equal(invitation.body.fields.acceptedBy.stringValue, acceptedBy.localId);
 });
 
 test('missing invitation returns NOT_FOUND instead of INTERNAL', async () => {

@@ -48,6 +48,13 @@ function normalizeEmail(email) {
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+function isRetryableInfrastructureError(error) {
+    if (typeof error !== 'object' || error === null)
+        return false;
+    const details = error;
+    const text = [details.message, details.details].filter((value) => typeof value === 'string').join(' ').toLowerCase();
+    return details.code === 2 || details.code === 14 || /metadata service|deadline exceeded|timed out|temporarily unavailable/.test(text);
+}
 /**
  * Callable functions run with Admin SDK privileges, so validate the project
  * shape before changing it. This also turns old/corrupt documents into a
@@ -192,7 +199,10 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
             runtime: process.version,
             error,
         });
-        throw new functions.https.HttpsError('internal', 'The invitation could not be accepted right now. Please try again.');
+        const retryable = isRetryableInfrastructureError(error);
+        throw new functions.https.HttpsError(retryable ? 'unavailable' : 'internal', retryable
+            ? 'Firebase is temporarily unavailable. Please try again.'
+            : 'The invitation could not be accepted right now. Please try again.');
     }
     return { success: true };
 });

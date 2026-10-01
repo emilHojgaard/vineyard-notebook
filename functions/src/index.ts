@@ -16,6 +16,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isRetryableInfrastructureError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const details = error as { code?: unknown; message?: unknown; details?: unknown };
+  const text = [details.message, details.details].filter((value): value is string => typeof value === 'string').join(' ').toLowerCase();
+  return details.code === 2 || details.code === 14 || /metadata service|deadline exceeded|timed out|temporarily unavailable/.test(text);
+}
+
 interface ProjectMembership {
   members: string[];
   memberAddedAt: Record<string, unknown>;
@@ -184,9 +191,12 @@ export const acceptInvitation = functions.https.onCall(async (data, context) => 
       runtime: process.version,
       error,
     });
+    const retryable = isRetryableInfrastructureError(error);
     throw new functions.https.HttpsError(
-      'internal',
-      'The invitation could not be accepted right now. Please try again.',
+      retryable ? 'unavailable' : 'internal',
+      retryable
+        ? 'Firebase is temporarily unavailable. Please try again.'
+        : 'The invitation could not be accepted right now. Please try again.',
     );
   }
 

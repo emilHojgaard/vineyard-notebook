@@ -21,4 +21,5 @@ test('invitation callable errors explain common server failures', () => {
   assert.match(formatInvitationError({ code: 'functions/not-found' }), /no longer available/);
   assert.match(formatInvitationError({ code: 'functions/permission-denied' }), /different account/);
   assert.match(formatInvitationError({ code: 'functions/internal', message: 'INTERNAL' }), /try again/);
+  assert.match(formatInvitationError({ code: 'functions/unavailable' }), /could not be reached/);
 });
