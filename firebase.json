@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "vineyard-notebook",
     "public": "dist",
     "ignore": [
       "firebase.json",
