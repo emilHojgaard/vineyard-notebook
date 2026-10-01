@@ -159,7 +159,7 @@ export function DayEventsModal({
         isOpen={isOpen && !phaseModalNode}
         onClose={onClose}
         title={fmtDate(date)}
-        maxWidth="560px"
+        maxWidth="720px"
       >
         {events.length === 0 ? (
           <div className="text-center py-8">
@@ -231,14 +231,14 @@ export function DayEventsModal({
                             type="button"
                             onClick={() => setPhaseModalNodeId(event.nodeId)}
                             aria-label={`Open phase ${event.title}`}
-                            className="flex-1 flex items-center gap-3 px-3 py-3 hover:bg-surface-2 transition-colors text-left"
+                            className="flex-1 flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-surface-2 transition-colors text-left"
                           >
                             <div
                               className="w-1 h-8 rounded-full flex-shrink-0"
                               style={{ backgroundColor: event.color }}
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-ink">
+                              <div className="text-sm sm:text-base font-semibold text-ink">
                                 {event.title}
                               </div>
                               <div className="text-xs text-ink-soft">
@@ -316,14 +316,14 @@ export function DayEventsModal({
                           type="button"
                           onClick={() => setPhaseModalNodeId(event.nodeId)}
                           aria-label={`Open phase ${event.title} for ${event.checkName}`}
-                          className="flex flex-1 min-w-0 items-center gap-3 px-3 py-3 text-left hover:bg-surface-2 transition-colors rounded-md"
+                          className="flex flex-1 min-w-0 items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 text-left hover:bg-surface-2 transition-colors rounded-md"
                         >
                           <div
                             className="w-1 h-8 rounded-full flex-shrink-0"
                             style={{ backgroundColor: event.color }}
                           />
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-semibold text-ink">
+                            <span className="block text-sm sm:text-base font-semibold text-ink">
                               {event.checkName}
                             </span>
                             <span className="block text-xs text-ink-soft">{event.title}</span>

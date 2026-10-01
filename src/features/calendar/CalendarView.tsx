@@ -267,17 +267,22 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full">
-        {/* Calendar grid */}
-        <div className="mb-6">
-          <div className="grid grid-cols-7 gap-1 mb-2">
+      <div className="p-4 sm:p-6 lg:p-6 xl:p-8 max-w-[1600px] mx-auto w-full">
+        {/* Calendar grid: keep touch-sized squares on small screens, but use the
+            desktop viewport instead of letting the cells grow with the width. */}
+        <div className="mb-6 lg:mb-4">
+          <div className="grid grid-cols-7 gap-1 lg:gap-2 mb-2">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dow) => (
-              <div key={dow} className="text-center text-xs font-semibold text-ink-faint py-1">
+              <div key={dow} className="text-center text-xs lg:text-sm font-semibold text-ink-faint py-1">
                 {dow}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1" role="grid" aria-label={`${monthNames[month - 1]} ${year}`}>
+          <div
+            className="grid grid-cols-7 gap-1 lg:gap-2 lg:grid-rows-6 lg:h-[clamp(22rem,calc(100dvh-17rem),40rem)]"
+            role="grid"
+            aria-label={`${monthNames[month - 1]} ${year}`}
+          >
             {calendarDays.map((dayData, idx) => (
               <button
                 type="button"
@@ -288,7 +293,7 @@ export function CalendarView() {
                   ? undefined
                   : `${monthNames[month - 1]} ${dayData.day}, ${year}${dayData.events.length ? `, ${dayData.events.length} event${dayData.events.length === 1 ? '' : 's'}` : ''}`}
                 aria-current={dayData.isToday ? 'date' : undefined}
-                className={`aspect-square rounded-md flex flex-col items-center justify-center text-sm relative transition-all ${
+                className={`aspect-square lg:aspect-auto lg:min-h-0 lg:items-start lg:justify-start lg:p-3 rounded-md flex flex-col items-center justify-center text-sm lg:text-base relative transition-all ${
                   dayData.day === null
                     ? 'bg-transparent cursor-default'
                     : dayData.isToday
@@ -300,11 +305,11 @@ export function CalendarView() {
                   <>
                     <span className="text-ink">{dayData.day}</span>
                     {dayData.events.length > 0 && (
-                      <div className="flex gap-0.5 mt-1" aria-hidden="true">
+                      <div className="flex gap-0.5 mt-1 lg:mt-2" aria-hidden="true">
                         {dayData.events.slice(0, 3).map((event, i) => (
                           <div
                             key={i}
-                            className="w-1 h-1 rounded-full"
+                            className="w-1 h-1 lg:w-1.5 lg:h-1.5 rounded-full"
                             style={{ backgroundColor: event.color }}
                           />
                         ))}

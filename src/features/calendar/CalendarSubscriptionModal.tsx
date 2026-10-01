@@ -100,7 +100,7 @@ export function CalendarSubscriptionModal({ onClose, seasonYear }: CalendarSubsc
         if (event.target === overlayRef.current) onClose();
       }}
     >
-      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={keyboard.onKeyDown} className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={keyboard.onKeyDown} className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] lg:max-h-[calc(100dvh-3rem)] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between">
           <h2 id={titleId} className="text-xl font-bold text-ink">Calendar Subscription</h2>

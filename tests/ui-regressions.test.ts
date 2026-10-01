@@ -103,7 +103,25 @@ test('desktop content columns expand for collection views', () => {
 
   assert.match(inventory, /lg:grid-cols-2/);
   assert.match(library, /lg:grid-cols-2/);
-  assert.match(calendar, /max-w-6xl mx-auto/);
+  assert.match(calendar, /max-w-\[1600px\] mx-auto/);
+});
+
+test('calendar density is responsive without shrinking mobile controls', () => {
+  const calendar = read('src/features/calendar/CalendarView.tsx');
+  const dayModal = read('src/features/calendar/DayEventsModal.tsx');
+  const subscriptionModal = read('src/features/calendar/CalendarSubscriptionModal.tsx');
+
+  // Mobile retains square, centered, touch-friendly day buttons. Desktop uses
+  // six equal rows and a viewport-aware height instead of width-driven squares.
+  assert.match(calendar, /aspect-square lg:aspect-auto/);
+  assert.match(calendar, /lg:grid-rows-6/);
+  assert.match(calendar, /lg:h-\[clamp\(22rem,calc\(100dvh-17rem\),40rem\)\]/);
+  assert.match(calendar, /lg:text-base/);
+  assert.match(calendar, /lg:gap-2/);
+  assert.match(dayModal, /maxWidth="720px"/);
+  assert.match(dayModal, /sm:text-base font-semibold/);
+  assert.match(subscriptionModal, /max-w-3xl/);
+  assert.match(subscriptionModal, /lg:max-h-\[calc\(100dvh-3rem\)\]/);
 });
 
 test('TreeView centers its scrollable canvas and keeps empty branch anchors in layout bounds', () => {
