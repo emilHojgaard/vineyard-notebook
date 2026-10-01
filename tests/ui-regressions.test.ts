@@ -11,7 +11,9 @@ test('pending invitations are an optional inbox, not a blocking modal', () => {
   assert.doesNotMatch(prompt, /useModalKeyboard/);
   assert.doesNotMatch(prompt, /document\.body\.style\.overflow/);
   assert.match(prompt, /setIsExpanded\(false\)/);
-  assert.match(prompt, /Invitations \(\{pendingInvitations\.length\}\)/);
+  assert.match(prompt, /aria-label=\{`Pending invitations: \$\{pendingInvitations\.length\}`\}/);
+  assert.match(prompt, /absolute right-0 top-full/);
+  assert.doesNotMatch(prompt, /fixed top-4 right-4/);
   assert.match(prompt, /notifyError\('Failed to (accept|decline) invitation/);
   assert.match(prompt, /pendingInvitations\.map/);
 });
@@ -40,7 +42,20 @@ test('timeline and tree use the shared alert settings and presentation', () => {
 
 test('header overlays stay above the transformed season selector', () => {
   const header = read('src/components/Header.tsx');
-  assert.match(header, /className="relative z-30 bg-burgundy/);
+  assert.match(header, /className="relative z-30 safe-area-top bg-burgundy/);
+});
+
+test('pending invitations are represented by an accessible header badge and popover', () => {
+  const header = read('src/components/Header.tsx');
+  const prompt = read('src/components/InvitationPrompt.tsx');
+
+  assert.match(header, /import \{ InvitationPrompt \} from '\.\/InvitationPrompt';/);
+  assert.match(header, /<InvitationPrompt \/>/);
+  assert.match(prompt, /aria-haspopup="dialog"/);
+  assert.match(prompt, /aria-expanded=\{isExpanded\}/);
+  assert.match(prompt, /bg-white px-1 text-\[10px\]/);
+  assert.match(prompt, /role="dialog"/);
+  assert.doesNotMatch(prompt, /aria-modal/);
 });
 
 test('project and season lists dismiss on outside pointers without closing internal controls', () => {
@@ -65,17 +80,20 @@ test('mobile web app metadata keeps both standard and Apple declarations', () =>
   assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes" \/>/);
 });
 
-test('application shell uses desktop viewport space without losing mobile breakpoints', () => {
+test('application shell fills the viewport without desktop gutters and preserves safe areas', () => {
   const shell = read('src/components/AppShell.tsx');
   const styles = read('src/index.css');
 
-  assert.match(shell, /min-h-\[100dvh\]/);
-  assert.match(shell, /max-w-\[1440px\]/);
-  assert.match(shell, /hidden sm:flex/);
+  assert.match(shell, /w-full min-h-\[100dvh\]/);
   assert.match(shell, /h-\[100dvh\]/);
-  assert.match(shell, /sm:h-\[calc\(100dvh-3rem\)\]/);
-  assert.match(shell, /lg:h-\[calc\(100dvh-4rem\)\]/);
+  assert.match(shell, /safe-area-bottom/);
+  assert.doesNotMatch(shell, /sm:p-4|lg:p-6|xl:p-8/);
+  assert.doesNotMatch(shell, /max-w-\[1440px\]/);
+  assert.doesNotMatch(shell, /hidden sm:flex/);
+  assert.match(styles, /background: var\(--parchment\)/);
   assert.match(styles, /@media \(max-width: 639px\)/);
+  assert.match(styles, /\.safe-area-top/);
+  assert.match(styles, /\.safe-area-bottom/);
 });
 
 test('desktop content columns expand for collection views', () => {

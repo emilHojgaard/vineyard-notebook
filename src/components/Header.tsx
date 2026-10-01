@@ -7,6 +7,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
 import { deleteProject } from '../lib/repositories/projects-repository';
 import { notifyError } from '../lib/notifications';
+import { InvitationPrompt } from './InvitationPrompt';
 
 interface HeaderProps {
   onSettingsClick: () => void;
@@ -74,7 +75,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
 
   return (
     <>
-      <div className="relative z-30 bg-burgundy text-white px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="relative z-30 safe-area-top bg-burgundy px-3 pb-3 pt-3 text-white flex items-center justify-between flex-shrink-0">
         {/* Lock control stays on the left. */}
         <button
           onClick={toggleLock}
@@ -148,7 +149,9 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
         </div>
 
         {/* Keep secondary actions together in one touch-friendly menu. */}
-        <div className="relative ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <InvitationPrompt />
+          <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center hover:bg-white/20 transition-colors"
@@ -177,6 +180,7 @@ export function Header({ onSettingsClick, onMembersClick }: HeaderProps) {
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
 

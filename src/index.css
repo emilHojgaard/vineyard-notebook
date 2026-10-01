@@ -38,11 +38,12 @@
   body,
   #root {
     min-height: 100%;
+    width: 100%;
   }
 
   body {
     margin: 0;
-    background: var(--page-bg);
+    background: var(--parchment);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -59,6 +60,16 @@
 
   input[type="number"] {
     -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .safe-area-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .safe-area-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
 }
 

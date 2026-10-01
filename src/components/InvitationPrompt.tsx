@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { formatInvitationError } from '../lib/auth-errors';
 import { notifyError } from '../lib/notifications';
@@ -13,14 +13,28 @@ type InvitationAction = 'accept' | 'decline';
  */
 export function InvitationPrompt() {
   const { pendingInvitations, acceptInvitation, declineInvitation } = useAuth();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [processing, setProcessing] = useState<Record<string, InvitationAction>>({});
+  const inboxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Once the inbox is empty, show it automatically if a later invitation
-    // arrives (including after auth restoration or an account switch).
-    if (pendingInvitations.length === 0) setIsExpanded(true);
-  }, [pendingInvitations.length]);
+    if (!isExpanded) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && inboxRef.current && !inboxRef.current.contains(target)) {
+        setIsExpanded(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsExpanded(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isExpanded]);
 
   const setProcessingAction = (invitationId: string, action: InvitationAction | null) => {
     setProcessing((current) => {
@@ -57,91 +71,92 @@ export function InvitationPrompt() {
 
   if (pendingInvitations.length === 0) return null;
 
-  if (!isExpanded) {
-    return (
+  return (
+    <div ref={inboxRef} className="relative shrink-0">
       <button
         type="button"
-        className="fixed top-4 right-4 z-[70] flex items-center gap-2 rounded-full bg-burgundy px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-burgundy-deep"
-        onClick={() => setIsExpanded(true)}
-        aria-expanded="false"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition-colors hover:bg-white/20"
+        onClick={() => setIsExpanded((expanded) => !expanded)}
+        aria-expanded={isExpanded}
         aria-controls="pending-invitations"
+        aria-haspopup="dialog"
+        aria-label={`Pending invitations: ${pendingInvitations.length}`}
+        title={`${pendingInvitations.length} pending invitation${pendingInvitations.length === 1 ? '' : 's'}`}
       >
         <Icon name="user" size={16} />
-        Invitations ({pendingInvitations.length})
+        <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold leading-4 text-burgundy">
+          {pendingInvitations.length > 9 ? '9+' : pendingInvitations.length}
+        </span>
       </button>
-    );
-  }
 
-  return (
-    <aside
-      id="pending-invitations"
-      className="fixed top-4 right-4 z-[70] w-[calc(100vw-2rem)] max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl bg-parchment shadow-2xl border border-border"
-      aria-labelledby="invitations-title"
-      aria-live="polite"
-    >
-      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-parchment p-4 rounded-t-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center flex-shrink-0">
-            <Icon name="user" size={20} color="var(--burgundy)" />
+      {isExpanded && (
+        <aside
+          id="pending-invitations"
+          className="absolute right-0 top-full z-50 mt-2 max-h-[min(32rem,calc(100dvh-5rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-border bg-parchment text-left shadow-2xl"
+          aria-labelledby="invitations-title"
+          aria-live="polite"
+          role="dialog"
+        >
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-xl border-b border-border bg-parchment p-3">
+            <div>
+              <h3 id="invitations-title" className="text-base font-bold text-ink">Project Invitations</h3>
+              <p className="text-xs text-ink-soft">
+                {pendingInvitations.length} pending invitation{pendingInvitations.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(false)}
+              className="rounded-md p-1 text-lg leading-none text-ink-soft hover:bg-surface-2 hover:text-ink"
+              aria-label="Dismiss invitations until later"
+              title="Decide later"
+            >
+              ×
+            </button>
           </div>
-          <div>
-            <h3 id="invitations-title" className="text-lg font-bold text-ink">Project Invitations</h3>
-            <p className="text-xs text-ink-soft">
-              You have {pendingInvitations.length} pending invitation{pendingInvitations.length !== 1 ? 's' : ''}
+
+          <div className="space-y-2 p-3">
+            {pendingInvitations.map((invitation) => {
+              const action = processing[invitation.id];
+              return (
+                <div key={invitation.id} className="rounded-lg border border-border bg-surface p-3">
+                  <div className="mb-3">
+                    <div className="mb-1 font-semibold text-ink">{invitation.projectName}</div>
+                    <div className="text-xs text-ink-soft">
+                      You've been invited to collaborate on this project.
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAccept(invitation.id)}
+                      disabled={Boolean(action)}
+                      className="flex-1 rounded-lg bg-burgundy px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-burgundy-deep disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {action === 'accept' ? 'Accepting...' : 'Accept'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDecline(invitation.id)}
+                      disabled={Boolean(action)}
+                      className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {action === 'decline' ? 'Declining...' : 'Decline'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="rounded-b-xl border-t border-border bg-parchment p-3">
+            <p className="text-center text-xs text-ink-faint">
+              Decide now or dismiss this inbox to come back later.
             </p>
           </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsExpanded(false)}
-          className="rounded-md p-1 text-ink-soft hover:bg-surface-2 hover:text-ink"
-          aria-label="Dismiss invitations until later"
-          title="Decide later"
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="p-4 space-y-3">
-        {pendingInvitations.map((invitation) => {
-          const action = processing[invitation.id];
-          return (
-            <div key={invitation.id} className="bg-surface border border-border rounded-lg p-4">
-              <div className="mb-3">
-                <div className="font-semibold text-ink mb-1">{invitation.projectName}</div>
-                <div className="text-sm text-ink-soft">
-                  You've been invited to collaborate on this project
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAccept(invitation.id)}
-                  disabled={Boolean(action)}
-                  className="flex-1 px-4 py-2 bg-burgundy text-white rounded-lg text-sm font-semibold hover:bg-burgundy-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {action === 'accept' ? 'Accepting...' : 'Accept'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDecline(invitation.id)}
-                  disabled={Boolean(action)}
-                  className="flex-1 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-semibold text-ink hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {action === 'decline' ? 'Declining...' : 'Decline'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="border-t border-border bg-parchment p-4 rounded-b-xl">
-        <p className="text-xs text-ink-faint text-center">
-          These invitations are for {pendingInvitations[0]?.email}. Dismiss this inbox to decide later.
-        </p>
-      </div>
-    </aside>
+        </aside>
+      )}
+    </div>
   );
 }

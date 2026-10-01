@@ -8,7 +8,6 @@ import { AppShell } from './components/AppShell';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotificationCenter } from './components/NotificationCenter';
-import { InvitationPrompt } from './components/InvitationPrompt';
 import { DataState } from './components/DataState';
 
 // Lazy load main feature views for better performance
@@ -105,7 +104,6 @@ function App() {
       <AuthProvider>
       <DataProvider>
         <AppContent />
-        <InvitationPrompt />
         <InvitationNotifications />
         <NotificationCenter />
       </DataProvider>
