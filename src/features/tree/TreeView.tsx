@@ -10,6 +10,7 @@ import { Modal } from '../../components/Modal';
 import { notifyError, notifyUndo, notifySuccess } from '../../lib/notifications';
 import { DataState } from '../../components/DataState';
 import { getHighlightedNodeIds } from '../../lib/tree';
+import { clampScrollLeft, getCenteredScrollLeft } from './tree-viewport';
 
 interface LayoutNode {
   node: Node;
@@ -43,6 +44,9 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 40;
 const COL_GAP = 80;
 const ROW_GAP = 70;
+// Keep equal breathing room around the first/last columns so the visible tree
+// bounds, rather than the trailing column gap, determine the centered view.
+const CANVAS_PADDING = COL_GAP / 2;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const KEYBOARD_ZOOM_STEP = 1.1;
@@ -161,18 +165,19 @@ export function TreeView() {
 
     const centerTree = () => {
       if (disposed || userHasScrolledRef.current) return;
-      const containerRect = container.getBoundingClientRect();
-      const treeRect = treeContent.getBoundingClientRect();
       const containerWidth = container.clientWidth;
-      const treeWidth = treeRect.width;
+      const treeWidth = treeContent.getBoundingClientRect().width;
       const scrollWidth = container.scrollWidth;
       if (containerWidth <= 0 || treeWidth <= 0 || scrollWidth <= 0) return;
 
-      const maxScrollLeft = Math.max(0, scrollWidth - container.clientWidth);
-      const treeCenter = treeRect.left + treeWidth / 2;
-      const viewportCenter = containerRect.left + containerWidth / 2;
-      const centeredScrollLeft = container.scrollLeft + treeCenter - viewportCenter;
-      const scrollLeft = Math.min(maxScrollLeft, Math.max(0, centeredScrollLeft));
+      // Center the scrollable canvas itself rather than deriving the offset
+      // from its current screen position. This remains correct when the tree
+      // is wider than a phone viewport and when padding/scrollbars differ.
+      const scrollLeft = clampScrollLeft(
+        getCenteredScrollLeft(scrollWidth, containerWidth),
+        scrollWidth,
+        containerWidth,
+      );
 
       suppressScrollRef.current = true;
       container.scrollLeft = scrollLeft;
@@ -420,7 +425,7 @@ export function TreeView() {
       {/* Tree canvas */}
       <div
         ref={scrollContainerRef}
-        className="overflow-auto px-4 pb-8"
+        className="w-full min-w-0 max-w-full overflow-auto px-4 pb-8"
         style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
       >
         <div
@@ -831,7 +836,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
       // Place all nodes in this chain, vertically aligned in the center column
       chain.forEach((node, idx) => {
         const nodeY = y + (idx * (NODE_HEIGHT + ROW_GAP));
-        const x = centerCol * (NODE_WIDTH + COL_GAP);
+        const x = CANVAS_PADDING + centerCol * (NODE_WIDTH + COL_GAP);
 
         nodes.push({
           node,
@@ -861,7 +866,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
 
       // Draw edges from the last node to each branch's first node (or branch start point for empty branches)
       const lastNodeY = y + ((chain.length - 1) * (NODE_HEIGHT + ROW_GAP));
-      const lastNodeX = centerCol * (NODE_WIDTH + COL_GAP);
+      const lastNodeX = CANVAS_PADDING + centerCol * (NODE_WIDTH + COL_GAP);
 
       lastNode.branches!.forEach((branch, idx) => {
         const branchColor = getBranchColor(parentColor, idx);
@@ -883,7 +888,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
           // Empty branch - draw edge to the branch start point
           const branchStartY = y + (chain.length * (NODE_HEIGHT + ROW_GAP));
           const branchResult = branchResults[idx];
-          const branchX = branchResult.minCol * (NODE_WIDTH + COL_GAP);
+          const branchX = CANVAS_PADDING + branchResult.minCol * (NODE_WIDTH + COL_GAP);
           edges.push({
             x1: lastNodeX + NODE_WIDTH / 2,
             y1: lastNodeY + NODE_HEIGHT,
@@ -904,7 +909,7 @@ function buildTreeLayout(root: Node[]): TreeLayout {
     } else {
       // This is a leaf chain - assign it the next available column
       const col = nextLeafCol++;
-      const x = col * (NODE_WIDTH + COL_GAP);
+      const x = CANVAS_PADDING + col * (NODE_WIDTH + COL_GAP);
       minCol = col;
       maxCol = col;
 
@@ -952,7 +957,8 @@ function buildTreeLayout(root: Node[]): TreeLayout {
 
   // Calculate total width and height
   const maxCol = nextLeafCol - 1;
-  const width = Math.max((maxCol + 1) * (NODE_WIDTH + COL_GAP), NODE_WIDTH + COL_GAP);
+  const contentWidth = CANVAS_PADDING * 2 + maxCol * (NODE_WIDTH + COL_GAP) + NODE_WIDTH;
+  const width = Math.max(contentWidth, CANVAS_PADDING * 2 + NODE_WIDTH);
   const height = maxY + 40;
 
   return { nodes, edges, width, height };
@@ -1017,13 +1023,18 @@ function getBranchLabels(
             // Empty branch - place label at branch point and button below
             const parentNode = layout.nodes.find((ln) => ln.node.id === node.id);
             if (parentNode) {
-              // Calculate approximate position based on branch index
-              // This is a simple heuristic - empty branches spread out horizontally
-              const offsetX = (idx - (node.branches!.length - 1) / 2) * (NODE_WIDTH + COL_GAP);
+              // Empty branches already have an allocated leaf column in the
+              // layout. Use its edge endpoint instead of estimating from the
+              // branch index; the old estimate put a first empty branch left
+              // of the canvas when its siblings contained phases.
+              const branchStartEdge = layout.edges.find((edge) =>
+                edge.fromNodeId === node.id && edge.branchId === branch.id && !edge.toNodeId
+              );
+              const branchX = branchStartEdge?.x2 ?? parentNode.x + NODE_WIDTH / 2;
               const labelY = parentNode.y + NODE_HEIGHT + 15; // Label positioned just below parent
               const buttonY = labelY + 35; // Button positioned below label (where first phase would be)
               labels.push({
-                x: parentNode.x + NODE_WIDTH / 2 + offsetX,
+                x: branchX,
                 y: labelY,
                 emptyButtonY: buttonY,
                 name: branch.name,

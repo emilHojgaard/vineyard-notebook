@@ -106,6 +106,16 @@ test('desktop content columns expand for collection views', () => {
   assert.match(calendar, /max-w-6xl mx-auto/);
 });
 
+test('TreeView centers its scrollable canvas and keeps empty branch anchors in layout bounds', () => {
+  const tree = read('src/features/tree/TreeView.tsx');
+
+  assert.match(tree, /w-full min-w-0 max-w-full overflow-auto/);
+  assert.match(tree, /getCenteredScrollLeft\(scrollWidth, containerWidth\)/);
+  assert.match(tree, /const branchStartEdge = layout\.edges\.find/);
+  assert.match(tree, /const CANVAS_PADDING = COL_GAP \/ 2/);
+  assert.match(tree, /const contentWidth = CANVAS_PADDING \* 2 \+ maxCol/);
+});
+
 test('TreeView gives empty branches a browse message and an edit action', () => {
   const tree = read('src/features/tree/TreeView.tsx');
 

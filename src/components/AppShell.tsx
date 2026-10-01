@@ -138,7 +138,7 @@ export function AppShell({ children }: AppShellProps) {
             </Modal>
 
             {/* Content area */}
-            <div id="app-content" className="flex-1 overflow-y-auto">
+            <div id="app-content" className="min-w-0 flex-1 overflow-y-auto">
               {children}
             </div>
 
