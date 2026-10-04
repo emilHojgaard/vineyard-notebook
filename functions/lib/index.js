@@ -40,20 +40,53 @@ const firestore_1 = require("firebase-admin/firestore");
 const node_crypto_1 = require("node:crypto");
 const ics_generator_1 = require("./ics-generator");
 const security_1 = require("./security");
-admin.initializeApp();
-const firestore = (0, firestore_1.getFirestore)();
+const firebaseApp = admin.initializeApp();
+// Firestore transactions use the gRPC batchGetDocuments stream. The deployed
+// Gen 1 runtime has returned an invalid metadata response for that stream,
+// while the REST transport remains healthy. Prefer REST for production Admin
+// calls so invitation acceptance does not depend on the failing cold-start
+// stream. The emulator has its own unauthenticated transport, so retain gRPC
+// there to keep tests fully offline.
+const firestore = (0, firestore_1.initializeFirestore)(firebaseApp, {
+    preferRest: !process.env.FIRESTORE_EMULATOR_HOST,
+});
 function normalizeEmail(email) {
     return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+function firestoreErrorCode(error) {
+    if (typeof error !== 'object' || error === null)
+        return null;
+    const code = error.code;
+    if (typeof code === 'number')
+        return code;
+    if (typeof code === 'string' && /^\d+$/.test(code))
+        return Number(code);
+    return null;
+}
 function isRetryableInfrastructureError(error) {
     if (typeof error !== 'object' || error === null)
         return false;
     const details = error;
     const text = [details.message, details.details].filter((value) => typeof value === 'string').join(' ').toLowerCase();
-    return details.code === 2 || details.code === 14 || /metadata service|deadline exceeded|timed out|temporarily unavailable/.test(text);
+    const code = firestoreErrorCode(error);
+    return code === 2 || code === 4 || code === 14 || isRetryableWriteConflict(error) || /metadata service|deadline exceeded|timed out|temporarily unavailable/.test(text);
+}
+function isRetryableWriteConflict(error) {
+    const code = firestoreErrorCode(error);
+    if (code === 4 || code === 10 || code === 14)
+        return true;
+    if ((code !== 3 && code !== 9) || typeof error !== 'object' || error === null)
+        return false;
+    const details = error.details;
+    const message = error.message;
+    const text = [details, message].filter((value) => typeof value === 'string').join(' ');
+    return /stored version .* does not match .*base version/i.test(text);
+}
+function waitForRetry(attempt) {
+    return new Promise((resolve) => setTimeout(resolve, 50 * 2 ** attempt));
 }
 /**
  * Callable functions run with Admin SDK privileges, so validate the project
@@ -135,59 +168,84 @@ exports.acceptInvitation = functions.https.onCall(async (data, context) => {
     }
     const invitationRef = firestore.collection('invitations').doc(invitationId);
     try {
-        await firestore.runTransaction(async (transaction) => {
-            // Every read is intentionally completed before either document is written.
-            const invitationSnapshot = await transaction.get(invitationRef);
-            if (!invitationSnapshot.exists) {
-                throw new functions.https.HttpsError('not-found', 'Invitation not found');
-            }
-            const invitation = invitationSnapshot.data();
-            const projectId = typeof invitation.projectId === 'string' ? invitation.projectId.trim() : '';
-            if (!projectId || projectId.includes('/')) {
-                throw new functions.https.HttpsError('failed-precondition', 'Invitation project data is invalid');
-            }
-            if (normalizeEmail(invitation.email) !== authEmail) {
-                throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
-            }
-            if (invitation.status !== 'pending' && invitation.status !== 'accepted') {
-                throw new functions.https.HttpsError('failed-precondition', 'Invitation status is invalid');
-            }
-            const projectRef = firestore.collection('projects').doc(projectId);
-            const projectSnapshot = await transaction.get(projectRef);
-            if (!projectSnapshot.exists) {
-                throw new functions.https.HttpsError('not-found', 'Project not found');
-            }
-            const project = parseProjectMembership(projectSnapshot.data());
-            const owners = Array.isArray(projectSnapshot.data().owners)
-                ? projectSnapshot.data().owners
-                : [projectSnapshot.data().createdBy];
-            if (typeof invitation.invitedBy !== 'string' || !owners.includes(invitation.invitedBy)) {
-                throw new functions.https.HttpsError('failed-precondition', 'Invitation sender is not a project owner');
-            }
-            // Keep the accepted invitation as an audit/idempotency record. A retry
-            // after a successful commit is a no-op for the same authenticated user.
-            if (invitation.status === 'accepted') {
-                if (invitation.acceptedBy && invitation.acceptedBy !== userId) {
-                    throw new functions.https.HttpsError('permission-denied', 'Invitation was accepted by another account');
+        // Firestore transactions read through the batchGetDocuments streaming RPC.
+        // In the deployed Gen 1 runtime that RPC can fail while the unary Firestore
+        // APIs remain healthy (the production symptom is the metadata-plugin 503).
+        // Unary reads plus an atomic batch commit with update-time preconditions
+        // preserve the transaction's concurrency guarantees without that stream.
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                const invitationSnapshot = await invitationRef.get();
+                if (!invitationSnapshot.exists) {
+                    throw new functions.https.HttpsError('not-found', 'Invitation not found');
                 }
-                if (!project.members.includes(userId)) {
-                    throw new functions.https.HttpsError('failed-precondition', 'This invitation has already been accepted');
+                const invitation = invitationSnapshot.data();
+                const projectId = typeof invitation.projectId === 'string' ? invitation.projectId.trim() : '';
+                if (!projectId || projectId.includes('/')) {
+                    throw new functions.https.HttpsError('failed-precondition', 'Invitation project data is invalid');
                 }
-                return;
+                if (normalizeEmail(invitation.email) !== authEmail) {
+                    throw new functions.https.HttpsError('permission-denied', 'Invitation is not addressed to this account');
+                }
+                if (invitation.status !== 'pending' && invitation.status !== 'accepted') {
+                    throw new functions.https.HttpsError('failed-precondition', 'Invitation status is invalid');
+                }
+                const projectRef = firestore.collection('projects').doc(projectId);
+                const projectSnapshot = await projectRef.get();
+                if (!projectSnapshot.exists) {
+                    throw new functions.https.HttpsError('not-found', 'Project not found');
+                }
+                const projectData = projectSnapshot.data();
+                const project = parseProjectMembership(projectData);
+                const owners = Array.isArray(projectData.owners)
+                    ? projectData.owners
+                    : [projectData.createdBy];
+                if (typeof invitation.invitedBy !== 'string' || !owners.includes(invitation.invitedBy)) {
+                    throw new functions.https.HttpsError('failed-precondition', 'Invitation sender is not a project owner');
+                }
+                // Keep the accepted invitation as an audit/idempotency record. A retry
+                // after a successful commit is a no-op for the same authenticated user.
+                if (invitation.status === 'accepted') {
+                    if (invitation.acceptedBy && invitation.acceptedBy !== userId) {
+                        throw new functions.https.HttpsError('permission-denied', 'Invitation was accepted by another account');
+                    }
+                    if (!project.members.includes(userId)) {
+                        throw new functions.https.HttpsError('failed-precondition', 'This invitation has already been accepted');
+                    }
+                    break;
+                }
+                if (!invitationSnapshot.updateTime || !projectSnapshot.updateTime) {
+                    throw new functions.https.HttpsError('failed-precondition', 'Invitation data is missing update metadata');
+                }
+                const acceptedAt = firestore_1.Timestamp.now();
+                const updatedMembers = project.members.includes(userId)
+                    ? project.members
+                    : [...project.members, userId];
+                const updatedMemberAddedAt = project.members.includes(userId)
+                    ? project.memberAddedAt
+                    : Object.assign(Object.assign({}, project.memberAddedAt), { [userId]: acceptedAt });
+                const batch = firestore.batch();
+                // Include the project write even when membership already exists. This
+                // preconditions the ownership/membership validation on the same version
+                // read above and prevents a concurrent owner change from being missed.
+                batch.update(projectRef, {
+                    members: updatedMembers,
+                    memberAddedAt: updatedMemberAddedAt,
+                }, { lastUpdateTime: projectSnapshot.updateTime });
+                batch.update(invitationRef, {
+                    status: 'accepted',
+                    acceptedBy: userId,
+                    acceptedAt,
+                }, { lastUpdateTime: invitationSnapshot.updateTime });
+                await batch.commit();
+                break;
             }
-            const acceptedAt = firestore_1.Timestamp.now();
-            if (!project.members.includes(userId)) {
-                transaction.update(projectRef, {
-                    members: [...project.members, userId],
-                    memberAddedAt: Object.assign(Object.assign({}, project.memberAddedAt), { [userId]: acceptedAt }),
-                });
+            catch (error) {
+                if (!isRetryableWriteConflict(error) || attempt === 2)
+                    throw error;
+                await waitForRetry(attempt);
             }
-            transaction.update(invitationRef, {
-                status: 'accepted',
-                acceptedBy: userId,
-                acceptedAt,
-            });
-        });
+        }
     }
     catch (error) {
         if (error instanceof functions.https.HttpsError)

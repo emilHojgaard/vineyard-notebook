@@ -126,9 +126,14 @@ test('invitee can accept a canonical invitation with a differently cased auth em
     status: { stringValue: 'pending' },
   }, owner.idToken);
 
-  const accepted = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
-  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
-  assert.deepEqual(accepted.body.data, { success: true });
+  const concurrentAccepts = await Promise.all([
+    callFunction('acceptInvitation', { invitationId }, invitee.idToken),
+    callFunction('acceptInvitation', { invitationId }, invitee.idToken),
+  ]);
+  for (const accepted of concurrentAccepts) {
+    assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+    assert.deepEqual(accepted.body.data, { success: true });
+  }
 
   const retried = await callFunction('acceptInvitation', { invitationId }, invitee.idToken);
   assert.equal(retried.response.status, 200, JSON.stringify(retried.body));
