@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPersistenceLeaseError, statusForError } from '../src/lib/connection-status.ts';
+import { isFirestoreCacheError, isPersistenceLeaseError, statusForError } from '../src/lib/connection-status.ts';
 
 test('offline errors are distinguished from hard failures', () => {
   assert.equal(statusForError({ code: 'unavailable' }, true), 'reconnecting');
@@ -20,6 +20,17 @@ test('multi-tab persistence lease contention is retryable, not an access error',
     code: 'failed-precondition',
     message: 'The current tab is not in the required state to perform this operation.',
   }, true), 'reconnecting');
+});
+
+test('a Firestore bloom filter failure offers local-cache recovery', () => {
+  const error = {
+    code: 'unknown',
+    name: 'BloomFilterError',
+    message: 'BloomFilterError during Listen activity',
+  };
+  assert.equal(isFirestoreCacheError(error), true);
+  assert.equal(statusForError(error, true), 'reconnecting');
+  assert.equal(statusForError({ code: 'permission-denied', message: 'Bloom filter query denied' }, true), 'error');
 });
 
 test('unrelated failed-precondition errors remain hard failures', () => {
