@@ -16,6 +16,27 @@ const firestore = initializeFirestore(firebaseApp, {
   preferRest: !process.env.FIRESTORE_EMULATOR_HOST,
 });
 
+/**
+ * Probe the same Admin Firestore client used by callable functions. Keep this
+ * endpoint deliberately small and non-sensitive: it is useful to platform
+ * health checks, while transport/auth failures become a retryable 503 rather
+ * than an uncaught function error or a leaked SDK message.
+ */
+export const health = functions.https.onRequest(async (req, res) => {
+  if (req.method !== 'GET') {
+    res.status(405).json({ status: 'method_not_allowed' });
+    return;
+  }
+
+  try {
+    await firestore.collection('projects').limit(1).get();
+    res.status(200).json({ status: 'ok' });
+  } catch (error: unknown) {
+    console.error('health check failed', { runtime: process.version, error });
+    res.status(503).json({ status: 'unavailable' });
+  }
+});
+
 function normalizeEmail(email: unknown): string {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }

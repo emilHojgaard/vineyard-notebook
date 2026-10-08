@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.calendarFeed = exports.listCalendarTokens = exports.revokeCalendarToken = exports.acceptInvitation = exports.generateCalendarToken = void 0;
+exports.calendarFeed = exports.listCalendarTokens = exports.revokeCalendarToken = exports.acceptInvitation = exports.generateCalendarToken = exports.health = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
@@ -49,6 +49,26 @@ const firebaseApp = admin.initializeApp();
 // there to keep tests fully offline.
 const firestore = (0, firestore_1.initializeFirestore)(firebaseApp, {
     preferRest: !process.env.FIRESTORE_EMULATOR_HOST,
+});
+/**
+ * Probe the same Admin Firestore client used by callable functions. Keep this
+ * endpoint deliberately small and non-sensitive: it is useful to platform
+ * health checks, while transport/auth failures become a retryable 503 rather
+ * than an uncaught function error or a leaked SDK message.
+ */
+exports.health = functions.https.onRequest(async (req, res) => {
+    if (req.method !== 'GET') {
+        res.status(405).json({ status: 'method_not_allowed' });
+        return;
+    }
+    try {
+        await firestore.collection('projects').limit(1).get();
+        res.status(200).json({ status: 'ok' });
+    }
+    catch (error) {
+        console.error('health check failed', { runtime: process.version, error });
+        res.status(503).json({ status: 'unavailable' });
+    }
 });
 function normalizeEmail(email) {
     return typeof email === 'string' ? email.trim().toLowerCase() : '';

@@ -264,6 +264,11 @@ engine metadata; no production deployment is part of local validation.
 2. Follow the displayed DNS verification instructions.
 3. Add the verified domain to Firebase Authentication's authorized domains.
 
+Authorized domains apply to browser Auth OAuth popup/redirect flows only. For
+example, `grapeplans.com` being listed (or not listed) cannot cause a callable
+function to return a Firestore/Admin SDK 503; investigate Functions runtime,
+credentials, and Firestore transport separately.
+
 ## Continuous Deployment
 
 Firebase Hosting deployments are intentionally explicit so the selected

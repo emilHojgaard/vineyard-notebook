@@ -59,6 +59,17 @@ async function callFunction(name, data, idToken) {
   return { response, body };
 }
 
+test('health endpoint reports the Admin Firestore transport status safely', async () => {
+  const response = await fetch(`${functionsUrl}/${projectId}/us-central1/health`);
+  const body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body, { status: 'ok' });
+
+  const unsupported = await fetch(`${functionsUrl}/${projectId}/us-central1/health`, { method: 'POST' });
+  assert.equal(unsupported.status, 405);
+  assert.deepEqual(await unsupported.json(), { status: 'method_not_allowed' });
+});
+
 test('callable functions enforce authentication in the configured emulator', async () => {
   const result = await callFunction('generateCalendarToken', { projectId: 'missing' });
   assert.equal(result.response.status, 401);
