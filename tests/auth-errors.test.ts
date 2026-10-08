@@ -17,9 +17,9 @@ test('unknown Auth errors preserve their actionable message', () => {
   assert.equal(formatAuthError(error), 'The identity provider is unavailable.');
 });
 
-test('invitation callable errors explain common server failures', () => {
-  assert.match(formatInvitationError({ code: 'functions/not-found' }), /no longer available/);
-  assert.match(formatInvitationError({ code: 'functions/permission-denied' }), /different account/);
+test('invitation errors explain common Firestore and server failures', () => {
+  assert.match(formatInvitationError({ code: 'not-found' }), /no longer available/);
+  assert.match(formatInvitationError({ code: 'permission-denied' }), /different account/);
   assert.match(formatInvitationError({ code: 'functions/internal', message: 'INTERNAL' }), /try again/);
-  assert.match(formatInvitationError({ code: 'functions/unavailable' }), /could not be reached/);
+  assert.match(formatInvitationError({ code: 'unavailable' }), /could not be reached/);
 });

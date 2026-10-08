@@ -43,18 +43,24 @@ export function formatAuthError(error: unknown, fallback = 'Unable to sign in. P
   }
 }
 
-/** Keep invitation failures actionable when the callable returns a Firebase error. */
+/** Keep invitation failures actionable for Firestore and Auth errors. */
 export function formatInvitationError(error: unknown): string {
   switch (getAuthErrorCode(error)) {
     case 'functions/not-found':
+    case 'not-found':
       return 'This invitation is no longer available.';
     case 'functions/permission-denied':
+    case 'permission-denied':
       return 'This invitation belongs to a different account.';
     case 'functions/failed-precondition':
+    case 'failed-precondition':
       return 'This invitation cannot be accepted because the project data is invalid. Ask the project owner to send a new invitation.';
     case 'functions/unavailable':
+    case 'unavailable':
+    case 'aborted':
       return 'Firebase could not be reached. Check your connection and try again.';
     case 'functions/internal':
+    case 'internal':
       return 'The invitation could not be accepted right now. Please try again.';
     default:
       return getErrorMessage(error) || 'Failed to accept invitation. Please try again.';

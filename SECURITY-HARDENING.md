@@ -29,8 +29,10 @@ revisions. A stale revision is rejected (`ConcurrentWriteError`) rather than
 silently overwritten; the user must reload and retry. This is intentionally
 conflict rejection, not last-write-wins.
 
-Invitation acceptance runs through the `acceptInvitation` callable because a
-client-side Firestore rule cannot safely correlate a project membership update
-with an invitation document. The calendar HTTP feed checks the token owner's
+Invitation acceptance is a client Firestore transaction authorized by
+`firestore.rules`. It updates the invitation and project atomically, binds the
+project membership addition to the invitation ID with `getAfter`, and permits
+only the authenticated invitee's UID. This path does not use the Admin SDK or
+its metadata transport. The calendar HTTP feed checks the token owner's
 current project membership on every request, so removing a member invalidates
 feed access immediately.

@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 const projectId = 'demo-vineyard';
 let testEnv;
@@ -61,6 +61,37 @@ async function seedTestData() {
 }
 
 test.beforeEach(seedTestData);
+
+async function seedInvitation(invitationId, email, targetProjectId = projectId, invitedBy = 'owner-1') {
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  await setDoc(doc(ownerDb, 'invitations', invitationId), {
+    projectId: targetProjectId,
+    email,
+    invitedBy,
+    status: 'pending',
+  });
+}
+
+async function acceptInvitationTransaction(db, userId, invitationId, targetProjectId = projectId, marker = invitationId) {
+  return runTransaction(db, async (transaction) => {
+    const invitationRef = doc(db, 'invitations', invitationId);
+    const invitationSnapshot = await transaction.get(invitationRef);
+    if (!invitationSnapshot.exists()) throw new Error('Invitation not found');
+    const invitation = invitationSnapshot.data();
+    const projectRef = doc(db, 'projects', targetProjectId);
+    if (invitation.status === 'accepted' && invitation.acceptedBy === userId) return;
+    transaction.update(projectRef, {
+      members: arrayUnion(userId),
+      [`memberAddedAt.${userId}`]: new Date(),
+      lastAcceptedInvitationId: marker,
+    });
+    transaction.update(invitationRef, {
+      status: 'accepted',
+      acceptedBy: userId,
+      acceptedAt: new Date(),
+    });
+  });
+}
 
 test.after(async () => {
   await testEnv.cleanup();
@@ -420,6 +451,79 @@ test('storage paths outside media collections and unknown projects are denied', 
   await assertFails(memberStorage.ref('projects/demo-vineyard/private/member.txt').putString('private data'));
   await assertFails(memberStorage.ref('projects/missing-project/photos/member.txt').putString('private data'));
   await assertFails(memberStorage.ref('projects/missing-project/library/member.pdf').putString('private data'));
+});
+
+test('an invitee atomically accepts only their invitation and joins its project', async () => {
+  const invitationId = 'invite-accept-success';
+  await seedInvitation(invitationId, 'invitee@example.com');
+  const inviteeDb = testEnv.authenticatedContext('invitee-1', { email: 'Invitee@Example.com' }).firestore();
+
+  await assertSucceeds(acceptInvitationTransaction(inviteeDb, 'invitee-1', invitationId));
+  const project = await getDoc(doc(inviteeDb, 'projects', projectId));
+  assert.equal(project.data().members.includes('invitee-1'), true);
+  const invitation = await getDoc(doc(inviteeDb, 'invitations', invitationId));
+  assert.equal(invitation.data().status, 'accepted');
+  assert.equal(invitation.data().acceptedBy, 'invitee-1');
+});
+
+test('the wrong account cannot accept an invitation', async () => {
+  await seedInvitation('invite-wrong-account', 'invitee@example.com');
+  const wrongDb = testEnv.authenticatedContext('wrong-user', { email: 'wrong@example.com' }).firestore();
+  await assertFails(acceptInvitationTransaction(wrongDb, 'wrong-user', 'invite-wrong-account'));
+  let members;
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const project = await getDoc(doc(context.firestore(), 'projects', projectId));
+    members = project.data().members;
+  });
+  assert.deepEqual(members, ['owner-1', 'member-1']);
+});
+
+test('the invitation ID is bound to the target project in the atomic write', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'projects', 'other-project'), {
+      members: ['owner-1'], owners: ['owner-1'], createdBy: 'owner-1',
+      memberAddedAt: { 'owner-1': new Date() },
+    });
+  });
+  await seedInvitation('invite-base-project', 'invitee@example.com');
+  await seedInvitation('invite-other-project', 'invitee@example.com', 'other-project');
+  const inviteeDb = testEnv.authenticatedContext('invitee-1', { email: 'invitee@example.com' }).firestore();
+
+  await assertFails(acceptInvitationTransaction(inviteeDb, 'invitee-1', 'invite-base-project', projectId, 'invite-other-project'));
+  await assertFails(acceptInvitationTransaction(inviteeDb, 'invitee-1', 'invite-other-project', projectId));
+});
+
+test('repeat and concurrent acceptance cannot duplicate membership', async () => {
+  await seedInvitation('invite-repeat', 'invitee@example.com');
+  const inviteeDb = testEnv.authenticatedContext('invitee-1', { email: 'invitee@example.com' }).firestore();
+  await assertSucceeds(acceptInvitationTransaction(inviteeDb, 'invitee-1', 'invite-repeat'));
+  await assertSucceeds(acceptInvitationTransaction(inviteeDb, 'invitee-1', 'invite-repeat'));
+
+  await seedInvitation('invite-concurrent', 'second@example.com');
+  const secondInviteeDb = testEnv.authenticatedContext('invitee-2', { email: 'second@example.com' }).firestore();
+  const concurrent = await Promise.allSettled([
+    acceptInvitationTransaction(secondInviteeDb, 'invitee-2', 'invite-concurrent'),
+    acceptInvitationTransaction(secondInviteeDb, 'invitee-2', 'invite-concurrent'),
+  ]);
+  assert.equal(concurrent.filter((result) => result.status === 'fulfilled').length, 1);
+  const project = await getDoc(doc(secondInviteeDb, 'projects', projectId));
+  assert.deepEqual(project.data().members.sort(), ['invitee-1', 'invitee-2', 'member-1', 'owner-1'].sort());
+});
+
+test('malformed membership data cannot be used to accept an invitation', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'projects', 'malformed-project'), {
+      members: 'owner-1', owners: ['owner-1'], createdBy: 'owner-1',
+      memberAddedAt: { 'owner-1': new Date() },
+    });
+    await setDoc(doc(db, 'invitations', 'invite-malformed'), {
+      projectId: 'malformed-project', email: 'invitee@example.com',
+      invitedBy: 'owner-1', status: 'pending',
+    });
+  });
+  const inviteeDb = testEnv.authenticatedContext('invitee-1', { email: 'invitee@example.com' }).firestore();
+  await assertFails(acceptInvitationTransaction(inviteeDb, 'invitee-1', 'invite-malformed', 'malformed-project'));
 });
 
 test('only owners can create invitations and invited email can read its invitation', async () => {

@@ -1,11 +1,14 @@
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
+  FieldPath,
   getDoc,
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   setDoc,
   Timestamp,
   where,
@@ -14,9 +17,8 @@ import {
   type QuerySnapshot,
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { db, functions } from '../firebase';
+import { auth, db } from '../firebase';
 import { invitationsCollection } from '../firestore-repositories';
-import { httpsCallable } from 'firebase/functions';
 import { normalizeEmail } from '../utils';
 
 export interface PendingInvitation {
@@ -92,10 +94,40 @@ export function subscribeUserPendingInvitations(
 }
 
 export async function acceptInvitation(invitation: PendingInvitation): Promise<void> {
-  // Membership addition is deliberately server-side. A Firestore client
-  // cannot prove that a project update corresponds to this exact invitation.
-  const callable = httpsCallable(functions, 'acceptInvitation');
-  await callable({ invitationId: invitation.id });
+  const user = auth.currentUser;
+  if (!user) throw new Error('You must be signed in to accept an invitation');
+
+  const invitationRef = doc(db, 'invitations', invitation.id);
+  await runTransaction(db, async (transaction) => {
+    const invitationSnapshot = await transaction.get(invitationRef);
+    if (!invitationSnapshot.exists()) throw new Error('Invitation not found');
+
+    const invitationData = invitationSnapshot.data();
+    if (invitationData.projectId !== invitation.projectId) {
+      throw new Error('Invitation project does not match the selected invitation');
+    }
+
+    const projectRef = doc(db, 'projects', invitationData.projectId);
+
+    // Invitees are not project members yet, so rules intentionally do not let
+    // them read the project. Array/map transforms let the rules evaluate the
+    // complete post-transaction project with getAfter instead.
+    if (invitationData.status === 'accepted' && invitationData.acceptedBy === user.uid) return;
+    if (invitationData.status !== 'pending') throw new Error('This invitation is no longer available');
+
+    const acceptedAt = Timestamp.now();
+    transaction.update(
+      projectRef,
+      'members', arrayUnion(user.uid),
+      new FieldPath('memberAddedAt', user.uid), acceptedAt,
+      'lastAcceptedInvitationId', invitation.id,
+    );
+    transaction.update(invitationRef, {
+      status: 'accepted',
+      acceptedBy: user.uid,
+      acceptedAt,
+    });
+  });
 }
 
 export async function declineInvitation(invitationId: string): Promise<void> {

@@ -115,6 +115,8 @@ export interface Project {
   deleting?: boolean;
   // Optional for backwards compatibility with projects created before membership ages were stored.
   memberAddedAt?: Record<string, Date>;
+  // Audit marker used by the rules-guarded invitation acceptance transaction.
+  lastAcceptedInvitationId?: string;
 }
 
 export interface User {
