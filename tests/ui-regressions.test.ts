@@ -119,8 +119,9 @@ test('calendar density is responsive without shrinking mobile controls', () => {
   assert.match(calendar, /lg:text-base/);
   assert.match(calendar, /lg:gap-2/);
   // Date labels stay readable while the event dots use the cell's bottom
-  // padding at both responsive breakpoints instead of floating under the label.
-  assert.match(calendar, /p-2 lg:p-3 rounded-md flex flex-col items-center justify-between/);
+  // padding instead of floating under the label. Desktop gets extra inset
+  // without changing mobile's touch-sized cells.
+  assert.match(calendar, /p-2 lg:p-3 lg:pb-5 rounded-md flex flex-col items-center justify-between/);
   assert.match(calendar, /dayData\.events\.length > 0[\s\S]*?flex gap-0\.5 mt-1 lg:mt-2/);
   assert.match(dayModal, /maxWidth="720px"/);
   assert.match(dayModal, /sm:text-base font-semibold/);

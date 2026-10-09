@@ -293,7 +293,7 @@ export function CalendarView() {
                   ? undefined
                   : `${monthNames[month - 1]} ${dayData.day}, ${year}${dayData.events.length ? `, ${dayData.events.length} event${dayData.events.length === 1 ? '' : 's'}` : ''}`}
                 aria-current={dayData.isToday ? 'date' : undefined}
-                className={`aspect-square lg:aspect-auto lg:min-h-0 lg:items-start p-2 lg:p-3 rounded-md flex flex-col items-center justify-between text-sm lg:text-base relative transition-all ${
+                className={`aspect-square lg:aspect-auto lg:min-h-0 lg:items-start p-2 lg:p-3 lg:pb-5 rounded-md flex flex-col items-center justify-between text-sm lg:text-base relative transition-all ${
                   dayData.day === null
                     ? 'bg-transparent cursor-default'
                     : dayData.isToday
