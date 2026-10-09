@@ -6,4 +6,6 @@ export const projectDocument = (projectId: string) => doc(db, 'projects', projec
 export const seasonDocument = (projectId: string, year: number) => doc(db, 'seasons', `${projectId}_${year}`);
 export const inventoryDocument = (projectId: string, year: number) => doc(db, 'inventory', `${projectId}_${year}`);
 export const libraryDocument = (projectId: string) => doc(db, 'library', projectId);
+export const memberProfilesCollection = (projectId: string) => collection(db, 'projects', projectId, 'memberProfiles');
+export const memberProfileDocument = (projectId: string, userId: string) => doc(db, 'projects', projectId, 'memberProfiles', userId);
 export const invitationsCollection = () => collection(db, 'invitations');

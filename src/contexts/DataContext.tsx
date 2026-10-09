@@ -11,7 +11,7 @@ import type {
   Node as PhaseNode,
   Branch,
 } from '../types';
-import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById, updateNodeById } from '../lib/utils';
+import { syncStatuses, createDefaultPhases, uid, getSeasonCompletionBlockReason, findNodeById, updateNodeById, normalizeEmail } from '../lib/utils';
 import { hasBranchId, validateTree } from '../lib/tree';
 import { addBranchToTree, deleteBranchFromTree, deleteNodeFromTree } from '../lib/tree-operations';
 import {
@@ -24,6 +24,7 @@ import {
   createProject as createProjectInRepository,
   loadMembers,
   promoteMemberToOwner as promoteMemberToOwnerInRepository,
+  saveMemberProfile,
   removeMember as removeMemberInRepository,
   subscribeProjects,
 } from '../lib/repositories/projects-repository';
@@ -440,27 +441,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       markDataLoaded(loadedCollections, 'library');
     }, (error) => onSubscriptionError('library', error)));
 
-    // Load pending invitations
-    unsubscribers.push(subscribeProjectInvitations(projectId, (invites) => {
-      if (active) setPendingInvitations(invites as Invitation[]);
-    }, (error) => {
-      if (active) console.error(`[data:invitations] failed to load project invitations`, error);
-    }));
+    // Pending project invitations are owner-only. Members can read the project
+    // but not its invitation documents, so never start a listener they cannot
+    // authorize (and avoid expected permission errors in the console).
+    const canReadProjectInvitations = currentProject?.createdBy === userId ||
+      currentProject?.owners?.includes(userId) === true;
+    setPendingInvitations(canReadProjectInvitations ? [] : null);
+    if (canReadProjectInvitations) {
+      unsubscribers.push(subscribeProjectInvitations(projectId, (invites) => {
+        if (active) setPendingInvitations(invites as Invitation[]);
+      }, (error) => {
+        if (active) console.error(`[data:invitations] failed to load project invitations`, error);
+      }));
+    }
 
     // Load members. This is auxiliary to the three data listeners and must not
-    // turn a missing user profile into a timeline startup failure.
+    // turn a missing member profile into a timeline startup failure.
     void loadMembers(projectId).then((loadedMembers) => {
       if (active) setMembers(loadedMembers);
     }).catch((error: unknown) => {
       if (active) console.error(`Failed to load members for project ${projectId}`, error);
     });
 
+    // Backfill the signed-in member's project-scoped profile for projects
+    // created before memberProfiles existed. Rules still limit this write to
+    // the caller's own profile, and the initial member list remains available
+    // even if this optional migration is denied during a membership change.
+    void saveMemberProfile(
+      projectId,
+      userId,
+      normalizeEmail(currentUser?.email),
+      currentUser?.displayName || 'User',
+    ).then(() => loadMembers(projectId)).then((loadedMembers) => {
+      if (active) setMembers(loadedMembers);
+    }).catch(() => undefined);
+
     return () => {
       active = false;
       if (retryTimer !== null) clearTimeout(retryTimer);
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [userId, dataUserId, currentProject?.id, dataRetryKey]);
+  }, [
+    userId,
+    dataUserId,
+    currentProject?.id,
+    currentProject?.createdBy,
+    currentProject?.owners?.join(','),
+    dataRetryKey,
+  ]);
 
   const refreshMembers = async (projectId: string) => {
     setMembers(await loadMembers(projectId));
@@ -492,6 +520,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         season: initialSeason,
         inventory: defaultInventory(),
         library: { sections: [] },
+        ownerProfile: {
+          email: normalizeEmail(currentUser.email),
+          displayName: currentUser.displayName || 'User',
+        },
       });
     } catch (error) {
       pendingProjectRef.current = null;

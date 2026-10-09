@@ -57,6 +57,14 @@ async function seedTestData() {
       revision: 1,
     });
     await setDoc(doc(db, 'library', projectId), { projectId, sections: [], revision: 1 });
+    await setDoc(doc(db, 'projects', projectId, 'memberProfiles', 'owner-1'), {
+      email: 'owner@example.com',
+      displayName: 'Owner',
+    });
+    await setDoc(doc(db, 'projects', projectId, 'memberProfiles', 'member-1'), {
+      email: 'member@example.com',
+      displayName: 'Member',
+    });
   });
 }
 
@@ -84,6 +92,10 @@ async function acceptInvitationTransaction(db, userId, invitationId, targetProje
       members: arrayUnion(userId),
       [`memberAddedAt.${userId}`]: new Date(),
       lastAcceptedInvitationId: marker,
+    });
+    transaction.set(doc(db, 'projects', targetProjectId, 'memberProfiles', userId), {
+      email: userId === 'invitee-1' ? 'invitee@example.com' : 'second@example.com',
+      displayName: userId,
     });
     transaction.update(invitationRef, {
       status: 'accepted',
@@ -310,6 +322,26 @@ test('existing season updates still require a transaction read and revision', as
   }));
 });
 
+test('project members can read all shared profiles, while outsiders and removed members cannot', async () => {
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
+  const profiles = await assertSucceeds(getDocs(collection(memberDb, 'projects', projectId, 'memberProfiles')));
+  assert.deepEqual(profiles.docs.map((profile) => profile.id).sort(), ['member-1', 'owner-1']);
+
+  const outsiderDb = testEnv.authenticatedContext('outsider-1').firestore();
+  await assertFails(getDocs(collection(outsiderDb, 'projects', projectId, 'memberProfiles')));
+  await assertFails(getDoc(doc(outsiderDb, 'projects', projectId, 'memberProfiles', 'owner-1')));
+
+  const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
+  const ownerProfiles = await assertSucceeds(getDocs(collection(ownerDb, 'projects', projectId, 'memberProfiles')));
+  assert.deepEqual(ownerProfiles.docs.map((profile) => profile.id).sort(), ['member-1', 'owner-1']);
+  await assertSucceeds(updateDoc(doc(ownerDb, 'projects', projectId), {
+    members: ['owner-1'],
+    owners: ['owner-1'],
+    memberAddedAt: { 'owner-1': new Date(0) },
+  }));
+  await assertFails(getDocs(collection(memberDb, 'projects', projectId, 'memberProfiles')));
+});
+
 test('member-scoped project and cleanup queries are provable', async () => {
   const memberDb = testEnv.authenticatedContext('member-1').firestore();
   await assertSucceeds(getDocs(query(collection(memberDb, 'projects'), where('members', 'array-contains', 'member-1'))));
@@ -317,6 +349,9 @@ test('member-scoped project and cleanup queries are provable', async () => {
   await assertSucceeds(getDocs(query(collection(memberDb, 'inventory'), where('projectId', '==', projectId))));
   const ownerDb = testEnv.authenticatedContext('owner-1').firestore();
   await assertSucceeds(getDocs(query(collection(ownerDb, 'invitations'), where('projectId', '==', projectId), where('status', '==', 'pending'))));
+  await assertFails(getDocs(query(collection(memberDb, 'invitations'), where('projectId', '==', projectId), where('status', '==', 'pending'))));
+  const outsiderDb = testEnv.authenticatedContext('outsider-1').firestore();
+  await assertFails(getDocs(query(collection(outsiderDb, 'invitations'), where('projectId', '==', projectId), where('status', '==', 'pending'))));
 });
 
 test('non-members cannot read project-scoped data', async () => {
@@ -464,6 +499,8 @@ test('an invitee atomically accepts only their invitation and joins its project'
   const invitation = await getDoc(doc(inviteeDb, 'invitations', invitationId));
   assert.equal(invitation.data().status, 'accepted');
   assert.equal(invitation.data().acceptedBy, 'invitee-1');
+  const profile = await getDoc(doc(inviteeDb, 'projects', projectId, 'memberProfiles', 'invitee-1'));
+  assert.deepEqual(profile.data(), { email: 'invitee@example.com', displayName: 'invitee-1' });
 });
 
 test('the wrong account cannot accept an invitation', async () => {

@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { invitationsCollection } from '../firestore-repositories';
+import { invitationsCollection, memberProfileDocument } from '../firestore-repositories';
 import { normalizeEmail } from '../utils';
 
 export interface PendingInvitation {
@@ -122,6 +122,10 @@ export async function acceptInvitation(invitation: PendingInvitation): Promise<v
       new FieldPath('memberAddedAt', user.uid), acceptedAt,
       'lastAcceptedInvitationId', invitation.id,
     );
+    transaction.set(memberProfileDocument(invitationData.projectId, user.uid), {
+      email: invitationData.email,
+      displayName: user.displayName || 'User',
+    });
     transaction.update(invitationRef, {
       status: 'accepted',
       acceptedBy: user.uid,

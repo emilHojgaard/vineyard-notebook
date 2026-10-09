@@ -9,10 +9,18 @@ import {
   Timestamp,
   where,
   writeBatch,
+  setDoc,
 } from 'firebase/firestore';
 import type { Project, Season, Inventory, Member, Library } from '../../types';
 import { db } from '../firebase';
-import { inventoryDocument, libraryDocument, projectDocument, seasonDocument } from '../firestore-repositories';
+import {
+  inventoryDocument,
+  libraryDocument,
+  memberProfileDocument,
+  memberProfilesCollection,
+  projectDocument,
+  seasonDocument,
+} from '../firestore-repositories';
 
 export function subscribeProjects(
   userId: string,
@@ -37,6 +45,10 @@ export interface CreateProjectInput {
   season: Season;
   inventory: Inventory;
   library: Library;
+  ownerProfile: {
+    email: string;
+    displayName: string;
+  };
 }
 
 export async function createProject(input: CreateProjectInput): Promise<void> {
@@ -70,7 +82,20 @@ export async function createProject(input: CreateProjectInput): Promise<void> {
     sections: input.library.sections,
     revision: 1,
   });
+  batch.set(doc(memberProfilesCollection(input.id), input.ownerId), input.ownerProfile);
   await batch.commit();
+}
+
+export async function saveMemberProfile(
+  projectId: string,
+  userId: string,
+  email: string,
+  displayName: string,
+): Promise<void> {
+  await setDoc(memberProfileDocument(projectId, userId), {
+    email,
+    displayName,
+  });
 }
 
 export async function loadMembers(projectId: string): Promise<Member[]> {
@@ -81,23 +106,28 @@ export async function loadMembers(projectId: string): Promise<Member[]> {
   const memberIds = (projectData.members || []) as string[];
   const memberAddedAt = projectData.memberAddedAt || {};
   const projectCreatedAt = projectData.createdAt?.toDate?.() || new Date(0);
-  const memberPromises = memberIds.map(async (id, index) => {
-    const userSnapshot = await getDoc(doc(db, 'users', id));
-    if (!userSnapshot.exists()) return null;
-    const userData = userSnapshot.data();
+  const profilesSnapshot = await getDocs(memberProfilesCollection(projectId));
+  const profiles = new Map(profilesSnapshot.docs.map((profileDoc) => [profileDoc.id, profileDoc.data()]));
+
+  // Membership is authoritative for who appears in the list. Profiles are a
+  // project-scoped, least-privilege presentation cache; a missing profile must
+  // never hide a valid member or require access to /users/{userId}.
+  return memberIds.map((id, index) => {
+    const profile = profiles.get(id) || {};
     const addedAtValue = memberAddedAt[id];
     const addedAt = addedAtValue?.toDate?.() || (addedAtValue instanceof Date
       ? addedAtValue
       : new Date(projectCreatedAt.getTime() + index));
     return {
       id,
-      email: userData.email || '',
-      displayName: userData.displayName || 'Unknown',
+      email: typeof profile.email === 'string' ? profile.email : '',
+      displayName: typeof profile.displayName === 'string' && profile.displayName
+        ? profile.displayName
+        : 'Unknown',
       role: (projectData.owners || [projectData.createdBy]).includes(id) ? 'owner' : 'member',
       addedAt,
     } as Member;
   });
-  return (await Promise.all(memberPromises)).filter(Boolean) as Member[];
 }
 
 export async function removeMember(projectId: string, memberId: string, actorId: string): Promise<void> {

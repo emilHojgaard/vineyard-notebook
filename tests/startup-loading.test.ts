@@ -19,7 +19,7 @@ test('cached project snapshots do not restart data listeners during startup', ()
   const data = read('src/contexts/DataContext.tsx');
 
   assert.match(data, /Depend on the ID rather than the project object/);
-  assert.match(data, /\}, \[userId, dataUserId, currentProject\?\.id, dataRetryKey\]\);/);
+  assert.match(data, /\}, \[\s*userId,\s*dataUserId,\s*currentProject\?\.id,\s*currentProject\?\.createdBy,[\s\S]*?dataRetryKey,\s*\]\);/);
   assert.match(data, /setAllSeasons\(\{\}\)/);
   assert.match(data, /setAllInventory\(\{\}\)/);
   assert.match(data, /setAllLibrary\(\{\}\)/);

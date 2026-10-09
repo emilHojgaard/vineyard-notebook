@@ -133,6 +133,28 @@ service cloud.firestore {
       allow delete: if isProjectOwner(projectId);
     }
 
+    // Member profiles are deliberately project-scoped. Unlike /users, every
+    // member of the shared project may read only the profiles in that project.
+    function validMemberProfile(data) {
+      return data.keys().hasOnly(['email', 'displayName']) &&
+        data.email is string &&
+        data.email == data.email.trim().lower() &&
+        data.displayName is string &&
+        data.displayName.size() > 0;
+    }
+
+    match /projects/{projectId}/memberProfiles/{userId} {
+      allow read: if isProjectMember(projectId);
+      allow create: if isProjectMemberAfter(projectId) &&
+        request.auth.uid == userId &&
+        validMemberProfile(request.resource.data);
+      allow update: if isProjectMember(projectId) &&
+        request.auth.uid == userId &&
+        validMemberProfile(request.resource.data);
+      allow delete: if isProjectOwner(projectId) &&
+        userId != project(projectId).createdBy;
+    }
+
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
