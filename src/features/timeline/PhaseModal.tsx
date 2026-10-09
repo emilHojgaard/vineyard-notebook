@@ -212,7 +212,9 @@ export function PhaseModal({
           <input
             type="text"
             value={node.name}
+            readOnly={ro}
             onChange={(e) => {
+              if (ro) return;
               const name = e.target.value || 'Untitled phase';
               node.name = name;
               void persistChanges(node.id, (currentNode) => {
@@ -221,7 +223,7 @@ export function PhaseModal({
             }}
             autoFocus
             data-autofocus
-            className="w-full px-3 py-2 text-lg font-semibold border border-border rounded-md bg-surface text-ink mb-2"
+            className="w-full px-3 py-2 text-lg font-semibold border border-border rounded-md bg-surface text-ink mb-2 read-only:bg-surface-2 read-only:text-ink-soft read-only:cursor-not-allowed"
           />
         )}
 

@@ -29,6 +29,14 @@ test('alert settings keep transient text separate from saved values', () => {
   assert.doesNotMatch(shell, /parseInt\(e\.target\.value\) \|\| 14/);
 });
 
+test('locked phase names cannot trigger structural season writes', () => {
+  const phaseModal = read('src/features/timeline/PhaseModal.tsx');
+
+  assert.match(phaseModal, /readOnly=\{ro\}/);
+  assert.match(phaseModal, /if \(ro\) return;/);
+  assert.match(phaseModal, /read-only:cursor-not-allowed/);
+});
+
 test('timeline and tree use the shared alert settings and presentation', () => {
   const timeline = read('src/features/timeline/TimelineView.tsx');
   const tree = read('src/features/tree/TreeView.tsx');

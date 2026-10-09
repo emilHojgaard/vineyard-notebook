@@ -292,6 +292,81 @@ test('members can create a missing season in a transaction without reading it fi
   }));
 });
 
+test('production-shaped locked season content edits preserve the structure partition', async () => {
+  const productionProjectId = 'proj_2148e69-40ab-4537-8bad-82e742939c2d';
+  const productionMemberId = 'captain-production';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'projects', productionProjectId), {
+      name: 'Production Vineyard',
+      members: [productionMemberId],
+      owners: [productionMemberId],
+      createdBy: productionMemberId,
+      memberAddedAt: { [productionMemberId]: new Date(0) },
+    });
+    await setDoc(doc(db, 'seasons', `${productionProjectId}_2026`), {
+      projectId: productionProjectId,
+      status: 'current',
+      title: '2026',
+      structure: [{
+        id: 'harvest',
+        name: 'Harvest',
+        branches: [{ id: 'red', name: 'Red', nodes: [] }, { id: 'white', name: 'White', nodes: [] }],
+      }],
+      content: {
+        harvest: {
+          start: '2026-09-01', end: '2026-09-10', status: 'upcoming', notes: [], events: [], invIds: [], libIds: [],
+        },
+      },
+      locked: true,
+      revision: 2,
+    });
+  });
+
+  const memberDb = testEnv.authenticatedContext(productionMemberId).firestore();
+  const season = doc(memberDb, 'seasons', `${productionProjectId}_2026`);
+  await assertSucceeds(runTransaction(memberDb, async transaction => {
+    const current = await transaction.get(season);
+    const currentData = current.data();
+    transaction.set(season, {
+      projectId: productionProjectId,
+      status: currentData.status,
+      title: currentData.title,
+      structure: currentData.structure,
+      content: {
+        ...currentData.content,
+        harvest: { ...currentData.content.harvest, notes: [{ id: 'note-1', author: productionMemberId, text: 'Checked fruit', date: '2026-08-30' }] },
+      },
+      locked: true,
+      revision: currentData.revision + 1,
+    });
+  }));
+
+  // The member and optimistic precondition are valid, but renaming a phase is
+  // a structural edit and remains denied while the season is locked.
+  await assertFails(runTransaction(memberDb, async transaction => {
+    const current = await transaction.get(season);
+    const currentData = current.data();
+    transaction.set(season, {
+      ...currentData,
+      structure: [{ ...currentData.structure[0], name: 'Harvest (updated)' }],
+      revision: currentData.revision + 1,
+    });
+  }));
+
+  // A stale revision precondition must not be bypassed by a valid
+  // content-only payload.
+  await assertFails(runTransaction(memberDb, async transaction => {
+    const current = await transaction.get(season);
+    const currentData = current.data();
+    transaction.set(season, {
+      ...currentData,
+      content: { ...currentData.content, harvest: { ...currentData.content.harvest, status: 'active' } },
+      revision: currentData.revision,
+    });
+  }));
+});
+
 test('existing season updates still require a transaction read and revision', async () => {
   const memberDb = testEnv.authenticatedContext('member-1').firestore();
   const season = doc(memberDb, 'seasons', `${projectId}_2026`);
